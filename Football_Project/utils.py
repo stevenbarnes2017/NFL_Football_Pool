@@ -318,10 +318,16 @@ def fetch_live_scores():
 
         # Ensure 'situation' is a dictionary
         if isinstance(situation, dict):
-            down = situation.get('down', None)
-            distance = situation.get('distance', None)
-            possession_team = situation.get('possession', {}).get('displayName', None)
-            yard_line = situation.get('yardLine', None)
+            down = situation.get('down')
+            distance = situation.get('distance')
+            # Ensure situation is a dictionary before accessing 'possession'
+            if isinstance(situation, dict):
+                possession_team = situation.get('possession', {}).get('displayName') if isinstance(situation.get('possession'), dict) else None
+            else:
+                # Handle case where 'situation' is not a dictionary
+                print("Error: 'situation' is not a dictionary, it is:", type(situation))
+                possession_team = None
+            yard_line = situation.get('yardLine')
         else:
             down = None
             distance = None
