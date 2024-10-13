@@ -5,6 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from .models import User  # Import your User model
 from .extensions import db  # Assuming db is initialized in extensions.py
+from flask_migrate import Migrate
 
 
 def create_app():
@@ -17,6 +18,8 @@ def create_app():
     # Initialize extensions
     db.init_app(app)
   
+    #Initialize Flask-Migrate
+    migrate = Migrate(app, db)
 
     # Initialize the login manager
     login_manager = LoginManager()
