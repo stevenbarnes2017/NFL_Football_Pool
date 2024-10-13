@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Game Results{% endblock %}
+
+{% block content %}
+<div class="container mx-auto mt-10">
+    <div class="bg-white p-8 rounded-lg shadow-lg">
+        <h2 class="text-3xl font-bold mb-6 text-center text-gray-800">Game Results</h2>
+
+        <!-- Week Selection Form -->
+        <form action="{{ url_for('main.results') }}" method="post" class="mb-6">
+            <div class="flex items-center">
+                <label for="week" class="block text-gray-700 mr-4">Select Week:</label>
+                <select name="week" id="week" class="w-32 p-2 border border-gray-300 rounded mr-4">
+                    <option value="">All Weeks</option>
+                    {% for week in weeks %}
+                        <option value="{{ week }}">{{ week }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-primary bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded">View Results</button>
+            </div>
+        </form>
+
+        <!-- Results Table -->
+        {% if games %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full bg-white">
+                    <thead>
+                        <tr>
+                            <th class="py-2 px-4 border-b">ID</th>
+                            <th class="py-2 px-4 border-b">Week</th>
+                            <th class="py-2 px-4 border-b">Home Team</th>
+                            <th class="py-2 px-4 border-b">Away Team</th>
+                            <th class="py-2 px-4 border-b">Spread</th>
+                            <th class="py-2 px-4 border-b">Favorite Team</th>
+                            <th class="py-2 px-4 border-b">Home Team Score</th>
+                            <th class="py-2 px-4 border-b">Away Team Score</th>
+                            <th class="py-2 px-4 border-b">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for game in games %}
+                            <tr class="{% if loop.index0 % 2 == 0 %}bg-gray-100{% endif %}">
+                                <td class="py-2 px-4 border-b text-center">{{ game.id }}</td>
+                                <td class="py-2 px-4 border-b text-center">{{ game.week }}</td>
+                                <td class="py-2 px-4 border-b">{{ game.home_team }}</td>
+                                <td class="py-2 px-4 border-b">{{ game.away_team }}</td>
+                                <td class="py-2 px-4 border-b text-center">{{ game.spread }}</td>
+                                <td class="py-2 px-4 border-b">{{ game.favorite_team }}</td>
+                                <td class="py-2 px-4 border-b text-center">{{ game.home_team_score or 'N/A' }}</td>
+                                <td class="py-2 px-4 border-b text-center">{{ game.away_team_score or 'N/A' }}</td>
+                                <td class="py-2 px-4 border-b text-center">{{ game.status or 'Pending' }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="text-gray-700 mt-4">No games found for the selected week.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

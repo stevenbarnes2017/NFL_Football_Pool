@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Live NFL Scores{% endblock %}
+
+{% block content %}
+    <h1 class="page-title">Live NFL Scores</h1>
+    <div class="scoreboard-grid">
+        <div id="live-scoreboard" class="scoreboard-grid"></div>
+        <h2 id="last-week-header" style="display:none;">Last Week's Scores</h2>
+        <div id="last-week-scoreboard" class="scoreboard"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var previousScores = {};  // Store previous scores for comparison
+            var defaultLogo = '/static/images/default.png';  // Fallback logo if the team logo is missing
+
+            // Function to update the scoreboard with enhanced game details
+            function updateScoreboard(newScores, scoreboardElement) {
+                if (!scoreboardElement) {
+                    console.error("Scoreboard element not found");
+                    return;
+                }
+
+                newScores.forEach(function (game) {
+                    var gameKey = game.home_team + ' vs ' + game.away_team;
+                    var previousGame = previousScores[gameKey];
+
+                    // Only update if the score or status has changed
+                    if (!previousGame || previousGame.home_score !== game.home_score || 
+                        previousGame.away_score !== game.away_score || previousGame.status !== game.status ||
+                        previousGame.clock !== game.clock || previousGame.down !== game.down || previousGame.distance !== game.distance) {
+
+                        var gameElement = document.getElementById(gameKey);
+
+                        // Create a new game card if it doesn't exist
+                        if (!gameElement) {
+                            gameElement = document.createElement('div');
+                            gameElement.id = gameKey;
+                            gameElement.classList.add('game-card');
+                            scoreboardElement.appendChild(gameElement);
+                        }
+
+                        // Fallback to default logo if team's logo isn't available
+                        var homeTeamLogo = `/static/images/${game.home_team}.png`;
+                        var awayTeamLogo = `/static/images/${game.away_team}.png`;
+
+                        // Highlight the possession team
+                        var possessionHighlight = (game.possession && game.possession === game.home_team) 
+                            ? 'possession-highlight' : '';
+                        var awayPossessionHighlight = (game.possession && game.possession === game.away_team) 
+                            ? 'possession-highlight' : '';
+
+                        // Set the innerHTML of the game card with the enhanced information
+                        gameElement.innerHTML = `
+                            <div class="team-logos">
+                                <div class="team-logo ${possessionHighlight}">
+                                    <img src="${homeTeamLogo}" alt="${game.home_team} logo" onerror="this.onerror=null;this.src='${defaultLogo}'">
+                                </div>
+                                <div class="team-logo ${awayPossessionHighlight}">
+                                    <img src="${awayTeamLogo}" alt="${game.away_team} logo" onerror="this.onerror=null;this.src='${defaultLogo}'">
+                                </div>
+                            </div>
+                            <div class="score">
+                                ${game.home_team} ${game.home_score} - ${game.away_team} ${game.away_score}
+                                <span class="game-status">${game.status}</span>
+                            </div>
+                            <div class="game-details">
+                                <div>Clock: ${game.clock} (Q${game.period})</div>
+                                <div>Possession: <span class="${game.possession ? 'possession-highlight' : ''}">${game.possession ? game.possession : 'None'}</span></div>
+                                <div>Down & Distance: ${game.down ? `Down ${game.down} & ${game.distance} yards` : 'N/A'}</div>
+                                <div>Yard Line: ${game.yardLine !== null ? game.yardLine : 'N/A'}</div>
+                            </div>
+                        `;
+                    }
+
+                    // Save the current game data to the previousScores object
+                    previousScores[gameKey] = game;
+                });
+            }
+
+            // Set up the SSE connection to receive live scores
+            const eventSource = new EventSource('/stream-live-scores');
+
+            eventSource.onmessage = function(event) {
+                console.log('Received data:', event.data);
+
+                var data = JSON.parse(event.data);
+                var liveScoreboard = document.getElementById('live-scoreboard');
+                var lastWeekHeader = document.getElementById('last-week-header');
+                var lastWeekScoreboard = document.getElementById('last-week-scoreboard');
+
+                // Check if there are live games
+                if (data.live_games.length > 0) {
+                    updateScoreboard(data.live_games, liveScoreboard);
+                    lastWeekHeader.style.display = 'none';
+                } 
+                // If no live games, check for last week's games
+                else if (data.last_week_games.length > 0) {
+                    lastWeekHeader.style.display = 'block';
+                    updateScoreboard(data.last_week_games, lastWeekScoreboard);
+                } 
+                // If no games at all, show a message
+                else {
+                    liveScoreboard.innerHTML = '<div class="no-games">No games currently available.</div>';
+                    lastWeekHeader.style.display = 'none';
+                }
+            };
+
+            // Optional: handle errors
+            eventSource.onerror = function(err) {
+                console.error('EventSource failed:', err);
+            };
+        });
+    </script>
+{% endblock %}

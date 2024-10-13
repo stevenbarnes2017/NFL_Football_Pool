@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Scores - Week {{ week }}</title>
+</head>
+<body>
+    <h1>Your Score for Week {{ week }}: {{ current_user_score }}</h1>
+    
+    <h2>Compare with Others</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Username</th>
+                <th>Score</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user_id, details in all_scores.items() %}
+                <tr>
+                    <td>{{ details.username }}</td>
+                    <td>{{ details.score }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
