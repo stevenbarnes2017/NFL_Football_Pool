@@ -1,0 +1,17 @@
+date,home_team,home_score,away_team,away_score,status
+2024-09-19 18:15:00 MDT,New York Jets,24,New England Patriots,3,STATUS_FINAL
+2024-09-22 11:00:00 MDT,Cleveland Browns,15,New York Giants,21,STATUS_FINAL
+2024-09-22 11:00:00 MDT,Tennessee Titans,14,Green Bay Packers,30,STATUS_FINAL
+2024-09-22 11:00:00 MDT,Indianapolis Colts,21,Chicago Bears,16,STATUS_FINAL
+2024-09-22 11:00:00 MDT,Minnesota Vikings,34,Houston Texans,7,STATUS_FINAL
+2024-09-22 11:00:00 MDT,New Orleans Saints,12,Philadelphia Eagles,15,STATUS_FINAL
+2024-09-22 11:00:00 MDT,Pittsburgh Steelers,20,Los Angeles Chargers,10,STATUS_FINAL
+2024-09-22 11:00:00 MDT,Tampa Bay Buccaneers,7,Denver Broncos,26,STATUS_FINAL
+2024-09-22 14:05:00 MDT,Las Vegas Raiders,22,Carolina Panthers,36,STATUS_FINAL
+2024-09-22 14:05:00 MDT,Seattle Seahawks,24,Miami Dolphins,3,STATUS_FINAL
+2024-09-22 14:25:00 MDT,Dallas Cowboys,25,Baltimore Ravens,28,STATUS_FINAL
+2024-09-22 14:25:00 MDT,Los Angeles Rams,27,San Francisco 49ers,24,STATUS_FINAL
+2024-09-22 14:25:00 MDT,Arizona Cardinals,13,Detroit Lions,20,STATUS_FINAL
+2024-09-22 18:20:00 MDT,Atlanta Falcons,17,Kansas City Chiefs,22,STATUS_FINAL
+2024-09-23 17:30:00 MDT,Buffalo Bills,47,Jacksonville Jaguars,10,STATUS_FINAL
+2024-09-23 18:15:00 MDT,Cincinnati Bengals,33,Washington Commanders,38,STATUS_FINAL

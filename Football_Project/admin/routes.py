@@ -7,7 +7,6 @@ from football_scores import get_football_scores, save_scores_to_csv, save_scores
 from Football_Project.models import db, Game, Settings, User, UserScore, Pick
 from Football_Project.utils import calculate_user_scores
 from . import admin_bp
-<<<<<<< HEAD
 from werkzeug.security import generate_password_hash, check_password_hash
 
 @admin_bp.route('/admin/update_admin_status/<int:user_id>', methods=['POST'])
@@ -75,14 +74,6 @@ def manage_users():
         return redirect(url_for('index'))
     users = User.query.all()  # Get all users from the database
     return render_template('manage_users.html', users=users)
-=======
-
-
-
-print("Setting up before_request for admin_bp")
-
-
->>>>>>> 128523e0dbc489f40d5f6df48db8a3b0113a97a8
 
 @admin_bp.before_request
 def before_request():

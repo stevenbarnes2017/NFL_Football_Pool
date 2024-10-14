@@ -1,0 +1,17 @@
+date,home_team,home_score,away_team,away_score,status
+2024-09-12 18:15:00 MDT,Miami Dolphins,10,Buffalo Bills,31,STATUS_FINAL
+2024-09-15 11:00:00 MDT,Dallas Cowboys,19,New Orleans Saints,44,STATUS_FINAL
+2024-09-15 11:00:00 MDT,Detroit Lions,16,Tampa Bay Buccaneers,20,STATUS_FINAL
+2024-09-15 11:00:00 MDT,Green Bay Packers,16,Indianapolis Colts,10,STATUS_FINAL
+2024-09-15 11:00:00 MDT,Tennessee Titans,17,New York Jets,24,STATUS_FINAL
+2024-09-15 11:00:00 MDT,Minnesota Vikings,23,San Francisco 49ers,17,STATUS_FINAL
+2024-09-15 11:00:00 MDT,New England Patriots,20,Seattle Seahawks,23,STATUS_FINAL
+2024-09-15 11:00:00 MDT,Washington Commanders,21,New York Giants,18,STATUS_FINAL
+2024-09-15 11:00:00 MDT,Carolina Panthers,3,Los Angeles Chargers,26,STATUS_FINAL
+2024-09-15 11:00:00 MDT,Jacksonville Jaguars,13,Cleveland Browns,18,STATUS_FINAL
+2024-09-15 11:00:00 MDT,Baltimore Ravens,23,Las Vegas Raiders,26,STATUS_FINAL
+2024-09-15 14:05:00 MDT,Arizona Cardinals,41,Los Angeles Rams,10,STATUS_FINAL
+2024-09-15 14:25:00 MDT,Denver Broncos,6,Pittsburgh Steelers,13,STATUS_FINAL
+2024-09-15 14:25:00 MDT,Kansas City Chiefs,26,Cincinnati Bengals,25,STATUS_FINAL
+2024-09-15 18:20:00 MDT,Houston Texans,19,Chicago Bears,13,STATUS_FINAL
+2024-09-16 18:15:00 MDT,Philadelphia Eagles,21,Atlanta Falcons,22,STATUS_FINAL

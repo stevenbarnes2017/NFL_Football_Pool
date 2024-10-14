@@ -202,7 +202,6 @@ def get_football_scores(year, seasontype, weeknum):
     # (Actual API call logic goes here...)
     pass
 
-<<<<<<< HEAD
 from dateutil import parser
 from pytz import timezone, utc
 from datetime import datetime
@@ -251,31 +250,6 @@ def lock_picks_for_commenced_games(user_id):
                     points_earned=0  # No points if missed pick
                 )
                 db.session.add(missed_pick)
-=======
-def lock_picks_for_commenced_games(user_id):
-    current_week = get_current_week()  # Function that returns the current week
-
-    # Get all games for the current week that have commenced
-    commenced_games = Game.query.filter(
-        Game.week == current_week,
-        Game.commence_time_mt <= datetime.utcnow()
-    ).all()
-
-    for game in commenced_games:
-        # Check if user has already made a pick for this game
-        existing_pick = Pick.query.filter_by(user_id=user_id, game_id=game.id).first()
-
-        if not existing_pick:
-            # Assign the highest available confidence point to the user and mark pick as missed
-            available_points = get_highest_available_confidence(user_id, current_week)
-            missed_pick = Pick(
-                user_id=user_id,
-                game_id=game.id,
-                confidence_points=available_points,
-                points_earned=0  # No points if missed pick
-            )
-            db.session.add(missed_pick)
->>>>>>> 128523e0dbc489f40d5f6df48db8a3b0113a97a8
 
     db.session.commit()
 
@@ -331,11 +305,6 @@ def assign_missed_pick_confidence(available_confidences):
 
 
 
-<<<<<<< HEAD
-=======
-import requests
-
->>>>>>> 128523e0dbc489f40d5f6df48db8a3b0113a97a8
 def fetch_live_scores():
     url = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
     try:
@@ -417,10 +386,6 @@ def fetch_live_scores():
 
 
 
-<<<<<<< HEAD
-
-=======
->>>>>>> 128523e0dbc489f40d5f6df48db8a3b0113a97a8
 def fetch_last_week_scores():
     # Fetch last week's scores (this is just an example, modify based on your actual logic)
     # You could use the ESPN API or your own database to get last week's data.
