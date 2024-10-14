@@ -5,18 +5,20 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from .models import User  # Import your User model
 from .extensions import db  # Assuming db is initialized in extensions.py
-
+from flask_migrate import Migrate
 
 def create_app():
     app = Flask(__name__)
 
     # App configuration
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///picks.db'
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///picks.db'  # Make sure to update this for production (e.g., PostgreSQL)
     app.config['SECRET_KEY'] = 'password'
     
     # Initialize extensions
     db.init_app(app)
   
+    # Initialize Flask-Migrate
+    migrate = Migrate(app, db)  # Add this line to initialize Flask-Migrate
 
     # Initialize the login manager
     login_manager = LoginManager()
