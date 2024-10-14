@@ -1,0 +1,357 @@
+{% extends "base.html" %}
+
+{% block title %}Set NFL Picks - Week {{ selected_week }}{% endblock %}
+
+{% block head %}
+    {{ super() }}
+    <style>
+        /* Styling remains the same, keeping it intact */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f4f4f4;
+            color: #333;
+            padding: 10px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .dropdown-wrapper {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .dropdown-form {
+            display: flex;
+            gap: 10px;
+        }
+
+        .floating-box {
+            position: fixed;
+            top: 100px;
+            left: 20px;
+            background-color: #ffffff;
+            border: 1px solid #ccc;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            max-width: 200px;
+            text-align: center;
+            z-index: 100;
+        }
+
+        .number-used {
+            text-decoration: line-through;
+            color: #d9534f;
+        }
+
+        h2 {
+            font-size: 2.5rem;
+            font-weight: bold;
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            font-size: 1rem;
+        }
+
+        select.form-input {
+            width: auto;
+            padding: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: auto;
+            margin-bottom: 20px;
+            display: block;
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: center;
+            border-bottom: 1px solid #ddd;
+            white-space: nowrap;
+        }
+
+        th {
+            background-color: #333;
+            color: white;
+            font-weight: bold;
+        }
+
+        .table-row:nth-child(even) {
+            background-color: #f9fafb;
+        }
+
+        .table-row:hover {
+            background-color: #f1f1f1;
+        }
+
+        td.favorite-team {
+            font-weight: bold;
+        }
+
+        .day-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            background-color: #fff;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        }
+
+        .day-header {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .submit-button {
+            background-color: #28a745;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .submit-button:hover {
+            background-color: #218838;
+        }
+
+        footer {
+            background-color: #333;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            margin-top: 40px;
+        }
+
+        @media (max-width: 768px) {
+            .floating-box {
+                top: auto;
+                bottom: 20px;
+                left: 20px;
+                width: 90%;
+                max-width: 90%;
+            }
+
+            h2 {
+                font-size: 2rem;
+            }
+
+            .container {
+                padding: 10px;
+            }
+
+            .form-input, select.form-input {
+                width: 100%;
+            }
+
+            table {
+                display: block;
+                overflow-x: auto;
+                white-space: nowrap;
+            }
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="content-box">
+        <h2>Set NFL Picks - Week {{ selected_week }}</h2>
+
+        <!-- Week Selection Dropdown -->
+        <div class="dropdown-wrapper">
+            <form method="POST" action="{{ url_for('main.nfl_picks') }}" class="dropdown-form">
+                <label for="week" class="text-lg font-semibold">Select Week:</label>
+                <select name="week" id="week" class="form-input" onchange="this.form.submit()">
+                    {% for wk in all_weeks %}
+                        <option value="{{ wk }}" {% if wk == selected_week %}selected{% endif %}>Week {{ wk }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+        </div>
+
+        <!-- Floating Box to Show Available Confidence Numbers -->
+        <div class="floating-box">
+            <h3>Available Confidence Numbers</h3>
+            <div id="available-numbers"></div>
+        </div>
+
+        <!-- Picks Form -->
+        <form action="{{ url_for('main.submit_picks') }}" method="POST">
+            <input type="hidden" name="num_of_games" value="{{ num_of_games }}">
+            <input type="hidden" name="week" value="{{ selected_week }}">
+
+            {% if grouped_games %}
+                {% for day, games in grouped_games.items() %}
+                    {% if games %}
+                        <div class="day-section">
+                            <h3 class="day-header">{{ day }} Games</h3>
+
+                            <table>
+                                <thead class="table-header">
+                                    <tr>
+                                        <th>Game ID</th>
+                                        <th>Home Team</th>
+                                        <th>Away Team</th>
+                                        <th>Spread</th>
+                                        <th>Favorite Team</th>
+                                        <th>Commence Time</th>
+                                        <th>Your Pick</th>
+                                        <th>Confidence</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for game in games %}
+                                    <tr class="table-row">
+                                        <td>{{ game.id }}</td>
+                                        <td>{{ game.home_team }}</td>
+                                        <td>{{ game.away_team }}</td>
+                                        <td>{{ game.spread }}</td>
+                                        <td class="favorite-team">{{ game.favorite_team }}</td>
+                                        <td>{{ game.commence_time_mt.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            
+                                        <!-- Add the hidden game_id input here inside a <td> -->
+                                        <td style="display: none;">
+                                            <input type="hidden" name="game_id_{{ game.id }}" value="{{ game.id }}">
+                                        </td>
+                            
+                                        {% if now_utc >= game.commence_time_mt %}
+                                            <!-- Game has already started, display the pick and confidence -->
+                                            <td>{{ user_picks.get(game.id, ['No pick made', ''])[0] }}</td>
+                                            <td>{{ user_picks.get(game.id, ['No pick made', ''])[1] }}</td> 
+                                        {% else %}
+                                            <td>
+                                                <div class="flex justify-center">
+                                                    <label>
+                                                        <input type="radio" name="pick_{{ game.id }}" value="{{ game.home_team }}"
+                                                            {% if user_picks.get(game.id, [None, None])[0] == game.home_team %}checked{% endif %}> 
+                                                        {{ game.home_team }}
+                                                    </label>
+                                                    <label>
+                                                        <input type="radio" name="pick_{{ game.id }}" value="{{ game.away_team }}"
+                                                            {% if user_picks.get(game.id, [None, None])[0] == game.away_team %}checked{% endif %}> 
+                                                        {{ game.away_team }}
+                                                    </label>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <input type="number" name="confidence_{{ game.id }}" 
+                                                    value="{{ user_picks.get(game.id, [None, None])[1] or '' }}" 
+                                                    min="1" max="{{ num_of_games }}" class="form-input confidence-input w-20">
+                                            </td>
+                                        {% endif %}
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            
+                        </div>
+                    {% else %}
+                        <p>No games found for {{ day }}.</p>
+                    {% endif %}
+                {% endfor %}
+            {% else %}
+                <div class="text-center">
+                    <p>No saved games available for Week {{ selected_week }}.</p>
+                </div>
+            {% endif %}
+
+            <div class="text-center">
+                <button type="submit" class="submit-button">Submit Picks</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const numOfGames = parseInt("{{ num_of_games }}", 10);
+        const usedNumbers = new Set(); 
+        const availableNumbers = Array.from({ length: numOfGames }, (_, i) => i + 1);
+        const availableNumbersBox = document.getElementById('available-numbers');
+
+        function updateAvailableNumbers() {
+            availableNumbersBox.innerHTML = availableNumbers.map(num =>
+                `<span class="${usedNumbers.has(num) ? 'number-used' : ''}">${num}</span>`
+            ).join(', ');
+        }
+
+        document.querySelectorAll('.confidence-input').forEach(input => {
+            input.addEventListener('change', (e) => { 
+                const value = parseInt(e.target.value, 10);
+
+                if (!isNaN(value) && value >= 1 && value <= numOfGames) {
+                    if (usedNumbers.has(value)) {
+                        alert(`Confidence number ${value} has already been used!`);
+                        e.target.value = ""; 
+                    } else {
+                        const prevValue = parseInt(e.target.getAttribute('data-prev-value'), 10);
+                        if (!isNaN(prevValue)) {
+                            usedNumbers.delete(prevValue);
+                        }
+
+                        usedNumbers.add(value);
+                        e.target.setAttribute('data-prev-value', value); 
+                    }
+                } else {
+                    alert("Please choose a valid confidence number.");
+                    e.target.value = ""; 
+                }
+
+                updateAvailableNumbers();
+            });
+        });
+
+        updateAvailableNumbers();
+
+        document.querySelector('.submit-button').addEventListener('click', function (e) {
+            let validSubmission = false;
+
+            document.querySelectorAll('.table-row').forEach(row => {
+                const pick = row.querySelector('input[type="radio"]:checked');
+                const confidence = row.querySelector('.confidence-input').value;
+
+                if (pick && confidence) {
+                    validSubmission = true;
+                }
+            });
+
+            if (!validSubmission) {
+                alert('Please make at least one pick before submitting.');
+                e.preventDefault();
+            }
+        });
+    });
+</script>
+
+{% endblock %}

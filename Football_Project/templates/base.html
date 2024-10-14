@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}NFL Picks{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+
+    <!-- Navigation Bar (reintroduced) -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-brand">
+                NFL Picks
+            </div>
+            <div class="navbar-links">
+                <a href="{{ url_for('main.live_scores_page') }}">Live Scores</a>
+                <a href="{{ url_for('main.dashboard') }}">Dashboard</a>
+                <a href="{{ url_for('main.nfl_picks') }}">Select Picks</a>
+                <a href="{{ url_for('main.see_picks') }}">See Picks</a>
+                <a href="{{ url_for('main.logout') }}">Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Page Content -->
+    <div class="container py-10">
+        {% block content %}{% endblock %}
+    </div>
+
+    <footer class="footer">
+        <p>&copy; {{ current_year }} NFL Picks - All rights reserved.</p>
+    </footer>
+
+    <!-- Place for Scripts to Load -->
+    {% block scripts %}{% endblock %}
+</body>
+</html>

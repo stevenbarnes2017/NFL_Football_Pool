@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Picks</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css">
+</head>
+<body class="bg-gray-100">
+
+    <div class="container mx-auto mt-10">
+        <div class="max-w-lg mx-auto bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-2xl font-bold mb-6 text-center">My Picks</h2>
+            
+            <!-- Week Selection Dropdown -->
+            <form method="POST" action="{{ url_for('my_picks') }}" class="mb-6 text-center">
+                <label for="week" class="block text-gray-700">Select Week:</label>
+                <select name="week" id="week" class="w-full p-2 border border-gray-300 rounded mt-1">
+                    {% for week in weeks %}
+                        <option value="{{ week }}" {% if week == selected_week %}selected{% endif %}>
+                            Week {{ week }}
+                        </option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="mt-4 bg-blue-500 text-white py-2 px-4 rounded">View Picks</button>
+            </form>
+
+            {% if picks %}
+                <table class="w-full text-left table-auto">
+                    <thead>
+                        <tr>
+                            <th class="px-4 py-2">Game</th>
+                            <th class="px-4 py-2">Team Picked</th>
+                            <th class="px-4 py-2">Confidence</th>
+                            <th class="px-4 py-2">Pick Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for pick in picks %}
+                            <tr class="bg-gray-100 border-b">
+                                <td class="px-4 py-2">{{ pick.game_id }}</td>
+                                <td class="px-4 py-2">{{ pick.team_picked }}</td>
+                                <td class="px-4 py-2">{{ pick.confidence }}</td>
+                                <td class="px-4 py-2">{{ pick.pick_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p>You have not made any picks for Week {{ selected_week }} yet.</p>
+            {% endif %}
+
+            <!-- Button to return to home page -->
+            <div class="text-center mt-6">
+                <a href="{{ url_for('index') }}" class="bg-green-500 text-white py-2 px-4 rounded">
+                    Return to Home to Make Picks
+                </a>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

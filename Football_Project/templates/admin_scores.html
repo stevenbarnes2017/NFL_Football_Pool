@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard{% endblock %}
+{% block content %}
+<style>
+    .small-plain-button {
+        background-color: #f1f1f1; /* Light gray background */
+        color: #333; /* Dark text */
+        padding: 5px 10px; /* Smaller padding */
+        font-size: 0.9rem; /* Slightly smaller text */
+        border: 1px solid #ccc; /* Light border */
+        border-radius: 3px; /* Subtle rounding */
+        cursor: pointer;
+        margin-left: 5px; /* Add a little space between input and button */
+    }
+
+    .small-plain-button:hover {
+        background-color: #e0e0e0; /* Slightly darker gray on hover */
+    }
+
+    .small-plain-button:focus {
+        outline: none;
+    }
+</style>
+<h1>Admin Dashboard - Scores and Results</h1>
+
+<!-- Form for selecting week and user -->
+<form action="{{ url_for('admin.admin_scores') }}" method="get">
+    <!-- Week Selection -->
+    <div>
+        <label for="week">Select Week:</label>
+        <select name="week" id="week">
+            <option value="all" {% if selected_week == 'all' %}selected{% endif %}>All Weeks</option>
+            {% for week in weeks %}
+                <option value="{{ week }}" {% if week == selected_week %}selected{% endif %}>Week {{ week }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <!-- User Selection -->
+    <div>
+        <label for="user">Select User:</label>
+        <select name="user" id="user">
+            <option value="all" {% if selected_user == 'all' %}selected{% endif %}>All Users</option>
+            {% for user in users %}
+                <option value="{{ user.id }}" {% if user.id == selected_user %}selected{% endif %}>{{ user.username }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <!-- View Scores Button -->
+    <div class="mt-4">
+        <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
+            View Scores
+        </button>
+    </div>
+</form>
+
+<!-- Display User Points Summary -->
+<h2 class="mt-6">User Points Summary {% if selected_week != 'all' %} for Week {{ selected_week }}{% else %} (All Weeks){% endif %}</h2>
+
+<table class="min-w-full bg-white">
+    <thead>
+        <tr>
+            <th class="px-4 py-2">Username</th>
+            <th class="px-4 py-2">Total Points{% if selected_week != 'all' %} (Week {{ selected_week }}){% else %} (All Weeks){% endif %}</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for username, total_points in user_totals.items() %}
+        <tr>
+            <td class="border px-4 py-2">{{ username }}</td>
+            <td class="border px-4 py-2">{{ total_points }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- Display detailed game results based on selection -->
+{% if game_picks %}
+<h2 class="mt-6">Game Results{% if selected_week != 'all' %} for Week {{ selected_week }}{% endif %}</h2>
+<table class="min-w-full bg-white">
+    <thead>
+        <tr>
+            <th>Game ID</th>
+            <th>Home Team</th>
+            <th>Away Team</th>
+            <th>Spread</th>
+            <th>Favorite Team</th>
+            <th>Home Team Score</th>
+            <th>Away Team Score</th>
+            <th>Status</th>
+            <th>Username</th>
+            <th>Confidence</th>
+            <th>Points Earned</th>
+            <th>Override Score</th> <!-- Make sure the "Override Score" column is always in the header -->
+        </tr>
+    </thead>
+    <tbody>
+        {% for game in game_picks %}
+            {% if game.picks|length > 0 %}
+                {% for pick in game.picks %}
+                    <tr>
+                        {% if loop.first %}
+                            <td rowspan="{{ game.picks|length }}">{{ game.game_id }}</td>
+                            <td rowspan="{{ game.picks|length }}">{{ game.home_team }}</td>
+                            <td rowspan="{{ game.picks|length }}">{{ game.away_team }}</td>
+                            <td rowspan="{{ game.picks|length }}">{{ game.spread }}</td>
+                            <td rowspan="{{ game.picks|length }}">{{ game.favorite_team }}</td>
+                            <td rowspan="{{ game.picks|length }}">{{ game.home_team_score }}</td>
+                            <td rowspan="{{ game.picks|length }}">{{ game.away_team_score }}</td>
+                            <td rowspan="{{ game.picks|length }}">{{ game.status }}</td>
+                        {% endif %}
+                        <td>{{ pick.username }}</td>
+                        <td>{{ pick.confidence }}</td>
+                        <td>{{ pick.points_earned }}</td>
+                        <td>
+                            <form action="{{ url_for('admin.admin_override_score') }}" method="POST" style="display: flex; align-items: center;">
+                                <input type="hidden" name="user_id" value="{{ pick.user_id }}">
+                                <input type="hidden" name="week" value="{{ selected_week }}">
+                                <input type="hidden" name="game_id" value="{{ game.game_id }}"> <!-- Pass game_id here -->
+                                <input type="number" name="new_score" value="{{ pick.points_earned }}" step="1" min="0" class="p-1 border border-gray-300 rounded mr-2">
+                                <button type="submit" class="small-plain-button">
+                                    Update
+                                </button>
+                            </form>
+                        </td>               
+                    </tr>
+                {% endfor %}
+            {% else %}
+                <!-- If no picks, display game details and leave override blank -->
+                <tr>
+                    <td>{{ game.game_id }}</td>
+                    <td>{{ game.home_team }}</td>
+                    <td>{{ game.away_team }}</td>
+                    <td>{{ game.spread }}</td>
+                    <td>{{ game.favorite_team }}</td>
+                    <td>{{ game.home_team_score }}</td>
+                    <td>{{ game.away_team_score }}</td>
+                    <td>{{ game.status }}</td>
+                    <td colspan="4">No picks available for this game.</td>
+                </tr>
+            {% endif %}
+        {% endfor %}
+    </tbody>
+</table>
+
+{% endif %}
+
+{% endblock %}
