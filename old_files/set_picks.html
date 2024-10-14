@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block content %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select NFL Picks - Week {{ selected_week }}</title>
+    
+    <style>
+        .table-header {
+            background-color: #1f2937; /* Dark gray */
+            color: white;
+        }
+        .table-row:nth-child(even) {
+            background-color: #f9fafb; /* Light gray */
+        }
+        .table-row:hover {
+            background-color: #e5e7eb; /* Hover light gray */
+        }
+        .table-cell {
+            padding: 16px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .form-input {
+            width: 100%;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #d1d5db;
+        }
+        .floating-box {
+            position: fixed;
+            top: 100px;
+            right: 20px;
+            background: #ffffff;
+            border: 1px solid #d1d5db;
+            padding: 20px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .number-used {
+            text-decoration: line-through;
+            color: #dc2626; /* Red color for used numbers */
+        }
+    </style>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const numOfGames = parseInt("{{ num_of_games }}", 10);
+            const usedNumbers = new Set();
+            const availableNumbers = Array.from({ length: numOfGames }, (_, i) => i + 1);
+            const availableNumbersBox = document.getElementById('available-numbers');
+
+            function updateAvailableNumbers() {
+                availableNumbersBox.innerHTML = availableNumbers.map(num => 
+                    `<span class="${usedNumbers.has(num) ? 'number-used' : ''}">${num}</span>`
+                ).join(', ');
+            }
+
+            function showError(input, message) {
+                const errorSpan = document.createElement('span');
+                errorSpan.className = 'error-message text-red-500 text-sm';
+                errorSpan.textContent = message;
+
+                if (!input.nextElementSibling || !input.nextElementSibling.classList.contains('error-message')) {
+                    input.parentNode.appendChild(errorSpan);
+                }
+                input.classList.add('border-red-500');
+                input.focus();
+            }
+
+            function clearError(input) {
+                if (input.nextElementSibling && input.nextElementSibling.classList.contains('error-message')) {
+                    input.nextElementSibling.remove();
+                }
+                input.classList.remove('border-red-500');
+            }
+
+            function handleConfidenceBlur(e) {
+                const input = e.target;
+                const value = parseInt(input.value, 10);
+
+                clearError(input);
+
+                if (isNaN(value) || value > numOfGames || value < 1) {
+                    showError(input, `Please enter a valid number between 1 and ${numOfGames}.`);
+                    input.value = ''; // Clear invalid input
+                    return;
+                }
+
+                if (usedNumbers.has(value)) {
+                    showError(input, `The number ${value} has already been used. Please choose a different number.`);
+                    input.value = ''; // Clear the input
+                    return;
+                }
+
+                const previousValue = parseInt(input.getAttribute('data-prev-value'), 10);
+
+                if (!isNaN(previousValue) && previousValue !== value) {
+                    usedNumbers.delete(previousValue); // Remove the old number
+                }
+
+                usedNumbers.add(value); // Add the new number
+                input.setAttribute('data-prev-value', value); // Store the current value as previous value
+
+                updateAvailableNumbers();
+            }
+
+            document.querySelectorAll('.confidence-input').forEach(input => {
+                input.addEventListener('blur', handleConfidenceBlur);
+                input.setAttribute('data-prev-value', ''); // Initialize with empty previous value
+            });
+
+            updateAvailableNumbers();
+        });
+    </script>
+</head>
+<body class="bg-gray-100 text-gray-900">
+    <div class="floating-box">
+        <h3 class="font-bold mb-2">Available Confidence Numbers</h3>
+        <div id="available-numbers"></div>
+    </div>
+
+    <div class="container mx-auto py-10">
+        <div class="text-center mb-8">
+            <h1 class="text-5xl font-bold text-gray-800 mb-4">Select NFL Picks - Week {{ selected_week }}</h1>
+            <p class="text-lg text-gray-600">Make your picks for Week {{ selected_week }} based on the saved games!</p>
+
+            <form method="POST" action="{{ url_for('main.nfl_picks') }}">
+                <label for="week" class="text-lg font-semibold">Select Week:</label>
+                <select name="week" id="week" onchange="this.form.submit()" class="ml-4 p-2 border rounded">
+                    {% for week in all_weeks %}
+                        <option value="{{ week }}" {% if week == selected_week %}selected{% endif %}>Week {{ week }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+        </div>
+
+        <form action="/submit_picks" method="POST">
+            <input type="hidden" name="num_of_games" value="{{ num_of_games }}">
+            <input type="hidden" name="week" value="{{ selected_week }}">
+            <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+                {% if grouped_games %}
+                    {% for day, games in grouped_games.items() %}
+                        {% if games %}
+                            <h2 class="text-3xl font-bold mb-4">{{ day }} Games</h2>
+                            <table class="min-w-full table-auto mb-8">
+                                <thead class="table-header">
+                                    <tr>
+                                        <th class="table-cell">Home Team</th>
+                                        <th class="table-cell">Away Team</th>
+                                        <th class="table-cell">Spread</th>
+                                        <th class="table-cell">Favorite Team</th>
+                                        <th class="table-cell">Commence Time</th>
+                                        <th class="table-cell">Your Pick</th>
+                                        <th class="table-cell">Confidence</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for game in games %}
+                                    <tr class="table-row">
+                                        <td class="table-cell font-semibold text-gray-800">{{ game.home_team }}</td>
+                                        <td class="table-cell text-gray-700">{{ game.away_team }}</td>
+                                        <td class="table-cell text-center">{{ game.spread }}</td>
+                                        <td class="table-cell text-center">{{ game.favorite_team }}</td>
+                                        <td class="table-cell text-right">{{ game.commence_time_mt }}</td>
+                                        <td class="table-cell">
+                                            <label>
+                                                <input type="radio" name="pick_{{ day }}_{{ loop.index }}" value="{{ game.home_team }}" class="mr-2" required> {{ game.home_team }}
+                                            </label>
+                                            <label class="ml-4">
+                                                <input type="radio" name="pick_{{ day }}_{{ loop.index }}" value="{{ game.away_team }}" class="mr-2" required> {{ game.away_team }}
+                                            </label>
+                                        </td>
+                                        <td class="table-cell">
+                                            <input type="number" name="confidence_{{ day }}_{{ loop.index }}" min="1" max="{{ num_of_games }}" class="form-input confidence-input" placeholder="1-{{ num_of_games }}" required>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        {% else %}
+                            <p>No games found for {{ day }}.</p>
+                        {% endif %}
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center p-8">
+                        <p class="text-xl text-red-500 font-semibold">No saved games available for Week {{ selected_week }}.</p>
+                    </div>
+                {% endif %}
+            </div>
+            <div class="text-center mt-6">
+                <button type="submit" class="bg-green-500 text-white py-2 px-6 rounded">Submit Picks</button>
+            </div>
+        </form>
+    </div>
+
+    <footer class="text-center py-6 bg-gray-800 text-white">
+        <p>&copy; {{ now.year }} NFL Picks - All rights reserved.</p>
+    </footer>
+</body>
+</html>
+{% endblock %}
