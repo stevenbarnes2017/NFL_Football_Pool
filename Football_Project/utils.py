@@ -32,21 +32,16 @@ def auto_fetch_scores():
         seasontype = 2  # Adjust as needed for preseason/postseason
         current_week = 6  # A function to get the current week number
 
-        # Automatically fetch and save the scores for the week
-        print(f"Running auto_fetch_scores for year {year}, season type {seasontype}, week {current_week}")
-
         try:
             # This will call get_football_scores() through save_week_scores_to_db()
             result = save_week_scores_to_db(year, seasontype, current_week)
-            print(f"auto_fetch_scores result: {result}")  # Log result of the function
+            
         except Exception as e:
             print(f"Error in auto_fetch_scores: {e}")  # Log any errors that occur
 
         print("Finished running auto_fetch_scores")
 
 
-
-scheduler.add_job(auto_fetch_scores, 'interval', minutes=1)  # Run every minute for testing
 
 # Sunday: Every hour from 12:00 PM to 11:00 PM
 scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='sun', hour='12-23')
@@ -67,7 +62,7 @@ def save_week_scores_to_db(year, seasontype, weeknum):
     try:
         # Fetch the football game scores for the given week
         scores = get_football_scores(year, seasontype, weeknum)  # Replace this with your actual function to fetch scores
-        print(f"Fetched Scores: {scores}")
+        
 
         # Save the fetched scores to the database
         save_game_scores_to_db(scores, weeknum)
