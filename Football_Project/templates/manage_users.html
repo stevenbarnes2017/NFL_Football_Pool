@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Users{% endblock %}
+
+{% block content %}
+<div class="container mx-auto mt-4">
+    <div class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow-lg">
+        <h2 class="text-3xl font-extrabold mb-4 text-center text-gray-900 tracking-tight">Manage Users</h2>
+
+        <!-- Table to display all users -->
+        <table class="min-w-full bg-white border border-gray-300">
+            <thead>
+                <tr>
+                    <th class="py-2 px-4 border-b">Username</th>
+                    <th class="py-2 px-4 border-b">Email</th>
+                    <th class="py-2 px-4 border-b">Admin</th>
+                    <th class="py-2 px-4 border-b">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td class="py-2 px-4 border-b">{{ user.username }}</td>
+                    <td class="py-2 px-4 border-b">{{ user.email }}</td>
+                    <td class="py-2 px-4 border-b text-center">
+                        <form method="POST" action="{{ url_for('admin.update_admin_status', user_id=user.id) }}">
+                            <input type="checkbox" name="is_admin" {% if user.is_admin %}checked{% endif %} onChange="this.form.submit()">
+                        </form>
+                    </td>
+                    <td class="py-2 px-4 border-b">
+                        <a href="{{ url_for('admin.edit_user', user_id=user.id) }}" class="text-blue-500 hover:underline">Edit</a>
+                        |
+                        <form method="POST" action="{{ url_for('admin.delete_user', user_id=user.id) }}" style="display:inline;">
+                            <button type="submit" class="text-red-500 hover:underline">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Add new user button -->
+        <div class="mt-4 text-center">
+            <a href="{{ url_for('admin.add_user') }}" class="bg-green-500 hover:bg-green-600 text-white py-2 px-3 rounded-lg">
+                Add New User
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

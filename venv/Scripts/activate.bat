@@ -8,7 +8,11 @@ if defined _OLD_CODEPAGE (
     "%SystemRoot%\System32\chcp.com" 65001 > nul
 )
 
+<<<<<<< HEAD
+set VIRTUAL_ENV=C:\Users\Steven\OneDrive\Git Repos\Football_Retry\Football_Retry\venv
+=======
 set VIRTUAL_ENV=D:\OneDrive\Git Repos\Football_Retry\Football_Retry\venv
+>>>>>>> 128523e0dbc489f40d5f6df48db8a3b0113a97a8
 
 if not defined PROMPT set PROMPT=$P$G
 

@@ -265,29 +265,54 @@ def save_user_scores_to_db(user_scores, week):
 
 
 
-def lock_picks_for_commenced_games(user_id):
-    current_week = get_current_week()  # Function that returns the current week
+from dateutil import parser
+from pytz import timezone, utc
+from datetime import datetime
 
-    # Get all games for the current week that have commenced
-    commenced_games = Game.query.filter(
-        Game.week == current_week,
-        Game.commence_time_mt <= datetime.utcnow()
-    ).all()
+# Define the Mountain Timezone
+mountain_tz = timezone('US/Mountain')
+
+# Utility function to convert Mountain Time to UTC
+def convert_to_utc(mountain_time):
+    if mountain_time.tzinfo is None:
+        # If naive datetime, assume it's in Mountain Time
+        localized_time = mountain_tz.localize(mountain_time)
+    else:
+        # If already timezone-aware, just use it
+        localized_time = mountain_time
+    return localized_time.astimezone(utc)  # Convert to UTC
+
+# Function to lock picks based on game commence times
+def lock_picks_for_commenced_games(user_id):
+    current_week = get_current_week()
+    now_utc = datetime.utcnow().replace(tzinfo=utc)  # Ensure UTC timezone-aware
+
+    # Get all games for the current week
+    commenced_games = Game.query.filter(Game.week == current_week).all()
 
     for game in commenced_games:
-        # Check if user has already made a pick for this game
-        existing_pick = Pick.query.filter_by(user_id=user_id, game_id=game.id).first()
+        # Convert commence_time_mt to UTC if it is in Mountain Time
+        game_commence_time_utc = convert_to_utc(game.commence_time_mt)
 
-        if not existing_pick:
-            # Assign the highest available confidence point to the user and mark pick as missed
-            available_points = get_highest_available_confidence(user_id, current_week)
-            missed_pick = Pick(
-                user_id=user_id,
-                game_id=game.id,
-                confidence_points=available_points,
-                points_earned=0  # No points if missed pick
-            )
-            db.session.add(missed_pick)
+        # Debug: Print to see the UTC conversion result
+        print(f"Game {game.id} original commence time (MT): {game.commence_time_mt}")
+        print(f"Game {game.id} converted to UTC: {game_commence_time_utc}")
+        print(f"Current UTC time: {now_utc}")
+
+        # Compare with current time in UTC
+        if game_commence_time_utc <= now_utc:
+            # Lock the game as it has already commenced
+            existing_pick = Pick.query.filter_by(user_id=user_id, game_id=game.id).first()
+
+            if not existing_pick:
+                available_points = get_highest_available_confidence(user_id, current_week)
+                missed_pick = Pick(
+                    user_id=user_id,
+                    game_id=game.id,
+                    confidence_points=available_points,
+                    points_earned=0  # No points if missed pick
+                )
+                db.session.add(missed_pick)
 
     db.session.commit()
 
@@ -342,8 +367,6 @@ def assign_missed_pick_confidence(available_confidences):
 
 
 
-
-import requests
 
 def fetch_live_scores():
     url = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"

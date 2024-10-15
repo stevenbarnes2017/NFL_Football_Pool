@@ -1,0 +1,17 @@
+date,home_team,home_score,away_team,away_score,status
+2024-09-26 18:15:00 MDT,New York Giants,15,Dallas Cowboys,20,STATUS_FINAL
+2024-09-29 11:00:00 MDT,Atlanta Falcons,26,New Orleans Saints,24,STATUS_FINAL
+2024-09-29 11:00:00 MDT,Chicago Bears,24,Los Angeles Rams,18,STATUS_FINAL
+2024-09-29 11:00:00 MDT,Green Bay Packers,29,Minnesota Vikings,31,STATUS_FINAL
+2024-09-29 11:00:00 MDT,Indianapolis Colts,27,Pittsburgh Steelers,24,STATUS_FINAL
+2024-09-29 11:00:00 MDT,New York Jets,9,Denver Broncos,10,STATUS_FINAL
+2024-09-29 11:00:00 MDT,Tampa Bay Buccaneers,33,Philadelphia Eagles,16,STATUS_FINAL
+2024-09-29 11:00:00 MDT,Carolina Panthers,24,Cincinnati Bengals,34,STATUS_FINAL
+2024-09-29 11:00:00 MDT,Houston Texans,24,Jacksonville Jaguars,20,STATUS_FINAL
+2024-09-29 14:05:00 MDT,Arizona Cardinals,14,Washington Commanders,42,STATUS_FINAL
+2024-09-29 14:05:00 MDT,San Francisco 49ers,30,New England Patriots,13,STATUS_FINAL
+2024-09-29 14:25:00 MDT,Las Vegas Raiders,20,Cleveland Browns,16,STATUS_FINAL
+2024-09-29 14:25:00 MDT,Los Angeles Chargers,10,Kansas City Chiefs,17,STATUS_FINAL
+2024-09-29 18:20:00 MDT,Baltimore Ravens,35,Buffalo Bills,10,STATUS_FINAL
+2024-09-30 17:30:00 MDT,Miami Dolphins,12,Tennessee Titans,31,STATUS_FINAL
+2024-09-30 18:15:00 MDT,Detroit Lions,42,Seattle Seahawks,29,STATUS_FINAL

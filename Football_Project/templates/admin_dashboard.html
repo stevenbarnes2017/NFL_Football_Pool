@@ -81,7 +81,7 @@
                 </form>
             </div>
 
-            <!-- User Score Summary Section -->
+            <!-- View User Score Summary Section -->
             <div class="lg:col-span-1 border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
                 <h3 class="text-xl font-semibold mb-3 text-gray-800">View User Score Summary</h3>
                 <div class="text-center">
@@ -90,12 +90,22 @@
                     </a>
                 </div>
             </div>
-            
+
+            <!-- Manage Users Section -->
+            <div class="lg:col-span-1 border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
+                <h3 class="text-xl font-semibold mb-3 text-gray-800">Manage Users</h3>
+                <div class="text-center">
+                    <a href="{{ url_for('admin.manage_users') }}" class="bg-yellow-500 hover:bg-yellow-600 text-white py-2 px-3 rounded-lg">
+                        Manage Users
+                    </a>
+                </div>
+            </div>
+
             <!-- Process User Scores Section -->
             <div class="mt-6 lg:col-span-3 border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
-                <h3 style="text-align: center;"  class="text-xl font-semibold mb-3 text-gray-800">Process User Scores</h3>
+                <h3 style="text-align: center;" class="text-xl font-semibold mb-3 text-gray-800">Process User Scores</h3>
                 <form action="{{ url_for('admin.process_user_scores') }}" method="post" class="text-center">
-                    <button type="submit" style="text-align: center;"    class="bg-purple-500 hover:bg-purple-600 text-white py-2 px-4 rounded-lg w-full font-semibold transition-colors duration-200">
+                    <button type="submit" style="text-align: center;" class="bg-purple-500 hover:bg-purple-600 text-white py-2 px-4 rounded-lg w-full font-semibold transition-colors duration-200">
                         Process All User Scores for All Weeks
                     </button>
                 </form>

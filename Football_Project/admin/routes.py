@@ -7,12 +7,73 @@ from football_scores import get_football_scores, save_scores_to_csv, save_scores
 from Football_Project.models import db, Game, Settings, User, UserScore, Pick
 from Football_Project.utils import calculate_user_scores, save_game_scores_to_db
 from . import admin_bp
+from werkzeug.security import generate_password_hash, check_password_hash
+
+@admin_bp.route('/admin/update_admin_status/<int:user_id>', methods=['POST'])
+@login_required
+def update_admin_status(user_id):
+    if not current_user.is_admin:
+        return redirect(url_for('index'))
+    user = User.query.get_or_404(user_id)
+    user.is_admin = 'is_admin' in request.form
+    db.session.commit()
+    return redirect(url_for('manage_users'))
+
+@admin_bp.route('/admin/delete_user/<int:user_id>', methods=['POST'])
+@login_required
+def delete_user(user_id):
+    if not current_user.is_admin:
+        return redirect(url_for('index'))
+    user = User.query.get_or_404(user_id)
+    db.session.delete(user)
+    db.session.commit()
+    flash('User deleted successfully!')
+    return redirect(url_for('manage_users'))
+
+@admin_bp.route('/admin/edit_user/<int:user_id>', methods=['GET', 'POST'])
+@login_required
+def edit_user(user_id):
+    if not current_user.is_admin:
+        return redirect(url_for('index'))
+    user = User.query.get_or_404(user_id)
+    if request.method == 'POST':
+        user.username = request.form['username']
+        user.email = request.form['email']
+        if request.form['password']:
+            user.password = generate_password_hash(request.form['password'], method='sha256')
+        user.is_admin = True if 'is_admin' in request.form else False
+        db.session.commit()
+        flash('User updated successfully!')
+        return redirect(url_for('manage_users'))
+    return render_template('edit_user.html', user=user)
+
+@admin_bp.route('/admin/add_user', methods=['GET', 'POST'])
+@login_required
+def add_user():
+    if not current_user.is_admin:
+        return redirect(url_for('index'))
+    if request.method == 'POST':
+        username = request.form['username']
+        email = request.form['email']
+        password = request.form['password']
+        is_admin = True if 'is_admin' in request.form else False
+        hashed_password = generate_password_hash(password, method='sha256')
+        new_user = User(username=username, email=email, password=hashed_password, is_admin=is_admin)
+        db.session.add(new_user)
+        db.session.commit()
+        flash('User added successfully!')
+        return redirect(url_for('manage_users'))
+    return render_template('add_user.html')
 
 
 
-print("Setting up before_request for admin_bp")
-
-
+@admin_bp.route('/admin/manage_users')
+@login_required
+def manage_users():
+    if not current_user.is_admin:
+        return redirect(url_for('index'))
+    users = User.query.all()  # Get all users from the database
+    return render_template('manage_users.html', users=users)
 
 @admin_bp.before_request
 def before_request():
