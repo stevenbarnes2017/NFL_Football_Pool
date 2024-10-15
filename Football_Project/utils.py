@@ -3,7 +3,79 @@ import pytz
 import platform
 from .models import db, Game, Pick, UserScore
 from get_the_odds import get_current_week
+from football_scores import save_scores_to_db, get_football_scores
 import requests
+from apscheduler.schedulers.background import BackgroundScheduler
+import atexit
+
+
+ # Initialize the scheduler
+scheduler = BackgroundScheduler()
+scheduler_started = False
+
+def start_scheduler():
+    global scheduler_started  # Make sure to modify the global variable
+    if not scheduler_started:  # Only start the scheduler if it's not already running
+        scheduler.start()
+        scheduler_started = True
+        print("Scheduler started")
+
+# Ensure the scheduler shuts down properly when the app stops
+atexit.register(lambda: scheduler.shutdown(wait=False) if scheduler_started else None)
+
+
+def auto_fetch_scores():
+    from Football_Project import create_app
+    app = create_app()
+    with app.app_context():
+        year = 2024  # You can replace this with logic to determine the current year
+        seasontype = 2  # Adjust as needed for preseason/postseason
+        current_week = 6  # A function to get the current week number
+
+        # Automatically fetch and save the scores for the week
+        print(f"Running auto_fetch_scores for year {year}, season type {seasontype}, week {current_week}")
+
+        try:
+            # This will call get_football_scores() through save_week_scores_to_db()
+            result = save_week_scores_to_db(year, seasontype, current_week)
+            print(f"auto_fetch_scores result: {result}")  # Log result of the function
+        except Exception as e:
+            print(f"Error in auto_fetch_scores: {e}")  # Log any errors that occur
+
+        print("Finished running auto_fetch_scores")
+
+
+
+scheduler.add_job(auto_fetch_scores, 'interval', minutes=1)  # Run every minute for testing
+
+# Sunday: Every hour from 12:00 PM to 11:00 PM
+scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='sun', hour='12-23')
+
+# Thursday & Monday: Every 30 minutes from 7:00 PM to 11:00 PM
+scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='thu,mon', hour='19-23', minute='0,30')
+
+# Start the scheduler
+scheduler.start()
+
+# Ensure the scheduler shuts down properly only if it's running
+atexit.register(lambda: scheduler.shutdown(wait=False) if scheduler.running else None)
+
+def save_week_scores_to_db(year, seasontype, weeknum):
+    """
+    Fetch and save the football game scores for a given year, season type, and week.
+    """
+    try:
+        # Fetch the football game scores for the given week
+        scores = get_football_scores(year, seasontype, weeknum)  # Replace this with your actual function to fetch scores
+        print(f"Fetched Scores: {scores}")
+
+        # Save the fetched scores to the database
+        save_game_scores_to_db(scores, weeknum)
+        return f"Successfully saved game scores for week {weeknum} to the database."
+
+    except Exception as e:
+        print(f"An error occurred while fetching or saving the scores: {e}")
+        return str(e)
 
 
 # Function to parse datetime with timezone and format it
@@ -191,16 +263,7 @@ def save_user_scores_to_db(user_scores, week):
         print("Error: user_scores is not a dictionary!")
 
 
-def get_football_scores(year, seasontype, weeknum):
-    """
-    Fetch football scores from an external API or another data source.
-    This function needs to return a list of dictionaries, where each dictionary represents a game's scores.
-    """
-    # Example data structure returned:
-    # [{'home_team': 'Team A', 'away_team': 'Team B', 'home_score': '10', 'away_score': '20', 'status': 'STATUS_FINAL'}]
-    # Make sure your real implementation returns the data in this format.
-    # (Actual API call logic goes here...)
-    pass
+
 
 def lock_picks_for_commenced_games(user_id):
     current_week = get_current_week()  # Function that returns the current week
@@ -420,3 +483,33 @@ def get_user_picks(user_id, week):
     print(f"Retrieved picks for user {user_id} in week {week}: {user_picks}")
 
     return user_picks
+
+
+
+scheduler = BackgroundScheduler()
+
+def auto_fetch_scores():
+    # Call fetch_live_scores and process final scores
+    scores = fetch_live_scores()
+    live_games = scores['live_games']
+    
+    # Process each game to check if it is 'Final'
+    for game in live_games:
+        if game['status'] == 'Final':
+            save_scores_to_db(game)
+            calculate_user_scores(get_current_week)
+
+# Schedule job for Sunday: every hour from 12:00 PM to 11:00 PM
+scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='sun', hour='12-23')
+
+# Schedule job for Thursday: every 30 minutes from 7:00 PM to 11:00 PM
+scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='thu', hour='19-23', minute='0,30')
+
+# Schedule job for Monday: every 30 minutes from 7:00 PM to 11:00 PM
+scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='mon', hour='19-23', minute='0,30')
+
+# Start the scheduler
+scheduler.start()
+
+# Ensure the scheduler shuts down properly on exit
+atexit.register(lambda: scheduler.shutdown())

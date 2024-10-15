@@ -6,6 +6,7 @@ from flask_login import LoginManager
 from .models import User  # Import your User model
 from .extensions import db  # Assuming db is initialized in extensions.py
 from flask_migrate import Migrate
+from .utils import scheduler
 
 
 def create_app():
@@ -37,5 +38,10 @@ def create_app():
     @login_manager.user_loader
     def load_user(user_id):
         return User.query.get(int(user_id))
-
+    
+    # Check if the scheduler is already running
+    if scheduler.state == 0:  # 0 means the scheduler is in the 'stopped' state
+        scheduler.start()
+        print(f"Started Scheduler")
+        
     return app

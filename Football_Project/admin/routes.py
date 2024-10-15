@@ -5,7 +5,7 @@ from get_the_odds import get_nfl_spreads, save_spreads_to_db, get_current_week, 
 from datetime import datetime, timedelta
 from football_scores import get_football_scores, save_scores_to_csv, save_scores_to_db
 from Football_Project.models import db, Game, Settings, User, UserScore, Pick
-from Football_Project.utils import calculate_user_scores
+from Football_Project.utils import calculate_user_scores, save_game_scores_to_db
 from . import admin_bp
 
 
@@ -75,33 +75,31 @@ def fetch_scores():
         flash("You do not have permission to access this page.", "danger")
         return redirect(url_for('index'))
 
+    # Fetch form data for year, season type, and week number
+    year = request.form.get('year')
+    seasontype = request.form.get('seasontype')
+    weeknum = request.form.get('weeknum')
+    action = request.form.get('action')
+
+    # Fetch and save the scores using the helper function
     try:
-        # Fetch form data for year, season type, and week number
-        year = request.form.get('year')
-        seasontype = request.form.get('seasontype')
-        weeknum = request.form.get('weeknum')
-        action = request.form.get('action')
-
-        # Fetch the football game scores for the given week
-        scores = get_football_scores(year, seasontype, weeknum)
-        print(f"Fetched Scores: {scores}")
-
+        scores = get_football_scores(year, seasontype, weeknum)  # Fetch the scores
         if action == 'save_to_db':
-            # Save the game scores to the database
-            save_scores_to_db(scores, weeknum)
-            flash(f"Successfully saved game scores for week {weeknum} to the database.", "success")
-        
+            result = save_game_scores_to_db(scores, weeknum)  # Save the scores to the database
+            flash(f"Successfully saved game scores for week {weeknum}.", "success")
+
         elif action == 'download_csv':
-            # Logic for downloading the CSV file
+            # Save the scores to a CSV file and send it for download
             filename = f"football_scores_week{weeknum}.csv"
             save_scores_to_csv(scores, filename)
             return send_file(filename, as_attachment=True)
 
     except Exception as e:
-        print(f"An error occurred while fetching the scores: {e}")
-        flash(f"An error occurred while fetching the scores: {str(e)}", "danger")
+        print(f"An error occurred while fetching or saving the scores: {e}")
+        flash(f"An error occurred: {str(e)}", "danger")
 
     return redirect(url_for('admin.admin_dashboard'))
+
 
 
 @admin_bp.route('/save_odds', methods=['POST'])

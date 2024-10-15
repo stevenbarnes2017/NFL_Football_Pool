@@ -37,7 +37,7 @@ def get_football_scores(year, seasontype, weeknum):
         return None
     
     data = response.json()
-
+    print(f"year:{ year } seasontype:{ seasontype } week: { weeknum } ")
     # Parse the JSON data
     games = []
     for event in data['events']:
@@ -51,7 +51,7 @@ def get_football_scores(year, seasontype, weeknum):
                 "status": competition['status']['type']['name']
             }
             games.append(game)
-    
+    print(f"year:{ year } seasontype:{ seasontype } week: { weeknum } ")
     # Return the list of games
     return games
 
