@@ -99,28 +99,13 @@ def parse_spreads_data(odds_data):
 
     return games_list
 
-# Function to save spreads data to CSV in a writable directory
-def save_to_csv(games_list, filename):
+# Function to save spreads data to CSV in the server's writable directory
+def save_to_csv(games_list, save_path):
     try:
-        # Get the user's home directory
-        home = Path.home()
-
-        # Create the path to the Downloads folder
-        downloads_dir = home / "Downloads"
-
-        # Ensure the folder exists (it should, but this is a safeguard)
-        if not downloads_dir.exists() or not os.access(downloads_dir, os.W_OK):
-            print("Unable to access Downloads folder. Saving to current directory.")
-            downloads_dir = Path.cwd()  # Fallback to current working directory
-
-        # Combine the path with the desired filename
-        filepath = downloads_dir / filename
-
         # Save the dataframe to the CSV file
         df = pd.DataFrame(games_list)
-        df.to_csv(filepath, index=False)
-        
-        print(f"Spreads data saved to {filepath}")
+        df.to_csv(save_path, index=False)
+        print(f"Spreads data saved to {save_path}")
     except PermissionError as e:
         print(f"An error occurred: {e}")
         print("Permission denied. Please check your file permissions.")

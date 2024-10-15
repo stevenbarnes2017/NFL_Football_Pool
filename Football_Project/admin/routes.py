@@ -1,5 +1,5 @@
 # admin/routes.py
-from flask import render_template, request, redirect, url_for, flash, send_file, Blueprint
+from flask import render_template, request, redirect, url_for, flash, send_file, Blueprint, current_app
 from flask_login import login_required, current_user
 from get_the_odds import get_nfl_spreads, save_spreads_to_db, get_current_week, save_to_csv
 from datetime import datetime, timedelta
@@ -8,6 +8,8 @@ from Football_Project.models import db, Game, Settings, User, UserScore, Pick
 from Football_Project.utils import calculate_user_scores, save_game_scores_to_db
 from . import admin_bp
 from werkzeug.security import generate_password_hash, check_password_hash
+import os
+
 
 @admin_bp.route('/admin/update_admin_status/<int:user_id>', methods=['POST'])
 @login_required
@@ -114,23 +116,47 @@ def fetch_odds():
         return redirect(url_for('index'))
 
     try:
-        
+        # Get week number, or use current week if not overridden
         week_option = request.form.get('week_option')       
         week = int(request.form.get('week_number')) if week_option == 'override' else get_current_week()  
+        
+        # Fetch the NFL spreads (assuming this function gets the data)
         games_list, num_of_games = get_nfl_spreads()     
+        
+        # Check if there's data to process
         if not games_list:
             flash("No odds data available for the selected week.", "warning")
-            return redirect(url_for('admin.admin_dashboard'))        
+            return redirect(url_for('admin.admin_dashboard')) 
+        
+        # Check the action (e.g., 'view' or 'csv' for download)
+        action = request.form.get('action')
+        
+        if action == "csv":
+            # Filename and save path for the CSV
+            filename = f'nfl_spreads_week_{week}.csv'
+            save_path = os.path.join(current_app.root_path, 'static', 'downloads', filename)
+            
+            # Ensure the directory exists
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            
+            # Save the odds to a CSV file
+            save_to_csv(games_list, save_path)  # This uses the updated save_to_csv function
+            
+            # Send the file to the user for download
+            return send_file(save_path, as_attachment=True)
+        
+        # If no CSV download requested, render the odds on the page
         return render_template('display_odds.html', games_list=games_list, week=week)
+    
     except Exception as e:        
         flash(f"An error occurred while fetching the odds: {str(e)}", "danger")
         return redirect(url_for('admin.admin_dashboard'))
-
 
     
 @admin_bp.route('/fetch_scores', methods=['POST'])
 @login_required
 def fetch_scores():
+    from Football_Project import app
     # Check if the current user is an admin
     if not current_user.is_admin:
         flash("You do not have permission to access this page.", "danger")
@@ -152,8 +178,10 @@ def fetch_scores():
         elif action == 'download_csv':
             # Save the scores to a CSV file and send it for download
             filename = f"football_scores_week{weeknum}.csv"
-            save_scores_to_csv(scores, filename)
-            return send_file(filename, as_attachment=True)
+            os.makedirs(os.path.join(current_app.root_path, 'static', 'downloads'), exist_ok=True)
+            save_path = os.path.join(current_app.root_path, 'static', 'downloads', filename)  # Full path
+            save_scores_to_csv(scores, save_path)  # Pass the full path to the function
+            return send_file(save_path, as_attachment=True)
 
     except Exception as e:
         print(f"An error occurred while fetching or saving the scores: {e}")

@@ -56,13 +56,13 @@ def get_football_scores(year, seasontype, weeknum):
     return games
 
 # Function to save the scores to a CSV file
-def save_scores_to_csv(games, filename):
+def save_scores_to_csv(games, filepath):
     if games:
-        # Debug: Print the filename to check if it is correct
-        print(f"Saving to file: {filename}")
+        # Debug: Print the filepath to check if it is correct
+        print(f"Saving to file: {filepath}")
         
         # Ensure the directory exists
-        directory = os.path.dirname(filename)
+        directory = os.path.dirname(filepath)
         print(f"Checking if directory exists: {directory}")
         if not os.path.exists(directory):
             print(f"Directory does not exist. Creating: {directory}")
@@ -72,8 +72,8 @@ def save_scores_to_csv(games, filename):
         df = pd.DataFrame(games)
         
         # Save the DataFrame to a CSV file
-        df.to_csv(filename, index=False)
-        print(f"Football scores saved to {filename}")
+        df.to_csv(filepath, index=False)
+        print(f"Football scores saved to {filepath}")
     else:
         print("No data to save.")
 
