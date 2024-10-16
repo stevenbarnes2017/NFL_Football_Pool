@@ -128,9 +128,9 @@ def fetch_odds():
             flash("No odds data available for the selected week.", "warning")
             return redirect(url_for('admin.admin_dashboard')) 
         
-        # Check the action (e.g., 'view' or 'csv' for download)
+        # Check the action (e.g., 'view', 'csv', or 'db' for database saving)
         action = request.form.get('action')
-        
+
         if action == "csv":
             # Filename and save path for the CSV
             filename = f'nfl_spreads_week_{week}.csv'
@@ -145,7 +145,14 @@ def fetch_odds():
             # Send the file to the user for download
             return send_file(save_path, as_attachment=True)
         
-        # If no CSV download requested, render the odds on the page
+        elif action == "db":
+            # Save the odds to the database
+            save_spreads_to_db(games_list, week)  # Call the function to save to the database
+            
+            flash(f"Odds for week {week} have been successfully saved to the database.", "success")
+            return redirect(url_for('admin.admin_dashboard'))
+        
+        # If no CSV download or DB save requested, render the odds on the page
         return render_template('display_odds.html', games_list=games_list, week=week)
     
     except Exception as e:        
