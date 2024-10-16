@@ -38,7 +38,12 @@
                             gameElement = document.createElement('div');
                             gameElement.id = gameKey;
                             gameElement.classList.add('game-card');
-                            scoreboardElement.appendChild(gameElement);
+
+                            // Wrap the game card with a link to the game details
+                            var gameLink = document.createElement('a');
+                            gameLink.href = `/game_details/${game.game_id}`;
+                            gameLink.appendChild(gameElement);  // Game card inside the link
+                            scoreboardElement.appendChild(gameLink);
                         }
 
                         // Fallback to default logo if team's logo isn't available

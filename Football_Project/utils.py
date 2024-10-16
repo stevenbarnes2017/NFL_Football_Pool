@@ -440,6 +440,60 @@ def fetch_live_scores():
     
     return {'live_games': live_games, 'last_week_games': None}
 
+def fetch_detailed_game_stats(game_id):
+    url = f"https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event={game_id}"
+    
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Raises an HTTPError for bad responses (4xx and 5xx)
+        game_data = response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching detailed stats: {e}")
+        return None
+
+    # Fetch team and player stats
+    boxscore = game_data.get('boxscore', {})
+    teams = boxscore.get('teams', [])
+    
+    if len(teams) < 2:
+        return None
+
+    # Home and Away team stats
+    home_team = teams[0].get('team', {}).get('displayName', 'Unknown')
+    away_team = teams[1].get('team', {}).get('displayName', 'Unknown')
+    
+    # Team statistics like total yards, passing yards, etc.
+    home_stats = teams[0].get('statistics', [])
+    away_stats = teams[1].get('statistics', [])
+    
+    # Parse team stats
+    home_team_stats = {stat['name']: stat['value'] for stat in home_stats}
+    away_team_stats = {stat['name']: stat['value'] for stat in away_stats}
+
+    # Fetch individual player stats (passing, rushing, receiving)
+    players = boxscore.get('players', [])
+    player_stats = {}
+    
+    for team_players in players:
+        team = team_players.get('team', {}).get('displayName', 'Unknown')
+        player_stats[team] = []
+        
+        for player in team_players.get('statistics', []):
+            player_data = {
+                'name': player.get('athlete', {}).get('displayName', 'Unknown'),
+                'position': player.get('athlete', {}).get('position', {}).get('abbreviation', 'N/A'),
+                'stats': {stat['name']: stat['value'] for stat in player.get('stats', [])}
+            }
+            player_stats[team].append(player_data)
+
+    # Return combined detailed stats
+    return {
+        'home_team': home_team,
+        'away_team': away_team,
+        'home_team_stats': home_team_stats,
+        'away_team_stats': away_team_stats,
+        'player_stats': player_stats
+    }
 
 
 

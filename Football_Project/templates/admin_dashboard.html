@@ -6,7 +6,10 @@
 <div class="container mx-auto mt-4">
     <div class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow-lg">
         <h2 class="text-3xl font-extrabold mb-4 text-center text-gray-900 tracking-tight">Admin Dashboard</h2>
+
+        <!-- Link to TailwindCSS (this was missing) -->
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css">
+
         <!-- Flash Messages -->
         <div class="mb-4">
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -20,93 +23,67 @@
             {% endwith %}
         </div>
 
-        <!-- Enhanced Grid Layout -->
+        <!-- Dashboard Grid Layout -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
+
             <!-- Fetch Odds Section -->
-            <div class="lg:col-span-1 border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
+            <div class="card flex flex-col border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
                 <h3 class="text-xl font-semibold mb-3 text-gray-800">Fetch Odds</h3>
-                <form action="{{ url_for('admin.fetch_odds') }}" method="post" class="space-y-4">
-                    <div>
-                        <label class="block text-gray-600 font-medium">Select an option:</label>
-                        <div class="flex items-center mt-2">
-                            <input type="radio" name="week_option" id="current_week" value="current" checked class="mr-2">
-                            <label for="current_week" class="text-gray-700">Update Current Week (Week {{ current_week }})</label>
-                        </div>
-                        <div class="flex items-center mt-2">
-                            <input type="radio" name="week_option" id="override_week" value="override" class="mr-2">
-                            <label for="override_week" class="text-gray-700">Override and Update Different Week</label>
-                        </div>
-                    </div>
-
-                    <div id="week_number_input" class="hidden mt-2">
-                        <label for="week_number" class="block text-gray-600 font-medium">Enter Week Number to Override:</label>
-                        <input type="number" name="week_number" id="week_number" class="w-full p-2 border border-gray-300 rounded mt-1" min="1">
-                    </div>
-
-                    <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-3 rounded-lg w-full font-semibold transition-colors duration-200">
+                <p class="text-gray-700 flex-grow">Automatically fetches odds for the current week (Week {{ current_week }}).</p>
+                <form action="{{ url_for('admin.fetch_odds') }}" method="post" class="mt-auto">
+                    <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-3 rounded-lg w-full font-semibold">
                         Fetch Odds
                     </button>
                 </form>
             </div>
-
-            <!-- Get Scores Section -->
-            <div class="lg:col-span-1 border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
-                <h3 class="text-xl font-semibold mb-3 text-gray-800">Get Scores</h3>
-                <form action="{{ url_for('admin.fetch_scores') }}" method="post" class="space-y-4">
-                    <div>
-                        <label for="year" class="block text-gray-600 font-medium">Year:</label>
-                        <input type="number" name="year" id="year" value="{{ current_year }}" class="w-full p-2 border border-gray-300 rounded mt-1" required>
-                    </div>
-                    <div>
-                        <label for="seasontype" class="block text-gray-600 font-medium">Season Type:</label>
-                        <select name="seasontype" id="seasontype" class="w-full p-2 border border-gray-300 rounded mt-1" required>
-                            <option value="1" {% if default_season_type == 1 %}selected{% endif %}>Preseason</option>
-                            <option value="2" {% if default_season_type == 2 %}selected{% endif %}>Regular season</option>
-                            <option value="3" {% if default_season_type == 3 %}selected{% endif %}>Postseason</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label for="weeknum" class="block text-gray-600 font-medium">Week Number:</label>
-                        <input type="number" name="weeknum" id="weeknum" class="w-full p-2 border border-gray-300 rounded mt-1" required>
-                    </div>
-                    <div class="flex space-x-3">
-                        <button type="submit" name="action" value="save_to_db" class="bg-green-500 hover:bg-green-600 text-white py-2 px-3 rounded-lg w-full font-semibold transition-colors duration-200">
-                            Save to Database
+        
+            <div class="card flex flex-col border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
+                <h3 class="text-xl font-semibold mb-3 text-gray-800">Get Scores (Manual)</h3>
+                <p class="text-gray-600 flex-grow">Scores are fetched automatically, but you can manually fetch them if needed.</p>
+                
+                <form action="{{ url_for('admin.fetch_scores') }}" method="post" class="mt-auto">
+                    <input type="hidden" name="year" value="{{ current_year }}">  <!-- Pass correct year field -->
+                    <input type="hidden" name="seasontype" value="2">  <!-- Regular Season (season 2) -->
+                    
+                    <label for="weeknum" class="block text-gray-600 font-medium">Week Number:</label>
+                    <input type="number" name="weeknum" id="weeknum" class="w-full p-2 border border-gray-300 rounded mt-1" required>
+                    
+                    <div class="mt-4 flex justify-between">
+                        <button type="submit" name="action" value="save_to_db" class="bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg font-semibold">
+                            Save to DB
                         </button>
-                        <button type="submit" name="action" value="download_csv" class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-3 rounded-lg w-full font-semibold transition-colors duration-200">
+                        <button type="submit" name="action" value="download_csv" class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg font-semibold">
                             Download CSV
                         </button>
                     </div>
                 </form>
             </div>
-
+        
             <!-- View User Score Summary Section -->
-            <div class="lg:col-span-1 border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
-                <h3 class="text-xl font-semibold mb-3 text-gray-800">View User Score Summary</h3>
-                <div class="text-center">
-                    <a href="{{ url_for('admin.admin_scores') }}" class="bg-indigo-500 hover:bg-indigo-600 text-white py-2 px-3 rounded-lg">
-                        View User Score Summary
-                    </a>
-                </div>
+            <div class="card flex flex-col border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
+                <h3 class="text-xl font-semibold mb-3 text-gray-800" style="text-align: center;">View User Score Summary</h3>
+                <p class="text-gray-700 flex-grow" style="text-align: center;">View the summary of user scores for the current week.</p>
+                <a href="{{ url_for('admin.admin_scores') }}" class="bg-indigo-500 hover:bg-indigo-600 text-white py-2 px-3 rounded-lg w-full font-semibold mt-auto text-center">
+                    View User Score Summary
+                </a>
             </div>
-
+        </div>
             <!-- Manage Users Section -->
             <div class="lg:col-span-1 border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
-                <h3 class="text-xl font-semibold mb-3 text-gray-800">Manage Users</h3>
+                <h3 class="text-xl font-semibold mb-3 text-gray-800" style="text-align: center;">Manage Users</h3>
                 <div class="text-center">
-                    <a href="{{ url_for('admin.manage_users') }}" class="bg-yellow-500 hover:bg-yellow-600 text-white py-2 px-3 rounded-lg">
+                    <a href="{{ url_for('admin.manage_users') }}" class="bg-yellow-500 hover:bg-yellow-600 text-white py-2 px-3 rounded-lg w-full font-semibold transition-colors duration-200">
                         Manage Users
                     </a>
                 </div>
             </div>
 
             <!-- Process User Scores Section -->
-            <div class="mt-6 lg:col-span-3 border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
-                <h3 style="text-align: center;" class="text-xl font-semibold mb-3 text-gray-800">Process User Scores</h3>
+            <div class="lg:col-span-3 border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
+                <h3 class="text-xl font-semibold mb-3 text-center text-gray-800">Process User Scores</h3>
                 <form action="{{ url_for('admin.process_user_scores') }}" method="post" class="text-center">
-                    <button type="submit" style="text-align: center;" class="bg-purple-500 hover:bg-purple-600 text-white py-2 px-4 rounded-lg w-full font-semibold transition-colors duration-200">
-                        Process All User Scores for All Weeks
+                    <button type="submit" class="bg-purple-500 hover:bg-purple-600 text-white py-2 px-4 rounded-lg w-full font-semibold transition-colors duration-200">
+                        Process All User Scores
                     </button>
                 </form>
             </div>
@@ -115,21 +92,4 @@
     </div>
 </div>
 
-<!-- JavaScript to toggle week number input -->
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const weekOptionRadios = document.querySelectorAll('input[name="week_option"]');
-        const weekNumberInput = document.getElementById('week_number_input');
-
-        weekOptionRadios.forEach(radio => {
-            radio.addEventListener('change', function () {
-                if (this.value === 'override') {
-                    weekNumberInput.classList.remove('hidden');
-                } else {
-                    weekNumberInput.classList.add('hidden');
-                }
-            });
-        });
-    });
-</script>
 {% endblock %}

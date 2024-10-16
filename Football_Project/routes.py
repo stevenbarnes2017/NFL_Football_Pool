@@ -6,7 +6,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 from .extensions import db
 from Football_Project.get_the_odds import get_nfl_spreads, save_to_csv
-from Football_Project.utils import group_games_by_day, get_saved_games, get_unpicked_games_for_week, fetch_live_scores, lock_picks_for_commenced_games, get_highest_available_confidence, save_pick_to_db
+from Football_Project.utils import fetch_detailed_game_stats, group_games_by_day, get_saved_games, get_unpicked_games_for_week, fetch_live_scores, lock_picks_for_commenced_games, get_highest_available_confidence, save_pick_to_db
 from get_the_odds import get_current_week
 from sqlalchemy import func
 from dateutil import parser
@@ -446,71 +446,75 @@ def user_score_summary():
         weeks=weeks
     )
 
+@main_bp.route('/game_details/<game_id>')
+def game_details(game_id):
+    # Fetch detailed stats for the specific game using its game ID
+    detailed_data = fetch_detailed_game_stats(game_id)
+
+    if not detailed_data:
+        # Handle case where detailed data couldn't be fetched
+        flash("Could not load game details. Please try again.", "warning")
+        return redirect(url_for('main.live_scores_page'))
+
+    # Render the template for detailed game stats
+    return render_template('game_details.html', data=detailed_data)
+
 
 @main_bp.route('/nfl_picks', methods=['GET', 'POST'])
 @login_required
 def nfl_picks():
     selected_week = request.form.get('week', type=int) or request.args.get('week', default=None, type=int)
-    user_id = current_user.id
     current_week = get_current_week()
+    if not selected_week:
+        selected_week = current_week
 
-    # Get the current time in UTC (timezone-aware)
+    user_id = current_user.id
     now_utc = datetime.utcnow().replace(tzinfo=pytz.utc)
-
-    # Fetch the user's picks for the selected week
     user_picks_db = Pick.query.filter_by(user_id=user_id, week=selected_week).all()
-    user_picks = Pick.query.filter_by(user_id=current_user.id, week=selected_week).all()
-
-    # Create a dictionary mapping game_id to (team_picked, confidence)
     user_picks = {pick.game_id: (pick.team_picked, pick.confidence) for pick in user_picks_db}
 
-    # Handling GET request (load page)
-    saved_games = get_saved_games(week=selected_week) if selected_week else None
+    saved_games = get_saved_games(week=selected_week)
     if saved_games:
-        num_of_games = len(saved_games)  # Set num_of_games after fetching the saved games
-        # Before iterating over games, check the current time (this can be done for logging purposes)
-        print(f"Current time in UTC: {now_utc}")
+        num_of_games = len(saved_games)
         for game in saved_games:
             commence_time = game['commence_time_mt']
             if isinstance(commence_time, str):
                 commence_time = parser.parse(commence_time)
-
             if commence_time.tzinfo is None:
                 commence_time = pytz.utc.localize(commence_time)
-            
             game['commence_time_mt'] = commence_time
-            print(f"Game {game['id']} commence time: {commence_time}")
 
         grouped_games = group_games_by_day(saved_games)
-
-        # Now that we have num_of_games, let's calculate the available confidence points
         total_confidence_points = list(range(1, num_of_games + 1))
         used_confidence_points = [pick.confidence for pick in user_picks_db]
 
-        # Automatically assign highest available confidence for missed games
         for game in saved_games:
             game_id = game['id']
             if now_utc >= game['commence_time_mt'] and game_id not in user_picks:
                 highest_available_confidence = get_highest_available_confidence(total_confidence_points, used_confidence_points)
                 if highest_available_confidence:
                     user_picks[game_id] = ('No pick made', highest_available_confidence)
-                    used_confidence_points.append(highest_available_confidence)  # Mark it as used
+                    used_confidence_points.append(highest_available_confidence)
 
     else:
         grouped_games = {"Thursday": [], "Friday": [], "Sunday": [], "Monday": []}
         num_of_games = 0
+        used_confidence_points = []
 
     all_weeks = list(range(1, current_week + 1))
 
     return render_template(
         'nfl_picks.html',
-        grouped_games=grouped_games if selected_week else None,
-        num_of_games=num_of_games if selected_week else 0,
+        grouped_games=grouped_games,
+        num_of_games=num_of_games,
         now_utc=now_utc,
         selected_week=selected_week,
         all_weeks=all_weeks,
-        user_picks=user_picks  # Pass user picks (including auto-assigned) to template
+        user_picks=user_picks,
+        used_confidence_points=used_confidence_points  # Pass the used confidence points
     )
+
+
 import json
 @main_bp.route('/stream-live-scores')
 def stream_live_scores():

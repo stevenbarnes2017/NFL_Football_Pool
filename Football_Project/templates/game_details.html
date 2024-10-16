@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Game Details: {{ data.home_team }} vs {{ data.away_team }}{% endblock %}
+
+{% block content %}
+    <h1 class="page-title">Game Details: {{ data.home_team }} vs {{ data.away_team }}</h1>
+
+    <!-- Team Stats -->
+    <h2>Team Stats</h2>
+    <div class="team-stats">
+        <div class="team">
+            <h3>{{ data.home_team }} (Home)</h3>
+            <ul>
+                {% for stat_name, stat_value in data.home_team_stats.items() %}
+                <li>{{ stat_name }}: {{ stat_value }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div class="team">
+            <h3>{{ data.away_team }} (Away)</h3>
+            <ul>
+                {% for stat_name, stat_value in data.away_team_stats.items() %}
+                <li>{{ stat_name }}: {{ stat_value }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    <!-- Player Stats -->
+    <h2>Player Stats</h2>
+    <div class="player-stats">
+        {% for team, players in data.player_stats.items() %}
+        <h3>{{ team }}</h3>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Position</th>
+                    <th>Passing Yards</th>
+                    <th>Rushing Yards</th>
+                    <th>Receiving Yards</th>
+                    <th>Touchdowns</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for player in players %}
+                <tr>
+                    <td>{{ player.name }}</td>
+                    <td>{{ player.position }}</td>
+                    <td>{{ player.stats.get('passingYards', 'N/A') }}</td>
+                    <td>{{ player.stats.get('rushingYards', 'N/A') }}</td>
+                    <td>{{ player.stats.get('receivingYards', 'N/A') }}</td>
+                    <td>{{ player.stats.get('touchdowns', 'N/A') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endfor %}
+    </div>
+
+    <!-- Back to Live Scores Button -->
+    <a href="{{ url_for('main.live_scores_page') }}" class="btn btn-primary">Back to Live Scores</a>
+
+{% endblock %}

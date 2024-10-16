@@ -30,7 +30,7 @@ def delete_user(user_id):
     db.session.delete(user)
     db.session.commit()
     flash('User deleted successfully!')
-    return redirect(url_for('manage_users'))
+    return redirect(url_for('admin.manage_users'))
 
 @admin_bp.route('/admin/edit_user/<int:user_id>', methods=['GET', 'POST'])
 @login_required
@@ -49,23 +49,51 @@ def edit_user(user_id):
         return redirect(url_for('manage_users'))
     return render_template('edit_user.html', user=user)
 
-@admin_bp.route('/admin/add_user', methods=['GET', 'POST'])
+@admin_bp.route('/add_user', methods=['GET', 'POST'])
 @login_required
 def add_user():
+    # Ensure only admins can access this route
     if not current_user.is_admin:
+        flash("You do not have permission to access this page.", "danger")
         return redirect(url_for('index'))
+
     if request.method == 'POST':
-        username = request.form['username']
-        email = request.form['email']
-        password = request.form['password']
-        is_admin = True if 'is_admin' in request.form else False
-        hashed_password = generate_password_hash(password, method='sha256')
-        new_user = User(username=username, email=email, password=hashed_password, is_admin=is_admin)
-        db.session.add(new_user)
-        db.session.commit()
-        flash('User added successfully!')
-        return redirect(url_for('manage_users'))
-    return render_template('add_user.html')
+        # Handle form submission
+        username = request.form.get('username')
+        email = request.form.get('email')
+        password = request.form.get('password')
+
+        # Check if the password or other fields are missing
+        if not username or not email or not password:
+            flash("All fields (username, email, password) are required.", "danger")
+            return redirect(url_for('admin.add_user'))
+
+        # Check if email already exists
+        existing_user = User.query.filter_by(email=email).first()
+        if existing_user:
+            flash(f"User with email {email} already exists.", "danger")
+            return redirect(url_for('admin.add_user'))
+
+        # Hash the password
+        hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
+
+        # Create the new user
+        new_user = User(username=username, email=email, password=hashed_password, is_admin=True)
+
+        # Add the new user to the database
+        try:
+            db.session.add(new_user)
+            db.session.commit()
+            flash("User added successfully!", "success")
+        except Exception as e:
+            db.session.rollback()
+            flash(f"An error occurred: {str(e)}", "danger")
+
+        return redirect(url_for('admin.admin_dashboard'))
+
+    # Handle GET request (just show the add user form)
+    return render_template('add_user.html')  # Ensure you have this template
+
 
 
 

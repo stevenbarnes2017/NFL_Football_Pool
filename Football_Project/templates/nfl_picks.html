@@ -296,7 +296,7 @@
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const numOfGames = parseInt("{{ num_of_games }}", 10);
-        const usedNumbers = new Set(); 
+        const usedNumbers = new Set(JSON.parse('{{ used_confidence_points | tojson | safe }}'));  // Set of used numbers from server
         const availableNumbers = Array.from({ length: numOfGames }, (_, i) => i + 1);
         const availableNumbersBox = document.getElementById('available-numbers');
 
@@ -307,7 +307,13 @@
         }
 
         document.querySelectorAll('.confidence-input').forEach(input => {
-            input.addEventListener('change', (e) => { 
+            const initialValue = parseInt(input.value, 10);
+            if (!isNaN(initialValue)) {
+                input.setAttribute('data-prev-value', initialValue);
+                usedNumbers.add(initialValue);  // Initialize the used numbers based on initial values
+            }
+
+            input.addEventListener('change', (e) => {
                 const value = parseInt(e.target.value, 10);
 
                 if (!isNaN(value) && value >= 1 && value <= numOfGames) {
