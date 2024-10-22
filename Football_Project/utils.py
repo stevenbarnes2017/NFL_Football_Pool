@@ -485,7 +485,7 @@ def fetch_live_scores():
 
 def fetch_detailed_game_stats(game_id):
     url = f"https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event={game_id}"
-    
+    print(f"Fetching detailed stats for game {game_id}...")
     try:
         response = requests.get(url)
         response.raise_for_status()  # Raises an HTTPError for bad responses (4xx and 5xx)
@@ -509,25 +509,33 @@ def fetch_detailed_game_stats(game_id):
     home_stats = teams[0].get('statistics', [])
     away_stats = teams[1].get('statistics', [])
     
-    # Parse team stats with safe access to 'value'
-    home_team_stats = {stat.get('name', 'Unknown'): stat.get('value', 'N/A') for stat in home_stats}
-    away_team_stats = {stat.get('name', 'Unknown'): stat.get('value', 'N/A') for stat in away_stats}
+    # Parse team stats
+    home_team_stats = {stat.get('name', 'Unknown'): stat.get('displayValue', 'N/A') for stat in home_stats}
+    away_team_stats = {stat.get('name', 'Unknown'): stat.get('displayValue', 'N/A') for stat in away_stats}
 
     # Fetch individual player stats (passing, rushing, receiving)
     players = boxscore.get('players', [])
     player_stats = {}
-    
+
     for team_players in players:
         team = team_players.get('team', {}).get('displayName', 'Unknown')
         player_stats[team] = []
         
-        for player in team_players.get('statistics', []):
-            player_data = {
-                'name': player.get('athlete', {}).get('displayName', 'Unknown'),
-                'position': player.get('athlete', {}).get('position', {}).get('abbreviation', 'N/A'),
-                'stats': {stat.get('name', 'Unknown'): stat.get('value', 'N/A') for stat in player.get('stats', [])}
-            }
-            player_stats[team].append(player_data)
+        for stat_category in team_players.get('statistics', []):
+            stat_name = stat_category.get('name', 'Unknown')
+            
+            for player in stat_category.get('athletes', []):
+                player_data = {
+                    'name': player.get('athlete', {}).get('displayName', 'Unknown'),
+                    'position': player.get('athlete', {}).get('position', {}).get('abbreviation', 'N/A'),
+                    'stats': {
+                        'passingYards': player.get('stats', [])[1] if stat_name == 'passing' else 'N/A',
+                        'rushingYards': player.get('stats', [])[1] if stat_name == 'rushing' else 'N/A',
+                        'receivingYards': player.get('stats', [])[1] if stat_name == 'receiving' else 'N/A',
+                        'touchdowns': player.get('stats', [])[3] if len(player.get('stats', [])) > 3 else 'N/A',
+                    }
+                }
+                player_stats[team].append(player_data)
 
     # Return combined detailed stats
     return {
@@ -537,7 +545,6 @@ def fetch_detailed_game_stats(game_id):
         'away_team_stats': away_team_stats,
         'player_stats': player_stats
     }
-
 
 
 
