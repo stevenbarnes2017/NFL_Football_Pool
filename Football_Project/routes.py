@@ -6,7 +6,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 from .extensions import db
 from Football_Project.get_the_odds import get_nfl_spreads, save_to_csv
-from Football_Project.utils import fetch_detailed_game_stats, group_games_by_day, get_saved_games, get_unpicked_games_for_week, fetch_live_scores, lock_picks_for_commenced_games, get_highest_available_confidence, save_pick_to_db
+from Football_Project.utils import fetch_detailed_game_stats, group_games_by_day, get_saved_games, get_unpicked_games_for_week, fetch_live_scores, lock_picks_for_commenced_games, get_highest_available_confidence, save_pick_to_db, convert_to_utc
 from get_the_odds import get_current_week
 from sqlalchemy import func
 from dateutil import parser
@@ -16,7 +16,7 @@ from threading import Thread
 from flask import request, flash, redirect, url_for
 from flask_login import current_user, login_required
 from datetime import datetime
-import pytz
+from pytz import timezone  # Add this
 from dateutil import parser  # This helps to handle parsing strings to datetime
 
 
@@ -176,23 +176,21 @@ def download_spreads():
 @main_bp.route('/submit_picks', methods=['POST'])
 @login_required
 def submit_picks():
-    selected_week = request.form.get('week')  # Get the selected week
-    num_of_games = int(request.form.get('num_of_games'))  # Get number of games
-    user_id = current_user.id  # Get the current user's ID
+    selected_week = request.form.get('week')
+    num_of_games = int(request.form.get('num_of_games'))
+    user_id = current_user.id
 
-    # Define timezone mapping for 'MDT' or other timezones
-    tzinfos = {
-        "MDT": pytz.timezone("America/Denver"),
-        "UTC": pytz.utc,
-    }
+    # Ensure we're not using any part of dateutil
+    print(">>> Using pytz for timezone handling, dateutil should not be involved.")
+    
+    mountain_tz = pytz.timezone("America/Denver")
+    utc = pytz.utc
 
-    # Get the current time in UTC
     now_utc = datetime.now(pytz.utc)
 
-    # Iterate through form keys to find game IDs dynamically
     for key in request.form.keys():
         if key.startswith('game_id_'):
-            game_id = request.form.get(key)  # Retrieve game ID from the form
+            game_id = request.form.get(key)
             if not game_id:
                 print(f"Skipping game as no game ID was found for key {key}.")
                 continue
@@ -205,9 +203,19 @@ def submit_picks():
             commence_time_str = game.commence_time_mt
             print(f"Commence time (string) for game {game_id}: {commence_time_str}")
 
-            # Convert the string commence_time_mt to a datetime object
             try:
-                commence_time = parser.parse(commence_time_str, tzinfos=tzinfos)
+                dt_str, tz_abbr = commence_time_str.rsplit(' ', 1)
+                naive_time = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+
+                if tz_abbr == 'MDT':
+                    print(">>> Localizing with Mountain Time (MDT)")
+                    commence_time = mountain_tz.localize(naive_time)
+                elif tz_abbr == 'MST':
+                    print(">>> Localizing with Mountain Time (MST)")
+                    commence_time = mountain_tz.localize(naive_time)
+                else:
+                    raise ValueError(f"Unknown timezone abbreviation: {tz_abbr}")
+
                 commence_time = commence_time.astimezone(pytz.utc)
             except (ValueError, TypeError) as e:
                 print(f"Error parsing commence time for game {game_id}: {e}")
@@ -216,7 +224,6 @@ def submit_picks():
 
             print(f"Commence time (datetime) for game {game_id}: {commence_time}")
 
-            # Check if the game has already started
             if now_utc >= commence_time:
                 print(f"Game {game_id} has already started, pick cannot be made.")
                 continue
@@ -231,12 +238,13 @@ def submit_picks():
                 print(f"Skipping game {game_id} due to missing pick or confidence.")
                 continue
 
-            # Save or update the pick in the database
             save_pick_to_db(user_id, int(selected_week), game_id, team_picked, int(confidence_score))
             print(f"Pick saved for game {game_id}")
 
     flash('Picks submitted successfully!')
     return redirect(url_for('main.nfl_picks', week=selected_week))
+
+
 
 
   
@@ -459,31 +467,53 @@ def game_details(game_id):
     # Render the template for detailed game stats
     return render_template('game_details.html', data=detailed_data)
 
+mountain_tz = timezone('America/Denver')
+
+def convert_utc_to_mountain(utc_time):
+    """Convert UTC time back to Mountain Time."""
+    return utc_time.astimezone(mountain_tz)
+
 
 @main_bp.route('/nfl_picks', methods=['GET', 'POST'])
 @login_required
 def nfl_picks():
     selected_week = request.form.get('week', type=int) or request.args.get('week', default=None, type=int)
     current_week = get_current_week()
+    
     if not selected_week:
         selected_week = current_week
 
     user_id = current_user.id
-    now_utc = datetime.utcnow().replace(tzinfo=pytz.utc)
+    now_utc = datetime.utcnow().replace(tzinfo=pytz.utc)  # Current time in UTC
+    print(f"Current UTC time: {now_utc}")  # Debug current time
+
+    # Retrieve user's picks for the selected week
     user_picks_db = Pick.query.filter_by(user_id=user_id, week=selected_week).all()
     user_picks = {pick.game_id: (pick.team_picked, pick.confidence) for pick in user_picks_db}
 
+    # Retrieve saved games for the selected week
     saved_games = get_saved_games(week=selected_week)
     if saved_games:
         num_of_games = len(saved_games)
-        for game in saved_games:
-            commence_time = game['commence_time_mt']
-            if isinstance(commence_time, str):
-                commence_time = parser.parse(commence_time)
-            if commence_time.tzinfo is None:
-                commence_time = pytz.utc.localize(commence_time)
-            game['commence_time_mt'] = commence_time
 
+        for game in saved_games:
+            commence_time_str = game['commence_time_mt']
+            print(f"Original commence time string for game {game['id']}: {commence_time_str}")
+
+            # Convert commence_time_mt to UTC using the conversion function
+            try:
+                game['commence_time_mt'] = convert_to_utc(commence_time_str)
+                print(f"Game {game['id']} converted commence time (UTC): {game['commence_time_mt']}")
+            except Exception as e:
+                print(f"Error converting commence time for game {game['id']}: {e}")
+                continue  # Skip this game if there's a conversion error
+
+        # Now convert the UTC time back to Mountain Time for display and grouping
+        for game in saved_games:
+            game['commence_time_mt_display'] = convert_utc_to_mountain(game['commence_time_mt'])
+            print(f"Game {game['id']} converted commence time (Mountain Time for display): {game['commence_time_mt_display']}")
+
+        # Group games by Mountain Time day
         grouped_games = group_games_by_day(saved_games)
         total_confidence_points = list(range(1, num_of_games + 1))
         used_confidence_points = [pick.confidence for pick in user_picks_db]
@@ -505,7 +535,7 @@ def nfl_picks():
 
     return render_template(
         'nfl_picks.html',
-        grouped_games=grouped_games,
+        grouped_games=group_games_by_day(saved_games),
         num_of_games=num_of_games,
         now_utc=now_utc,
         selected_week=selected_week,
@@ -513,6 +543,7 @@ def nfl_picks():
         user_picks=user_picks,
         used_confidence_points=used_confidence_points  # Pass the used confidence points
     )
+
 
 
 import json

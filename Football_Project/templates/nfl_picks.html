@@ -238,38 +238,40 @@
                                         <td>{{ game.away_team }}</td>
                                         <td>{{ game.spread }}</td>
                                         <td class="favorite-team">{{ game.favorite_team }}</td>
-                                        <td>{{ game.commence_time_mt.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                        <td>{{ game.commence_time_mt_display.strftime('%Y-%m-%d %H:%M:%S %Z') }}</td>
                             
                                         <!-- Add the hidden game_id input here inside a <td> -->
                                         <td style="display: none;">
                                             <input type="hidden" name="game_id_{{ game.id }}" value="{{ game.id }}">
                                         </td>
+
                             
-                                        {% if now_utc >= game.commence_time_mt %}
-                                            <!-- Game has already started, display the pick and confidence -->
-                                            <td>{{ user_picks.get(game.id, ['No pick made', ''])[0] }}</td>
-                                            <td>{{ user_picks.get(game.id, ['No pick made', ''])[1] }}</td> 
-                                        {% else %}
-                                            <td>
-                                                <div class="flex justify-center">
-                                                    <label>
-                                                        <input type="radio" name="pick_{{ game.id }}" value="{{ game.home_team }}"
-                                                            {% if user_picks.get(game.id, [None, None])[0] == game.home_team %}checked{% endif %}> 
-                                                        {{ game.home_team }}
-                                                    </label>
-                                                    <label>
-                                                        <input type="radio" name="pick_{{ game.id }}" value="{{ game.away_team }}"
-                                                            {% if user_picks.get(game.id, [None, None])[0] == game.away_team %}checked{% endif %}> 
-                                                        {{ game.away_team }}
-                                                    </label>
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <input type="number" name="confidence_{{ game.id }}" 
-                                                    value="{{ user_picks.get(game.id, [None, None])[1] or '' }}" 
-                                                    min="1" max="{{ num_of_games }}" class="form-input confidence-input w-20">
-                                            </td>
-                                        {% endif %}
+                                        {% if game.commence_time_mt and game.commence_time_mt <= now_utc %}
+                                        <!-- Game has already started, display the pick and confidence -->
+                                        <td>{{ user_picks.get(game.id, ['No pick made', ''])[0] }}</td>
+                                        <td>{{ user_picks.get(game.id, ['No pick made', ''])[1] }}</td> 
+                                    {% else %}
+                                        <!-- Display radio buttons and confidence input for editable games -->
+                                        <td>
+                                            <div class="flex justify-center">
+                                                <label>
+                                                    <input type="radio" name="pick_{{ game.id }}" value="{{ game.home_team }}"
+                                                        {% if user_picks.get(game.id, [None, None])[0] == game.home_team %}checked{% endif %}> 
+                                                    {{ game.home_team }}
+                                                </label>
+                                                <label>
+                                                    <input type="radio" name="pick_{{ game.id }}" value="{{ game.away_team }}"
+                                                        {% if user_picks.get(game.id, [None, None])[0] == game.away_team %}checked{% endif %}> 
+                                                    {{ game.away_team }}
+                                                </label>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <input type="number" name="confidence_{{ game.id }}" 
+                                                value="{{ user_picks.get(game.id, [None, None])[1] or '' }}" 
+                                                min="1" max="{{ num_of_games }}" class="form-input confidence-input w-20">
+                                        </td>
+                                    {% endif %}
                                     </tr>
                                     {% endfor %}
                                 </tbody>

@@ -32,7 +32,7 @@
                         previousGame.clock !== game.clock || previousGame.down !== game.down || previousGame.distance !== game.distance) {
 
                         var gameElement = document.getElementById(gameKey);
-
+                        console.log('Game ID:', game.game_id);
                         // Create a new game card if it doesn't exist
                         if (!gameElement) {
                             gameElement = document.createElement('div');

@@ -7,6 +7,8 @@ from football_scores import save_scores_to_db, get_football_scores
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 import atexit
+from flask import render_template
+from pytz import timezone  # Add this
 
 
  # Initialize the scheduler
@@ -73,66 +75,26 @@ def save_week_scores_to_db(year, seasontype, weeknum):
         return str(e)
 
 
-# Function to parse datetime with timezone and format it
-def parse_datetime_with_timezone(datetime_str, timezone_abbr):
-    naive_datetime = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
-    
-    if timezone_abbr == "MDT":
-        timezone = pytz.timezone("America/Denver")
-    elif timezone_abbr == "MST":
-        timezone = pytz.timezone("America/Denver")
+# Function to detect timezone and parse datetime correctly
+def parse_datetime_with_timezone(datetime_str):
+    # Split datetime string and timezone abbreviation
+    if 'MDT' in datetime_str:
+        dt_str, timezone_abbr = datetime_str.rsplit(' ', 1)
+        mountain_tz = pytz.timezone('America/Denver')  # Covers MDT during DST
+    elif 'MST' in datetime_str:
+        dt_str, timezone_abbr = datetime_str.rsplit(' ', 1)
+        mountain_tz = pytz.timezone('America/Denver')  # Covers MST (Standard Time)
     else:
-        raise ValueError(f"Unrecognized timezone abbreviation: {timezone_abbr}")
-    
-    localized_datetime = timezone.localize(naive_datetime)
-    
-    if platform.system() == 'Windows':
-        formatted_datetime = localized_datetime.strftime("%b %d %Y %#I:%M%p %Z")
-    else:
-        formatted_datetime = localized_datetime.strftime("%b %d %Y %-I:%M%p %Z")
-    
-    return formatted_datetime
+        raise ValueError(f"Unknown timezone in datetime string: {datetime_str}")
 
-def group_games_by_day(games_list):
-    grouped_games = {
-        "Thursday": [],
-        "Friday": [],
-        "Sunday": [],
-        "Monday": []
-    }
+    # Parse the naive datetime string (without timezone abbreviation)
+    naive_datetime = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
 
-    for game in games_list:
-        commence_time = game['commence_time_mt']
+    # Localize the naive datetime to the correct timezone
+    localized_datetime = mountain_tz.localize(naive_datetime)
 
-        # Check if it's a datetime object, else parse it as string
-        if isinstance(commence_time, datetime):
-            # If datetime has timezone info, extract it
-            if commence_time.tzinfo is not None:
-                timezone_abbr = commence_time.tzname()
-            else:
-                # Default to 'UTC' if no timezone info present
-                timezone_abbr = 'UTC'
-        else:
-            # Parse string representation into a datetime object
-            commence_time = datetime.strptime(commence_time, '%Y-%m-%d %H:%M:%S')
-            timezone_abbr = 'UTC'  # Handle the default timezone if none is present in the string
-
-        # Format the datetime object
-        game['commence_time_mt'] = commence_time
-
-        # Extract the day of the week
-        day_of_week = commence_time.strftime("%A")
-
-        if day_of_week == "Thursday":
-            grouped_games["Thursday"].append(game)
-        elif day_of_week == "Friday":
-            grouped_games["Friday"].append(game)
-        elif day_of_week == "Sunday":
-            grouped_games["Sunday"].append(game)
-        elif day_of_week == "Monday":
-            grouped_games["Monday"].append(game)
-
-    return grouped_games
+    # Convert the localized datetime to UTC and return
+    return localized_datetime.astimezone(pytz.utc)
 
 #Function to query the db for all saved games and return them.
 def get_saved_games(week=None):
@@ -257,59 +219,139 @@ def save_user_scores_to_db(user_scores, week):
     else:
         print("Error: user_scores is not a dictionary!")
 
+# Define time zones
+utc = pytz.utc
+mountain = pytz.timezone('US/Mountain')
 
+# Function to convert UTC time to Mountain Time
+def convert_to_mountain_time(utc_time_str):
+    utc_time = datetime.strptime(utc_time_str, "%Y-%m-%dT%H:%MZ")
+    utc_time = utc.localize(utc_time)
+    return utc_time.astimezone(mountain).strftime("%Y-%m-%d %H:%M:%S %Z")
 
+# Function to convert Mountain Time to UTC
+def convert_mountain_time_to_utc(mt_time_str):
+    dt_str, tz_abbr = mt_time_str.rsplit(' ', 1)
+    naive_dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
 
-from dateutil import parser
-from pytz import timezone, utc
-from datetime import datetime
-
-# Define the Mountain Timezone
-mountain_tz = timezone('US/Mountain')
-
-# Utility function to convert Mountain Time to UTC
-def convert_to_utc(mountain_time):
-    if mountain_time.tzinfo is None:
-        # If naive datetime, assume it's in Mountain Time
-        localized_time = mountain_tz.localize(mountain_time)
+    if tz_abbr == 'MDT':
+        mt_time = mountain.localize(naive_dt)
+    elif tz_abbr == 'MST':
+        mt_time = mountain.localize(naive_dt)
     else:
-        # If already timezone-aware, just use it
-        localized_time = mountain_time
-    return localized_time.astimezone(utc)  # Convert to UTC
+        raise ValueError(f"Unknown timezone abbreviation: {tz_abbr}")
+    
+    return mt_time.astimezone(utc).strftime("%Y-%m-%d %H:%M:%S %Z")
 
-# Function to lock picks based on game commence times
+# Function to convert a datetime string or object to UTC
+def convert_to_utc(time_value):
+    print(f"Converting time: {time_value}")  # Debugging time value before conversion
+
+    if isinstance(time_value, str):
+        # If time_value is a string, assume it's in "YYYY-MM-DD HH:MM:SS TZ" format
+        try:
+            dt_str, tz_abbr = time_value.rsplit(' ', 1)  # Split time and timezone
+            naive_dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+
+            # Localize the naive datetime based on the timezone abbreviation
+            if tz_abbr == 'MDT':
+                local_tz = pytz.timezone('America/Denver')
+            elif tz_abbr == 'MST':
+                local_tz = pytz.timezone('America/Denver')
+            else:
+                raise ValueError(f"Unknown timezone abbreviation: {tz_abbr}")
+
+            # Localize the naive datetime to the correct time zone
+            localized_dt = local_tz.localize(naive_dt)
+        except Exception as e:
+            print(f"Error during time parsing: {e}")
+            raise e
+    elif isinstance(time_value, datetime):
+        localized_dt = time_value
+    else:
+        raise ValueError(f"Unsupported time format: {type(time_value)}")
+
+    # Convert localized datetime to UTC and return
+    utc_time = localized_dt.astimezone(pytz.utc)
+    print(f"Converted time to UTC: {utc_time}")  # Debugging the result after conversion
+    return utc_time
+
+
 def lock_picks_for_commenced_games(user_id):
-    current_week = get_current_week()
-    now_utc = datetime.utcnow().replace(tzinfo=utc)  # Ensure UTC timezone-aware
+    current_week = get_current_week()  # Get current NFL week
+    now_utc = datetime.utcnow().replace(tzinfo=pytz.utc)  # Get current time in UTC
 
-    # Get all games for the current week
+    # Fetch all games for the current week
     commenced_games = Game.query.filter(Game.week == current_week).all()
 
+    games_list = []
+
     for game in commenced_games:
-        # Convert commence_time_mt to UTC if it is in Mountain Time
-        game_commence_time_utc = convert_to_utc(game.commence_time_mt)
+        if isinstance(game.commence_time_mt, str):
+            # Convert the commence time (with timezone abbreviation) to UTC
+            game_commence_time_utc = convert_to_utc(game.commence_time_mt)
+        elif isinstance(game.commence_time_mt, datetime):
+            # If it's already a datetime object, ensure it's converted to UTC
+            game_commence_time_utc = game.commence_time_mt.astimezone(pytz.utc)
+        else:
+            raise ValueError(f"Invalid commence_time format for game {game.id}")
 
-        # Debug: Print to see the UTC conversion result
-        print(f"Game {game.id} original commence time (MT): {game.commence_time_mt}")
-        print(f"Game {game.id} converted to UTC: {game_commence_time_utc}")
-        print(f"Current UTC time: {now_utc}")
+        # Add the game to the list with the UTC commence time
+        game_dict = {
+            'id': game.id,
+            'home_team': game.home_team,
+            'away_team': game.away_team,
+            'spread': game.spread,
+            'favorite_team': game.favorite_team,
+            'commence_time_utc': game_commence_time_utc,
+            'commence_time_mt': game.commence_time_mt  # Optional, for display
+        }
+        games_list.append(game_dict)
 
-        # Compare with current time in UTC
+        # Lock the game if it has already started (compare with now_utc)
         if game_commence_time_utc <= now_utc:
-            # Lock the game as it has already commenced
             existing_pick = Pick.query.filter_by(user_id=user_id, game_id=game.id).first()
-
             if not existing_pick:
                 available_points = get_highest_available_confidence(user_id, current_week)
                 missed_pick = Pick(
                     user_id=user_id,
                     game_id=game.id,
                     confidence_points=available_points,
-                    points_earned=0  # No points if missed pick
+                    points_earned=0  # No points for missed pick
                 )
                 db.session.add(missed_pick)
 
+    # Commit the locked picks to the database
     db.session.commit()
+
+    # Render the picks page with the games
+    return render_template('nfl_picks.html', now_utc=now_utc, games=games_list, selected_week=current_week)
+
+def group_games_by_day(games_list):
+    grouped_games = {
+        "Thursday": [],
+        "Friday": [],
+        "Sunday": [],
+        "Monday": []
+    }
+
+    for game in games_list:
+        commence_time_mt = game['commence_time_mt_display']  # Mountain Time for grouping
+        day_of_week = commence_time_mt.strftime("%A")
+
+        if day_of_week == "Thursday":
+            grouped_games["Thursday"].append(game)
+        elif day_of_week == "Friday":
+            grouped_games["Friday"].append(game)
+        elif day_of_week == "Sunday":
+            grouped_games["Sunday"].append(game)
+        elif day_of_week == "Monday":
+            grouped_games["Monday"].append(game)
+
+    return grouped_games
+
+
+
 
 def save_game_scores_to_db(game_scores, week):
     """
@@ -417,6 +459,7 @@ def fetch_live_scores():
 
         # Append all relevant data to live_games list
         live_games.append({
+            'game_id': game.get('id', None),  # Add this line to include the game_id
             'home_team': home_team,
             'away_team': away_team,
             'home_score': home_score,
@@ -466,9 +509,9 @@ def fetch_detailed_game_stats(game_id):
     home_stats = teams[0].get('statistics', [])
     away_stats = teams[1].get('statistics', [])
     
-    # Parse team stats
-    home_team_stats = {stat['name']: stat['value'] for stat in home_stats}
-    away_team_stats = {stat['name']: stat['value'] for stat in away_stats}
+    # Parse team stats with safe access to 'value'
+    home_team_stats = {stat.get('name', 'Unknown'): stat.get('value', 'N/A') for stat in home_stats}
+    away_team_stats = {stat.get('name', 'Unknown'): stat.get('value', 'N/A') for stat in away_stats}
 
     # Fetch individual player stats (passing, rushing, receiving)
     players = boxscore.get('players', [])
@@ -482,7 +525,7 @@ def fetch_detailed_game_stats(game_id):
             player_data = {
                 'name': player.get('athlete', {}).get('displayName', 'Unknown'),
                 'position': player.get('athlete', {}).get('position', {}).get('abbreviation', 'N/A'),
-                'stats': {stat['name']: stat['value'] for stat in player.get('stats', [])}
+                'stats': {stat.get('name', 'Unknown'): stat.get('value', 'N/A') for stat in player.get('stats', [])}
             }
             player_stats[team].append(player_data)
 
@@ -494,6 +537,7 @@ def fetch_detailed_game_stats(game_id):
         'away_team_stats': away_team_stats,
         'player_stats': player_stats
     }
+
 
 
 

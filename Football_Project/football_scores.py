@@ -12,16 +12,36 @@ save_directory = r"C:\Users\lines\OneDrive\dev\Football_Retry\Football_Project"
 utc = pytz.utc
 mountain = pytz.timezone('US/Mountain')
 
+# Function to convert UTC time string to Mountain Time
 def convert_to_mountain_time(utc_time_str):
-    # Parse the time string and assume it's in UTC
+    # Parse the UTC time string
     utc_time = datetime.strptime(utc_time_str, "%Y-%m-%dT%H:%MZ")
-    utc_time = utc.localize(utc_time)
+    utc_time = utc.localize(utc_time)  # Localize it to UTC
     
     # Convert to Mountain Time
     mt_time = utc_time.astimezone(mountain)
     
     # Return the time as a string in Mountain Time zone
     return mt_time.strftime("%Y-%m-%d %H:%M:%S %Z")
+
+# Function to convert Mountain Time string back to UTC
+def convert_mountain_time_to_utc(mt_time_str):
+    # Split the string into the datetime part and timezone abbreviation
+    dt_str, tz_abbr = mt_time_str.rsplit(' ', 1)
+    
+    # Parse the datetime string
+    naive_dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+    
+    # Localize based on the timezone abbreviation
+    if tz_abbr == 'MDT':
+        mt_time = mountain.localize(naive_dt)
+    elif tz_abbr == 'MST':
+        mt_time = mountain.localize(naive_dt)
+    else:
+        raise ValueError(f"Unknown timezone abbreviation: {tz_abbr}")
+    
+    # Convert to UTC and return
+    return mt_time.astimezone(utc).strftime("%Y-%m-%d %H:%M:%S %Z")
 
 # Function to get football scores from ESPN API based on the year, season type, and week number
 def get_football_scores(year, seasontype, weeknum):

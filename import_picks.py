@@ -1,29 +1,47 @@
 import pandas as pd
 from Football_Project import create_app, db
 from Football_Project.models import Pick
-from datetime import datetime
+from flask import Flask
 
 # Create the application context
 app = create_app()
-app.app_context().push()
 
-# Load the CSV data
-df = pd.read_csv('import_picks_week1_week2.csv')
+# Use Flask app context to work with the database
+with app.app_context():
+    # Load the CSV data using pandas
+    try:
+        df = pd.read_csv('import_picks_week7.csv')
+        print(df.head())  # Debug: Print the first few rows to ensure CSV is loaded properly
+    except Exception as e:
+        print(f"Error reading CSV file: {e}")
+        exit()
 
-# Iterate over each row in the DataFrame and insert it into the database
-for index, row in df.iterrows():    
-        new_pick = Pick(
-            user_id=row['user_id'],
-            game_id=row['game_id'],
-            team_picked=row['team_picked'],
-            confidence=row['confidence'],
-            week=row['week']
-        )
+    # Iterate over each row in the DataFrame
+    for index, row in df.iterrows():
+        try:
+            # Debug: Print row to ensure proper data access
+            print(f"Processing row {index}: {row.to_dict()}")
 
-        # Add the new game to the session
-        db.session.add(new_pick)
+            # Create a new Pick object from the row data
+            new_pick = Pick(
+                user_id=row['user_id'],         # Ensure the column names match the CSV header
+                game_id=row['game_id'],
+                team_picked=row['team_picked'],
+                confidence=row['confidence'],
+                week=row['week']
+            )
 
-# Commit the session to insert all games into the database
-db.session.commit()
+            # Add the new pick to the session
+            db.session.add(new_pick)
 
-print("Historical odds have been successfully loaded into the database.")
+        except Exception as e:
+            print(f"Error inserting row {index}: {e}")
+            continue  # Skip this row if there's an error
+
+    # Commit the session to insert all picks into the database
+    try:
+        db.session.commit()
+        print("Picks have been successfully loaded into the database.")
+    except Exception as commit_error:
+        print(f"Error committing to the database: {commit_error}")
+        db.session.rollback()  # Rollback in case of error
