@@ -9,7 +9,13 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import atexit
 from flask import render_template
 from pytz import timezone  # Add this
+import logging  # Ensure logging is imported at the top
 
+
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
  # Initialize the scheduler
 scheduler = BackgroundScheduler()
@@ -30,20 +36,24 @@ def auto_fetch_scores():
     from Football_Project import create_app
     app = create_app()
     with app.app_context():
-        year = 2024  # You can replace this with logic to determine the current year
-        seasontype = 2  # Adjust as needed for preseason/postseason
-        current_week = 6  # A function to get the current week number
+        year = 2024
+        seasontype = 2
+        current_week = get_current_week()  # Ensure this retrieves the current week number
 
         try:
-            # This will call get_football_scores() through save_week_scores_to_db()
+            # Call save_week_scores_to_db to handle fetching and saving
             result = save_week_scores_to_db(year, seasontype, current_week)
-            
+            print(result)
+
         except Exception as e:
-            print(f"Error in auto_fetch_scores: {e}")  # Log any errors that occur
+            print(f"Error in auto_fetch_scores: {e}")
 
         print("Finished running auto_fetch_scores")
+        print("Scheduled jobs:", scheduler.get_jobs())
 
 
+# Add job to run every minute
+scheduler.add_job(auto_fetch_scores, 'interval', minutes=1)
 
 # Sunday: Every hour from 12:00 PM to 11:00 PM
 scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='sun', hour='12-23')
@@ -64,15 +74,16 @@ def save_week_scores_to_db(year, seasontype, weeknum):
     try:
         # Fetch the football game scores for the given week
         scores = get_football_scores(year, seasontype, weeknum)  # Replace this with your actual function to fetch scores
-        
+        games = scores.get('live_games', [])
 
-        # Save the fetched scores to the database
-        save_game_scores_to_db(scores, weeknum)
+        # Save the fetched scores to the database with weeknum
+        save_scores_to_db(games, weeknum)
         return f"Successfully saved game scores for week {weeknum} to the database."
 
     except Exception as e:
         print(f"An error occurred while fetching or saving the scores: {e}")
         return str(e)
+
 
 
 # Function to detect timezone and parse datetime correctly
@@ -608,31 +619,7 @@ def get_user_picks(user_id, week):
     return user_picks
 
 
-
+# Initialize the scheduler
 scheduler = BackgroundScheduler()
 
-def auto_fetch_scores():
-    # Call fetch_live_scores and process final scores
-    scores = fetch_live_scores()
-    live_games = scores['live_games']
-    
-    # Process each game to check if it is 'Final'
-    for game in live_games:
-        if game['status'] == 'Final':
-            save_scores_to_db(game)
-            calculate_user_scores(get_current_week)
 
-# Schedule job for Sunday: every hour from 12:00 PM to 11:00 PM
-scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='sun', hour='12-23')
-
-# Schedule job for Thursday: every 30 minutes from 7:00 PM to 11:00 PM
-scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='thu', hour='19-23', minute='0,30')
-
-# Schedule job for Monday: every 30 minutes from 7:00 PM to 11:00 PM
-scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='mon', hour='19-23', minute='0,30')
-
-# Start the scheduler
-scheduler.start()
-
-# Ensure the scheduler shuts down properly on exit
-atexit.register(lambda: scheduler.shutdown())

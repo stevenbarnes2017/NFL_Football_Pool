@@ -3,23 +3,26 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
-from .models import User  # Import your User model
-from .extensions import db  # Assuming db is initialized in extensions.py
 from flask_migrate import Migrate
-from .utils import scheduler
+from .models import User
+from .extensions import db
+from .utils import scheduler, auto_fetch_scores  # Import scheduler and task
+import atexit
+import logging  # Ensure logging is imported at the top
+
+# Track scheduler state globally
+scheduler_started = False
 
 def create_app():
     app = Flask(__name__)
 
     # App configuration
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///picks.db'  # Make sure to update this for production (e.g., PostgreSQL)
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///picks.db'
     app.config['SECRET_KEY'] = 'password'
     
     # Initialize extensions
     db.init_app(app)
-  
-    # Initialize Flask-Migrate
-    migrate = Migrate(app, db)  # Add this line to initialize Flask-Migrate
+    migrate = Migrate(app, db)
 
     # Initialize the login manager
     login_manager = LoginManager()
@@ -38,9 +41,24 @@ def create_app():
     def load_user(user_id):
         return User.query.get(int(user_id))
     
-    # Check if the scheduler is already running
-    if scheduler.state == 0:  # 0 means the scheduler is in the 'stopped' state
+    global scheduler_started
+
+    # Scheduler Job Initialization
+    job_id = "auto_fetch_scores_job"
+    if not scheduler_started:
+        # Remove all jobs to avoid duplicates on restart
+        scheduler.remove_all_jobs()
+
+        # Add the job if not already present
+        scheduler.add_job(auto_fetch_scores, 'interval', minutes=1, id=job_id)
+        print(f"Job {job_id} added to scheduler.")
+
+        # Start the scheduler and mark it as started
         scheduler.start()
-        print(f"Started Scheduler")
-        
+        scheduler_started = True
+        print("Scheduler started.")
+
+    # Ensure scheduler shuts down properly on app exit
+    atexit.register(lambda: scheduler.shutdown(wait=False) if scheduler.running else None)
+
     return app
