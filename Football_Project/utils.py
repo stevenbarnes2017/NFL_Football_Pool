@@ -52,9 +52,6 @@ def auto_fetch_scores():
         print("Scheduled jobs:", scheduler.get_jobs())
 
 
-# Add job to run every minute
-scheduler.add_job(auto_fetch_scores, 'interval', minutes=1)
-
 # Sunday: Every hour from 12:00 PM to 11:00 PM
 scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='sun', hour='12-23')
 
