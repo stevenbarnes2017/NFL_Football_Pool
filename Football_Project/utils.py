@@ -38,16 +38,21 @@ def auto_fetch_scores():
     with app.app_context():
         year = 2024
         seasontype = 2
-        
-        try:
-            # Get the current week and adjust to the previous week
-            current_week = get_current_week()  
-            previous_week = current_week - 1
-            print(f"Current Week: {current_week}, Previous Week: {previous_week}")
 
-            # Call save_week_scores_to_db with the previous week
+        try:
+            # Get the current week and adjust to fetch the previous week
+            current_week = get_current_week()
+            previous_week = current_week - 1
+            print(f"Current Week: {current_week}, Fetching scores for Previous Week: {previous_week}")
+
+            # Fetch and save game scores for the previous week
+            games = get_football_scores(year, seasontype, previous_week)
             result = save_week_scores_to_db(year, seasontype, previous_week)
             print(f"Result of save_week_scores_to_db: {result}")
+
+            # Calculate user scores for the previous week based on updated game results
+            calculate_user_scores(previous_week)
+            print(f"User scores calculated and updated for week {previous_week}.")
 
         except Exception as e:
             print(f"Error in auto_fetch_scores: {e}")
