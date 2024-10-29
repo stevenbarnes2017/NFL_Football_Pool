@@ -11,28 +11,12 @@ from flask import render_template
 from pytz import timezone  # Add this
 import logging  # Ensure logging is imported at the top
 
-
-
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
- # Initialize the scheduler
-scheduler = BackgroundScheduler()
-scheduler_started = False
 
-def start_scheduler():
-    global scheduler_started  # Make sure to modify the global variable
-    if not scheduler_started:  # Only start the scheduler if it's not already running
-        scheduler.start()
-        scheduler_started = True
-        print("Scheduler started")
-
-# Ensure the scheduler shuts down properly when the app stops
-atexit.register(lambda: scheduler.shutdown(wait=False) if scheduler_started else None)
-
-
-def auto_fetch_scores():
+def auto_fetch_scores():   
+    logger.info("Executing auto_fetch_scores job") 
     from Football_Project import create_app
     app = create_app()
     with app.app_context():
@@ -40,17 +24,14 @@ def auto_fetch_scores():
         seasontype = 2
 
         try:
-            # Get the current week and adjust to fetch the previous week
             current_week = get_current_week()
             previous_week = current_week - 1
             print(f"Current Week: {current_week}, Fetching scores for Previous Week: {previous_week}")
 
-            # Fetch and save game scores for the previous week
             games = get_football_scores(year, seasontype, previous_week)
             result = save_week_scores_to_db(year, seasontype, previous_week)
             print(f"Result of save_week_scores_to_db: {result}")
 
-            # Calculate user scores for the previous week based on updated game results
             calculate_user_scores(previous_week)
             print(f"User scores calculated and updated for week {previous_week}.")
 
@@ -58,20 +39,7 @@ def auto_fetch_scores():
             print(f"Error in auto_fetch_scores: {e}")
 
         print("Finished running auto_fetch_scores")
-        print("Scheduled jobs:", scheduler.get_jobs())
 
-
-# Sunday: Every hour from 12:00 PM to 11:00 PM
-scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='sun', hour='12-23')
-
-# Thursday & Monday: Every 30 minutes from 7:00 PM to 11:00 PM
-scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='thu,mon', hour='19-23', minute='0,30')
-
-# Start the scheduler
-scheduler.start()
-
-# Ensure the scheduler shuts down properly only if it's running
-atexit.register(lambda: scheduler.shutdown(wait=False) if scheduler.running else None)
 
 def save_week_scores_to_db(year, seasontype, weeknum):
     """
@@ -629,7 +597,6 @@ def get_user_picks(user_id, week):
     return user_picks
 
 
-# Initialize the scheduler
-scheduler = BackgroundScheduler()
+
 
 

@@ -1,17 +1,18 @@
-# __init__.py
-
+import os
+from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_migrate import Migrate
 from .models import User
 from .extensions import db
-from .utils import scheduler, auto_fetch_scores  # Import scheduler and task
+from .utils import auto_fetch_scores
 import atexit
-import logging  # Ensure logging is imported at the top
+import logging
 
-# Track scheduler state globally
+# Define the global variable to track scheduler state
 scheduler_started = False
+scheduler = BackgroundScheduler()
 
 def create_app():
     app = Flask(__name__)
@@ -29,7 +30,7 @@ def create_app():
     login_manager.init_app(app)
     login_manager.login_view = 'main.login'
 
-    # Register blueprints (after initializing extensions)
+    # Register blueprints
     from .admin import admin_bp
     app.register_blueprint(admin_bp)
 
@@ -45,12 +46,14 @@ def create_app():
 
     # Scheduler Job Initialization
     job_id = "auto_fetch_scores_job"
-    if not scheduler_started:
-        # Remove all jobs to avoid duplicates on restart
-        scheduler.remove_all_jobs()
+    # Check if the app is running in the main process (to avoid duplicate scheduler instances)
+    if not scheduler_started and os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        # Clear existing jobs to avoid duplicates
+        scheduler.remove_all_jobs(jobstore='default')
 
-        # Add the job if not already present
-        scheduler.add_job(auto_fetch_scores, 'interval', minutes=1, id=job_id)
+        # Set cron-based jobs for Sundays, Thursdays, and Mondays
+        scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='sun', hour='12-23', id=job_id, replace_existing=True)
+        scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='thu,mon', hour='19-23', minute='0,30', id=job_id, replace_existing=True)
         print(f"Job {job_id} added to scheduler.")
 
         # Start the scheduler and mark it as started
@@ -58,7 +61,7 @@ def create_app():
         scheduler_started = True
         print("Scheduler started.")
 
-    # Ensure scheduler shuts down properly on app exit
+    # Ensure the scheduler shuts down properly on app exit
     atexit.register(lambda: scheduler.shutdown(wait=False) if scheduler.running else None)
 
     return app
