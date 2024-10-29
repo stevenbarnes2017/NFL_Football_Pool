@@ -394,6 +394,9 @@ def assign_missed_pick_confidence(available_confidences):
 
 
 
+import requests
+import requests
+
 def fetch_live_scores():
     url = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
     try:
@@ -428,27 +431,27 @@ def fetch_live_scores():
         # Situation Data (down, distance, possession, yard line)
         situation = competition.get('situation', {})
 
-        # Ensure 'situation' is a dictionary
-        if isinstance(situation, dict):
-            down = situation.get('down')
-            distance = situation.get('distance')
-            # Ensure situation is a dictionary before accessing 'possession'
-            if isinstance(situation, dict):
-                possession_team = situation.get('possession', {}).get('displayName') if isinstance(situation.get('possession'), dict) else None
-            else:
-                # Handle case where 'situation' is not a dictionary
-                print("Error: 'situation' is not a dictionary, it is:", type(situation))
-                possession_team = None
-            yard_line = situation.get('yardLine')
-        else:
-            down = None
-            distance = None
-            possession_team = None
-            yard_line = None
+        # Debugging: Print the entire situation dictionary to check its structure
+        print(f"situation data for game {game.get('id')}: {situation}")
+
+        # Default values if data isn't present
+        down = situation.get('down')
+        distance = situation.get('distance')
+        yard_line = situation.get('yardLine')
+        possession_team = None
+
+        # Check possession and map it to the correct team name if it's an ID
+        possession_team_id = situation.get('possession')
+        if possession_team_id:
+            # Attempt to match possession_team_id with team IDs in competitors
+            for competitor in competitors:
+                if competitor.get('team', {}).get('id') == possession_team_id:
+                    possession_team = competitor.get('team', {}).get('displayName')
+                    break
 
         # Append all relevant data to live_games list
         live_games.append({
-            'game_id': game.get('id', None),  # Add this line to include the game_id
+            'game_id': game.get('id', None),
             'home_team': home_team,
             'away_team': away_team,
             'home_score': home_score,
@@ -462,15 +465,16 @@ def fetch_live_scores():
             'yardLine': yard_line,
         })
 
-    # Debugging: Print live games
+    # Debugging: Print live games to verify the structure
     print(f"Live Games: {live_games}")
 
-    # Return the result (or empty last_week_games if no live games)
+    # Return live games data or fallback to last week's games if no live data
     if not live_games:
         last_week_games = fetch_last_week_scores()  # Fetch last week's games if needed
         return {'live_games': live_games, 'last_week_games': last_week_games}
     
     return {'live_games': live_games, 'last_week_games': None}
+
 
 def fetch_detailed_game_stats(game_id):
     url = f"https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event={game_id}"
