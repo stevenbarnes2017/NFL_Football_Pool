@@ -38,12 +38,16 @@ def auto_fetch_scores():
     with app.app_context():
         year = 2024
         seasontype = 2
-        current_week = get_current_week()  # Ensure this retrieves the current week number
-
+        
         try:
-            # Call save_week_scores_to_db to handle fetching and saving
-            result = save_week_scores_to_db(year, seasontype, current_week)
-            print(result)
+            # Get the current week and adjust to the previous week
+            current_week = get_current_week()  
+            previous_week = current_week - 1
+            print(f"Current Week: {current_week}, Previous Week: {previous_week}")
+
+            # Call save_week_scores_to_db with the previous week
+            result = save_week_scores_to_db(year, seasontype, previous_week)
+            print(f"Result of save_week_scores_to_db: {result}")
 
         except Exception as e:
             print(f"Error in auto_fetch_scores: {e}")
@@ -70,11 +74,15 @@ def save_week_scores_to_db(year, seasontype, weeknum):
     """
     try:
         # Fetch the football game scores for the given week
-        scores = get_football_scores(year, seasontype, weeknum)  # Replace this with your actual function to fetch scores
-        games = scores.get('live_games', [])
+        games = get_football_scores(year, seasontype, weeknum)  # This returns a list
 
-        # Save the fetched scores to the database with weeknum
-        save_scores_to_db(games, weeknum)
+        # Check if games were retrieved successfully
+        if not games:
+            print(f"No games data to save for week {weeknum}.")
+            return f"No data available for week {weeknum}."
+
+        # Save each game's score to the database
+        save_scores_to_db(games, weeknum)  # Assumes save_scores_to_db can handle a list of game dictionaries
         return f"Successfully saved game scores for week {weeknum} to the database."
 
     except Exception as e:
