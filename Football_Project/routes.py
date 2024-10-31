@@ -381,11 +381,20 @@ def user_score_summary():
 
     # Fetch total scores based on the selected week
     if selected_week == 'all':
-        # Existing code for all weeks...
-        # [Your existing logic for 'all' weeks]
-        pass  # Replace with your existing code
+        # Placeholder logic for fetching scores across all weeks
+        user_scores = db.session.query(
+            User.id,
+            User.username,
+            func.coalesce(func.sum(UserScore.score), 0).label('total_score')
+        ).outerjoin(UserScore, User.id == UserScore.user_id).group_by(User.id) \
+         .order_by(func.coalesce(func.sum(UserScore.score), 0).desc()).all()
+
+        # Current user's total score for all weeks
+        user_total_score = db.session.query(
+            func.coalesce(func.sum(UserScore.score), 0)
+        ).filter_by(user_id=current_user_id).scalar() or 0
     else:
-        # Fetch scores for the current week for all users
+        # Fetch scores for the specific week for all users
         user_scores = db.session.query(
             User.id,
             User.username,
@@ -394,12 +403,12 @@ def user_score_summary():
         .group_by(User.id) \
         .order_by(func.coalesce(UserScore.score, 0).desc()).all()
 
-        # Current user's total score for the current week
+        # Current user's total score for the specific week
         user_total_score = db.session.query(
             func.coalesce(UserScore.score, 0)
         ).filter_by(user_id=current_user_id, week=selected_week).scalar() or 0
 
-    # Fetch the games and user's picks for the current week
+    # Fetch the games and user's picks for the selected week
     games = Game.query.filter_by(week=selected_week).all()
     user_picks = Pick.query.filter_by(user_id=current_user_id, week=selected_week).all()
 
