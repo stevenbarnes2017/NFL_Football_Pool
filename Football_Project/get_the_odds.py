@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 import pytz
 import os
 from pathlib import Path
-from tkinter import Tk
-from tkinter.filedialog import asksaveasfilename
+#from tkinter import Tk
+#from tkinter.filedialog import asksaveasfilename
 from pathlib import Path
 
 # Your API key and the base URL for The Odds API
