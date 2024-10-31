@@ -10,6 +10,81 @@
         <div id="last-week-scoreboard" class="scoreboard"></div>
     </div>
 
+    <!-- Floating Box for User's Score Summary -->
+    <div id="user-score-box" class="floating-box">
+        <h3>Your Score for Week <span id="current-week-number"></span></h3>
+        <div id="user-total-points">Total Points: 0</div>
+        <table id="user-picks-table">
+            <thead>
+                <tr>
+                    <th>Game</th>
+                    <th>Your Pick</th>
+                    <th>Confidence</th>
+                    <th>Points</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="user-picks-list">
+                <!-- Picks will be populated here -->
+            </tbody>
+        </table>
+    </div>
+
+    <style>
+        /* Existing styles */
+
+        /* Styles for the floating box */
+        .floating-box {
+            position: fixed;
+            top: 110px;
+            right: 20px;
+            width: 450px;
+            max-height: 90vh;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+        .floating-box h3 {
+            margin-top: 0;
+        }
+
+        /* Styles for table layout */
+        #user-picks-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+        }
+
+        #user-picks-table th, #user-picks-table td {
+            padding: 5px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        #user-picks-table th {
+            background-color: #f2f2f2;
+            color: black;
+            font-weight: bold;
+        }
+
+        /* Row colors for winning and losing picks */
+        .winning {
+            color: green;
+        }
+
+        .losing {
+            color: red;
+        }
+
+        .pending {
+            color: gray;
+        }
+    </style>
+
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             var previousScores = {};  // Store previous scores for comparison
@@ -84,6 +159,89 @@
                 });
             }
 
+            // Function to update the user's score summary in the floating box
+            function updateUserScoreBox() {
+                fetch('/user_score_summary?format=json&week=current')
+                    .then(response => response.json())
+                    .then(data => {
+                        // Update total points
+                        const totalPointsElement = document.getElementById('user-total-points');
+                        totalPointsElement.innerText = 'Total Points: ' + data.user_total_score;
+
+                        // Update the heading to indicate the current week
+                        const weekNumberElement = document.getElementById('current-week-number');
+                        if (weekNumberElement) {
+                            weekNumberElement.innerText = data.selected_week;
+                        }
+
+                        // Update picks table
+                        const userPicksList = document.getElementById('user-picks-list');
+                        userPicksList.innerHTML = ''; // Clear existing table rows
+
+                        if (data.game_picks.length === 0) {
+                            userPicksList.innerHTML = '<tr><td colspan="5">You have no picks yet.</td></tr>';
+                            return;
+                        }
+
+                        data.game_picks.forEach(game => {
+                            if (game.pick) {
+                                const row = document.createElement('tr');
+
+                                // Determine if the user's pick is currently winning
+                                let isWinning = false;
+                                const homeScore = game.home_team_score || 0;
+                                const awayScore = game.away_team_score || 0;
+                                const userPickConfidence = game.pick.confidence;
+                                const pointsEarned = game.pick.points_earned || 0;
+                                const userPickedTeam = game.pick.team_picked;
+                                
+                                // Determine the user's picked team score
+                                let userPickedTeamScore = 0;
+                                let opposingTeamScore = 0;
+
+                                if (userPickedTeam === game.home_team) {
+                                    userPickedTeamScore = homeScore;
+                                    opposingTeamScore = awayScore;
+                                } else if (userPickedTeam === game.away_team) {
+                                    userPickedTeamScore = awayScore;
+                                    opposingTeamScore = homeScore;
+                                }
+
+                                // Compare scores if the game is in progress or final
+                                if (game.status === 'Final' || game.status === 'In Progress') {
+                                    if (userPickedTeamScore > opposingTeamScore) {
+                                        isWinning = true;
+                                    }
+                                }
+
+                                // Set row class based on winning or losing status
+                                row.className = isWinning ? 'winning' : (game.status ? 'losing' : 'pending');
+
+                                // Populate cells
+                                row.innerHTML = `
+                                    <td>${game.home_team} vs ${game.away_team}</td>
+                                    <td>${userPickedTeam}</td>
+                                    <td>${userPickConfidence}</td>
+                                    <td>${pointsEarned}</td>
+                                    <td>${game.status || 'Pending'}</td>
+                                `;
+
+                                userPicksList.appendChild(row);
+                            }
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Error fetching user score summary:', error);
+                    });
+            }
+
+            // Call the function initially
+            updateUserScoreBox();
+
+            // Set an interval to update the user score box periodically (e.g., every 5 minutes)
+            setInterval(updateUserScoreBox, 300000); // Update every 5 minutes
+
+            // Existing code to handle live scores
             // Set up the SSE connection to receive live scores
             const eventSource = new EventSource('/stream-live-scores');
 
