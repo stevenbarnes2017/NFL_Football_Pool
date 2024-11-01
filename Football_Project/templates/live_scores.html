@@ -180,7 +180,7 @@
 
             // Filter to show only "In Progress" or "Final" games
             const filteredGamePicks = data.game_picks.filter(game => 
-                game.status === 'In Progress' || game.status === 'Final'
+                game.status === 'STATUS_IN_PROGRESS' || game.status === 'STATUS_FINAL'
             );
 
             if (filteredGamePicks.length === 0) {
