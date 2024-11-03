@@ -86,149 +86,104 @@
     </style>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            var previousScores = {};  // Store previous scores for comparison
-            var defaultLogo = '/static/images/default.png';  // Fallback logo if the team logo is missing
+      document.addEventListener('DOMContentLoaded', function () {
+    var previousScores = {};  // Store previous scores for comparison
+    var defaultLogo = '/static/images/default.png';  // Fallback logo if the team logo is missing
 
-            // Function to update the scoreboard with enhanced game details
-            function updateScoreboard(newScores, scoreboardElement) {
-                if (!scoreboardElement) {
-                    console.error("Scoreboard element not found");
-                    return;
+    // Function to update the scoreboard with enhanced game details
+    function updateScoreboard(newScores, scoreboardElement) {
+        if (!scoreboardElement) {
+            console.error("Scoreboard element not found");
+            return;
+        }
+
+        newScores.forEach(function (game) {
+            var gameKey = game.home_team + ' vs ' + game.away_team;
+            var previousGame = previousScores[gameKey];
+
+            if (!previousGame || previousGame.home_score !== game.home_score || 
+                previousGame.away_score !== game.away_score || previousGame.status !== game.status ||
+                previousGame.clock !== game.clock || previousGame.down !== game.down || previousGame.distance !== game.distance) {
+
+                var gameElement = document.getElementById(gameKey);
+                console.log('Game ID:', game.game_id);
+
+                if (!gameElement) {
+                    gameElement = document.createElement('div');
+                    gameElement.id = gameKey;
+                    gameElement.classList.add('game-card');
+
+                    var gameLink = document.createElement('a');
+                    gameLink.href = `/game_details/${game.game_id}`;
+                    gameLink.appendChild(gameElement);
+                    scoreboardElement.appendChild(gameLink);
                 }
 
-                newScores.forEach(function (game) {
-                    var gameKey = game.home_team + ' vs ' + game.away_team;
-                    var previousGame = previousScores[gameKey];
+                var homeTeamLogo = `/static/images/${game.home_team}.png`;
+                var awayTeamLogo = `/static/images/${game.away_team}.png`;
 
-                    // Only update if the score or status has changed
-                    if (!previousGame || previousGame.home_score !== game.home_score || 
-                        previousGame.away_score !== game.away_score || previousGame.status !== game.status ||
-                        previousGame.clock !== game.clock || previousGame.down !== game.down || previousGame.distance !== game.distance) {
+                var possessionHighlight = (game.possession && game.possession === game.home_team) 
+                    ? 'possession-highlight' : '';
+                var awayPossessionHighlight = (game.possession && game.possession === game.away_team) 
+                    ? 'possession-highlight' : '';
 
-                        var gameElement = document.getElementById(gameKey);
-                        console.log('Game ID:', game.game_id);
-                        // Create a new game card if it doesn't exist
-                        if (!gameElement) {
-                            gameElement = document.createElement('div');
-                            gameElement.id = gameKey;
-                            gameElement.classList.add('game-card');
-
-                            // Wrap the game card with a link to the game details
-                            var gameLink = document.createElement('a');
-                            gameLink.href = `/game_details/${game.game_id}`;
-                            gameLink.appendChild(gameElement);  // Game card inside the link
-                            scoreboardElement.appendChild(gameLink);
-                        }
-
-                        // Fallback to default logo if team's logo isn't available
-                        var homeTeamLogo = `/static/images/${game.home_team}.png`;
-                        var awayTeamLogo = `/static/images/${game.away_team}.png`;
-
-                        // Highlight the possession team
-                        var possessionHighlight = (game.possession && game.possession === game.home_team) 
-                            ? 'possession-highlight' : '';
-                        var awayPossessionHighlight = (game.possession && game.possession === game.away_team) 
-                            ? 'possession-highlight' : '';
-
-                        // Set the innerHTML of the game card with the enhanced information
-                        gameElement.innerHTML = `
-                            <div class="team-logos">
-                                <div class="team-logo ${possessionHighlight}">
-                                    <img src="${homeTeamLogo}" alt="${game.home_team} logo" onerror="this.onerror=null;this.src='${defaultLogo}'">
-                                </div>
-                                <div class="team-logo ${awayPossessionHighlight}">
-                                    <img src="${awayTeamLogo}" alt="${game.away_team} logo" onerror="this.onerror=null;this.src='${defaultLogo}'">
-                                </div>
-                            </div>
-                            <div class="score">
-                                ${game.home_team} ${game.home_score} - ${game.away_team} ${game.away_score}
-                                <span class="game-status">${game.status}</span>
-                            </div>
-                            <div class="game-details">
-                                <div>Clock: ${game.clock} (Q${game.period})</div>
-                                <div>Possession: <span class="${game.possession ? 'possession-highlight' : ''}">${game.possession ? game.possession : 'None'}</span></div>
-                                <div>Down & Distance: ${game.down ? `Down ${game.down} & ${game.distance} yards` : 'N/A'}</div>
-                                <div>Yard Line: ${game.yardLine !== null ? game.yardLine : 'N/A'}</div>
-                            </div>
-                        `;
-                    }
-
-                    // Save the current game data to the previousScores object
-                    previousScores[gameKey] = game;
-                });
+                gameElement.innerHTML = `
+                    <div class="team-logos">
+                        <div class="team-logo ${possessionHighlight}">
+                            <img src="${homeTeamLogo}" alt="${game.home_team} logo" onerror="this.onerror=null;this.src='${defaultLogo}'">
+                        </div>
+                        <div class="team-logo ${awayPossessionHighlight}">
+                            <img src="${awayTeamLogo}" alt="${game.away_team} logo" onerror="this.onerror=null;this.src='${defaultLogo}'">
+                        </div>
+                    </div>
+                    <div class="score">
+                        ${game.home_team} ${game.home_score} - ${game.away_team} ${game.away_score}
+                        <span class="game-status">${game.status}</span>
+                    </div>
+                    <div class="game-details">
+                        <div>Clock: ${game.clock} (Q${game.period})</div>
+                        <div>Possession: <span class="${game.possession ? 'possession-highlight' : ''}">${game.possession ? game.possession : 'None'}</span></div>
+                        <div>Down & Distance: ${game.down ? `Down ${game.down} & ${game.distance} yards` : 'N/A'}</div>
+                        <div>Yard Line: ${game.yardLine !== null ? game.yardLine : 'N/A'}</div>
+                    </div>
+                `;
             }
 
-            // Function to update the user's score summary in the floating box
-            function updateUserScoreBox() {
-    fetch('/user_score_summary?format=json&week=current')
+            previousScores[gameKey] = game;
+        });
+    }
+
+    console.log("User score box script loaded.");
+    function updateUserScoreBox() {
+    // Fetch the current week from the server or set it manually
+    const currentWeek = 10; // Replace with dynamic fetching if needed
+    const previousWeek = currentWeek - 1;
+
+    fetch(`/user_score_summary?format=json&week=${previousWeek}`)
         .then(response => response.json())
         .then(data => {
             // Update total points
             const totalPointsElement = document.getElementById('user-total-points');
             totalPointsElement.innerText = 'Total Points: ' + data.user_total_score;
 
-            // Update the heading to indicate the current week
+            // Update the heading to indicate the selected week
             const weekNumberElement = document.getElementById('current-week-number');
-            if (weekNumberElement) {
-                weekNumberElement.innerText = data.selected_week;
-            }
-
+            
             // Update picks table
             const userPicksList = document.getElementById('user-picks-list');
             userPicksList.innerHTML = ''; // Clear existing table rows
 
-            // Filter to show only "In Progress" or "Final" games
-            const filteredGamePicks = data.game_picks.filter(game => 
-                game.status === 'STATUS_IN_PROGRESS' || game.status === 'STATUS_FINAL'
-            );
-
-            if (filteredGamePicks.length === 0) {
-                userPicksList.innerHTML = '<tr><td colspan="5">No games in progress or completed.</td></tr>';
-                return;
-            }
-
-            // Populate table with filtered picks
-            filteredGamePicks.forEach(game => {
+            // Display all game picks without filtering
+            data.game_picks.forEach(game => {
                 if (game.pick) {
                     const row = document.createElement('tr');
 
-                    // Determine if the user's pick is currently winning
-                    let isWinning = false;
-                    const homeScore = game.home_team_score || 0;
-                    const awayScore = game.away_team_score || 0;
-                    const userPickConfidence = game.pick.confidence;
-                    const pointsEarned = game.pick.points_earned || 0;
-                    const userPickedTeam = game.pick.team_picked;
-                    
-                    // Determine the user's picked team score
-                    let userPickedTeamScore = 0;
-                    let opposingTeamScore = 0;
-
-                    if (userPickedTeam === game.home_team) {
-                        userPickedTeamScore = homeScore;
-                        opposingTeamScore = awayScore;
-                    } else if (userPickedTeam === game.away_team) {
-                        userPickedTeamScore = awayScore;
-                        opposingTeamScore = homeScore;
-                    }
-
-                    // Compare scores if the game is in progress or final
-                    if (game.status === 'Final' || game.status === 'In Progress') {
-                        if (userPickedTeamScore > opposingTeamScore) {
-                            isWinning = true;
-                        }
-                    }
-
-                    // Set row class based on winning or losing status
-                    row.className = isWinning ? 'winning' : 'losing';
-
-                    // Populate cells
+                    // Populate table row
                     row.innerHTML = `
                         <td>${game.home_team} vs ${game.away_team}</td>
-                        <td>${userPickedTeam}</td>
-                        <td>${userPickConfidence}</td>
-                        <td>${pointsEarned}</td>
+                        <td>${game.pick.team_picked}</td>
+                        <td>${game.pick.confidence}</td>
+                        <td>${game.pick.points_earned || 0}</td>
                         <td>${game.status}</td>
                     `;
 
@@ -242,45 +197,37 @@
 }
 
 
-            // Call the function initially
-            updateUserScoreBox();
+    updateUserScoreBox();
+    setInterval(updateUserScoreBox, 300000);
 
-            // Set an interval to update the user score box periodically (e.g., every 5 minutes)
-            setInterval(updateUserScoreBox, 300000); // Update every 5 minutes
+    const eventSource = new EventSource('/stream-live-scores');
 
-            // Existing code to handle live scores
-            // Set up the SSE connection to receive live scores
-            const eventSource = new EventSource('/stream-live-scores');
+    eventSource.onmessage = function(event) {
+        console.log('Received data:', event.data);
 
-            eventSource.onmessage = function(event) {
-                console.log('Received data:', event.data);
+        var data = JSON.parse(event.data);
+        var liveScoreboard = document.getElementById('live-scoreboard');
+        var lastWeekHeader = document.getElementById('last-week-header');
+        var lastWeekScoreboard = document.getElementById('last-week-scoreboard');
 
-                var data = JSON.parse(event.data);
-                var liveScoreboard = document.getElementById('live-scoreboard');
-                var lastWeekHeader = document.getElementById('last-week-header');
-                var lastWeekScoreboard = document.getElementById('last-week-scoreboard');
+        if (data.live_games.length > 0) {
+            updateScoreboard(data.live_games, liveScoreboard);
+            lastWeekHeader.style.display = 'none';
+        } 
+        else if (data.last_week_games.length > 0) {
+            lastWeekHeader.style.display = 'block';
+            updateScoreboard(data.last_week_games, lastWeekScoreboard);
+        } 
+        else {
+            liveScoreboard.innerHTML = '<div class="no-games">No games currently available.</div>';
+            lastWeekHeader.style.display = 'none';
+        }
+    };
 
-                // Check if there are live games
-                if (data.live_games.length > 0) {
-                    updateScoreboard(data.live_games, liveScoreboard);
-                    lastWeekHeader.style.display = 'none';
-                } 
-                // If no live games, check for last week's games
-                else if (data.last_week_games.length > 0) {
-                    lastWeekHeader.style.display = 'block';
-                    updateScoreboard(data.last_week_games, lastWeekScoreboard);
-                } 
-                // If no games at all, show a message
-                else {
-                    liveScoreboard.innerHTML = '<div class="no-games">No games currently available.</div>';
-                    lastWeekHeader.style.display = 'none';
-                }
-            };
+    eventSource.onerror = function(err) {
+        console.error('EventSource failed:', err);
+    };
+});
 
-            // Optional: handle errors
-            eventSource.onerror = function(err) {
-                console.error('EventSource failed:', err);
-            };
-        });
     </script>
 {% endblock %}

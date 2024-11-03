@@ -15,30 +15,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def auto_fetch_scores():   
-    logger.info("Executing auto_fetch_scores job") 
-    from Football_Project import create_app
-    app = create_app()
-    with app.app_context():
-        year = 2024
-        seasontype = 2
 
-        try:
-            current_week = get_current_week()
-            previous_week = current_week - 1
-            print(f"Current Week: {current_week}, Fetching scores for Previous Week: {previous_week}")
-
-            games = get_football_scores(year, seasontype, previous_week)
-            result = save_week_scores_to_db(year, seasontype, previous_week)
-            print(f"Result of save_week_scores_to_db: {result}")
-
-            calculate_user_scores(previous_week)
-            print(f"User scores calculated and updated for week {previous_week}.")
-
-        except Exception as e:
-            print(f"Error in auto_fetch_scores: {e}")
-
-        print("Finished running auto_fetch_scores")
 
 
 def save_week_scores_to_db(year, seasontype, weeknum):
@@ -143,8 +120,13 @@ def calculate_user_scores(week):
                    (game.away_team == pick.team_picked and (game.away_team_score > game.home_team_score or (game.home_team_score - game.away_team_score < abs(game.spread)))):
                     points = pick.confidence
 
+
+
+        print(f"The points= {points} for user_id: {pick.user_id}, game_id: {pick.game_id}")
+
         # Update the points_earned field
         pick.points_earned = points
+        print("The points= {points}")
         db.session.add(pick)
 
         # Sum up the user's total points for the week
@@ -155,7 +137,7 @@ def calculate_user_scores(week):
 
     # Commit the updated points_earned values to the database
     db.session.commit()
-
+    
     # Save or update the user scores for this week in the UserScore table
     for user_id, score in user_scores.items():
         user_score = UserScore.query.filter_by(user_id=user_id, week=week).first()
@@ -164,12 +146,37 @@ def calculate_user_scores(week):
         else:
             user_score = UserScore(user_id=user_id, week=week, score=score)
             db.session.add(user_score)
-
+    print(f"User Score updated in DB for user_id: {user_id}, week: {week}, score: {score}")
     # Commit the updated user scores for the week
     db.session.commit()
 
     return user_scores  # Return the scores for this week
 
+def auto_fetch_scores():   
+    logger.debug("Executing auto_fetch_scores job") 
+    print("auto_fetch_scores triggered")
+    from Football_Project import create_app
+    app = create_app()
+    with app.app_context():
+        year = 2024
+        seasontype = 2
+
+        try:
+            current_week = get_current_week()
+            previous_week = current_week - 1
+            print(f"Current Week: {current_week}, Fetching scores for Previous Week: {previous_week}")
+
+            games = get_football_scores(year, seasontype, previous_week)
+            result = save_week_scores_to_db(year, seasontype, previous_week)
+            print(f"Result of save_week_scores_to_db: {result}")
+
+            calculate_user_scores(previous_week)
+            print(f"User scores calculated and updated for week {previous_week}.")
+
+        except Exception as e:
+            print(f"Error in auto_fetch_scores: {e}")
+
+        print("Finished running auto_fetch_scores")
 
 
 def get_unpicked_games_for_week(user_picks, week):
@@ -430,9 +437,7 @@ def fetch_live_scores():
 
         # Situation Data (down, distance, possession, yard line)
         situation = competition.get('situation', {})
-
-        # Debugging: Print the entire situation dictionary to check its structure
-        print(f"situation data for game {game.get('id')}: {situation}")
+        
 
         # Default values if data isn't present
         down = situation.get('down')
@@ -464,9 +469,6 @@ def fetch_live_scores():
             'possession': possession_team,
             'yardLine': yard_line,
         })
-
-    # Debugging: Print live games to verify the structure
-    print(f"Live Games: {live_games}")
 
     # Return live games data or fallback to last week's games if no live data
     if not live_games:

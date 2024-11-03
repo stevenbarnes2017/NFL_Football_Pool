@@ -364,24 +364,27 @@ from flask import jsonify, request
 @login_required
 def user_score_summary():
     # Get the selected week from query params, or default to 'all'
-    selected_week = request.args.get('week', 'all')
+    selected_week = request.args.get('week', 'all')  # Initialize here to ensure it always has a value
 
     # Check if the request is coming from the live scores page and wants the current week
     if selected_week == 'current':
         selected_week = get_current_week()
 
+    print(f"week = {selected_week}")
     try:
+        # Convert selected_week to int if it's not 'all'
         if selected_week != 'all':
             selected_week = int(selected_week)
     except ValueError:
         flash("Invalid week selected.", "danger")
         return redirect(url_for('main.user_dashboard'))
 
+    # Ensure current_user_id is defined
     current_user_id = current_user.id
 
     # Fetch total scores based on the selected week
     if selected_week == 'all':
-        # Placeholder logic for fetching scores across all weeks
+        # Fetch scores across all weeks
         user_scores = db.session.query(
             User.id,
             User.username,
@@ -439,6 +442,12 @@ def user_score_summary():
 
         game_picks.append(game_data)
 
+    # Debug logging to verify fetched data
+    import json
+    import logging
+    logging.debug(f"user_total_score: {user_total_score}")
+    logging.debug(f"game_picks: {json.dumps(game_picks, indent=2)}")
+
     # Prepare weeks for the dropdown if needed
     weeks = db.session.query(Game.week).distinct().order_by(Game.week).all()
     weeks = [week[0] for week in weeks]
@@ -460,6 +469,11 @@ def user_score_summary():
             'selected_week': selected_week,
             'weeks': weeks
         }
+
+        # Log the JSON response to verify data
+        logging.debug("Response data for user_score_summary:")
+        logging.debug(json.dumps(response_data, indent=4))
+        print("User Score Summary Data:", response_data)
         return jsonify(response_data)
     else:
         # Render the HTML template as before
@@ -471,6 +485,7 @@ def user_score_summary():
             selected_week=selected_week,
             weeks=weeks
         )
+
 
 
 @main_bp.route('/game_details/<game_id>')

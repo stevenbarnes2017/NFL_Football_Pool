@@ -50,6 +50,8 @@ class Game(db.Model):
 
 
 class UserScore(db.Model):
+    __tablename__ = 'user_score'  # Explicitly specify the table name
+
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     week = db.Column(db.Integer, nullable=False)  # Track scores by week
