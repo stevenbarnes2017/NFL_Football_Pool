@@ -5,8 +5,6 @@ from .models import db, Game, Pick, UserScore
 from get_the_odds import get_current_week
 from football_scores import save_scores_to_db, get_football_scores
 import requests
-from apscheduler.schedulers.background import BackgroundScheduler
-import atexit
 from flask import render_template
 from pytz import timezone  # Add this
 import logging  # Ensure logging is imported at the top
@@ -14,7 +12,18 @@ import logging  # Ensure logging is imported at the top
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Global variable to store the latest live scores
+latest_scores = {"status": "No live scores available"}
 
+# Function to fetch live scores (replace with actual implementation)
+def fetch_live_scores():
+    # Placeholder example: replace with actual code that fetches live scores
+    return {"score": "Example score data"}
+
+# Scheduler job to update live scores every minute
+def auto_fetch_scores():
+    global latest_scores  # Declare global to modify it across the app
+    latest_scores = fetch_live_scores()  # Update the latest scores
 
 
 

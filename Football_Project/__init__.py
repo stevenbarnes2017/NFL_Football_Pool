@@ -59,6 +59,12 @@ def create_app():
         replace_existing=True
         )
 
+         # Add jobs to fetch scores every minute and during specific hours
+        # Add jobs to fetch scores every minute and during specific hours
+        scheduler.add_job(auto_fetch_scores, 'interval', minutes=1, id="auto_fetch_scores_test", replace_existing=True)
+        scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='sun', hour='12-23', minute='*/1', id="auto_fetch_scores_sun", replace_existing=True)
+        scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='thu,mon', hour='19-23', minute='*/1', id="auto_fetch_scores_thu_mon", replace_existing=True)
+
         # Set cron-based jobs for Sundays, Thursdays, and Mondays
         scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='sun', hour='12-23', minute='*/1', id=job_id, replace_existing=True)
         scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='thu,mon', hour='19-23', minute='*/1', id=job_id, replace_existing=True)

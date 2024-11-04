@@ -6,7 +6,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 from .extensions import db
 from Football_Project.get_the_odds import get_nfl_spreads, save_to_csv
-from Football_Project.utils import fetch_detailed_game_stats, group_games_by_day, get_saved_games, get_unpicked_games_for_week, fetch_live_scores, lock_picks_for_commenced_games, get_highest_available_confidence, save_pick_to_db, convert_to_utc
+from Football_Project.utils import fetch_detailed_game_stats, group_games_by_day, get_saved_games, get_unpicked_games_for_week, fetch_live_scores, lock_picks_for_commenced_games, get_highest_available_confidence, save_pick_to_db, convert_to_utc, latest_scores
 from get_the_odds import get_current_week
 from sqlalchemy import func
 from dateutil import parser
@@ -25,6 +25,8 @@ from dateutil import parser  # This helps to handle parsing strings to datetime
 
 
 main_bp = Blueprint('main', __name__)
+
+
 
 @main_bp.route('/')
 def index():
@@ -583,15 +585,8 @@ def nfl_picks():
 import json
 @main_bp.route('/stream-live-scores')
 def stream_live_scores():
-    def event_stream():
-        while True:
-            # Fetch the live scores (or last week's scores) every 30 seconds
-            scores_data = fetch_live_scores()
-            yield f"data: {json.dumps(scores_data)}\n\n"  # Convert to JSON string
-            time.sleep(30)  # Update every 30 seconds
-
-    return Response(event_stream(), content_type='text/event-stream')
-
+    # Serve the latest cached scores as a Server-Sent Event
+    return Response(f"data: {json.dumps(latest_scores)}\n\n", content_type='text/event-stream')
 
 # Route to render the live scoreboard page
 @main_bp.route('/live-scores')
