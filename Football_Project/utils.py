@@ -5,8 +5,6 @@ from .models import db, Game, Pick, UserScore
 from get_the_odds import get_current_week
 from football_scores import save_scores_to_db, get_football_scores
 import requests
-from apscheduler.schedulers.background import BackgroundScheduler
-import atexit
 from flask import render_template
 from pytz import timezone  # Add this
 import logging  # Ensure logging is imported at the top

@@ -31,7 +31,7 @@
     </div>
 
     <style>
-        /* Existing styles */
+        /* Floating box for user summary */
         .floating-box {
             position: fixed;
             top: 110px;
@@ -50,23 +50,111 @@
             margin-top: 0;
         }
 
+        /* Table styling */
         #user-picks-table {
             width: 100%;
             border-collapse: collapse;
             font-size: 0.9em;
         }
-
         #user-picks-table th, #user-picks-table td {
             padding: 5px;
             text-align: left;
             border-bottom: 1px solid #ddd;
         }
-
         #user-picks-table th {
             background-color: #f2f2f2;
             color: black;
             font-weight: bold;
         }
+
+        /* Styling for game card layout */
+        .game-card {
+            display: flex;
+            flex-direction: column;
+            padding: 15px;
+            border: 1px solid #ddd;
+            margin-bottom: 12px;
+            border-radius: 8px;
+            background-color: #ffffff;
+            text-align: left;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .game-card:hover {
+            transform: scale(1.02);
+            background-color: #f9f9f9;
+        }
+
+        .game-card a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        /* Team logos and scores */
+        .team-logos {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .team-logo img {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: 1px solid #ddd;
+            transition: box-shadow 0.3s ease;
+        }
+
+        .team-logo img:hover {
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .score {
+            display: flex;
+            justify-content: center;
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #333;
+            margin: 8px 0;
+        }
+
+        .team-score {
+            flex: 1;
+            text-align: center;
+        }
+
+        .vs-divider {
+            font-weight: normal;
+            color: #888;
+        }
+
+        /* Game details styling */
+        .game-details {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #ddd;
+            color: #555;
+            font-size: 0.9em;
+        }
+
+        .game-details div {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .game-details span {
+            font-weight: bold;
+        }
+
+        /* Row colors for winning and losing picks */
+        .winning { color: green; }
+        .losing { color: red; }
+        .pending { color: gray; }
     </style>
 
     <script>
@@ -77,23 +165,21 @@
         const userTotalPoints = document.getElementById('user-total-points');
         const userPicksList = document.getElementById('user-picks-list');
         const currentWeekElement = document.getElementById('current-week-number');
-        const previousScores = {};
         const defaultLogo = '/static/images/default.png';
 
-        // Function to update NFL scoreboard
+        // Fetch live scores every 30 seconds
         function fetchLiveScores() {
             fetch('/stream-live-scores')
                 .then(response => response.json())
                 .then(data => {
-                    console.log('Fetched live scores:', data);
                     updateScoreboard(data);
                 })
                 .catch(error => console.error('Error fetching live scores:', error));
         }
 
         function updateScoreboard(data) {
-            liveScoreboard.innerHTML = '';  // Clear current scoreboard
-            lastWeekScoreboard.innerHTML = '';  // Clear last week's scoreboard
+            liveScoreboard.innerHTML = '';  
+            lastWeekScoreboard.innerHTML = '';  
 
             if (data.live_games && data.live_games.length > 0) {
                 data.live_games.forEach(game => renderGame(game, liveScoreboard));
@@ -108,44 +194,40 @@
         }
 
         function renderGame(game, container) {
-            const gameKey = game.home_team + ' vs ' + game.away_team;
-
-            let gameElement = document.getElementById(gameKey);
-            if (!gameElement) {
-                gameElement = document.createElement('div');
-                gameElement.id = gameKey;
-                gameElement.classList.add('game-card');
-                container.appendChild(gameElement);
-            }
+            const gameCard = document.createElement('div');
+            gameCard.classList.add('game-card');
 
             const homeTeamLogo = `/static/images/${game.home_team}.png`;
             const awayTeamLogo = `/static/images/${game.away_team}.png`;
-            const possessionHighlight = game.possession === game.home_team ? 'possession-highlight' : '';
-            const awayPossessionHighlight = game.possession === game.away_team ? 'possession-highlight' : '';
 
-            gameElement.innerHTML = `
-                <div class="team-logos">
-                    <div class="team-logo ${possessionHighlight}">
-                        <img src="${homeTeamLogo}" alt="${game.home_team} logo" onerror="this.onerror=null;this.src='${defaultLogo}'">
+            gameCard.innerHTML = `
+                <a href="/game_details/${game.game_id}">
+                    <div class="team-logos">
+                        <div class="team-logo">
+                            <img src="${homeTeamLogo}" alt="${game.home_team} logo" onerror="this.onerror=null;this.src='${defaultLogo}'">
+                        </div>
+                        <div class="team-logo">
+                            <img src="${awayTeamLogo}" alt="${game.away_team} logo" onerror="this.onerror=null;this.src='${defaultLogo}'">
+                        </div>
                     </div>
-                    <div class="team-logo ${awayPossessionHighlight}">
-                        <img src="${awayTeamLogo}" alt="${game.away_team} logo" onerror="this.onerror=null;this.src='${defaultLogo}'">
+                    <div class="score">
+                        <div class="team-score">${game.home_team} ${game.home_score}</div>
+                        <div class="vs-divider">vs</div>
+                        <div class="team-score">${game.away_team} ${game.away_score}</div>
                     </div>
-                </div>
-                <div class="score">
-                    ${game.home_team} ${game.home_score} - ${game.away_team} ${game.away_score}
-                    <span class="game-status">${game.status}</span>
-                </div>
-                <div class="game-details">
-                    <div>Clock: ${game.clock} (Q${game.period})</div>
-                    <div>Possession: ${game.possession || 'None'}</div>
-                    <div>Down & Distance: ${game.down ? `Down ${game.down} & ${game.distance} yards` : 'N/A'}</div>
-                    <div>Yard Line: ${game.yardLine || 'N/A'}</div>
-                </div>
+                    <div class="game-details">
+                        <div><span>Status:</span> ${game.status}</div>
+                        <div><span>Clock:</span> ${game.clock} (Q${game.period})</div>
+                        <div><span>Possession:</span> ${game.possession || 'None'}</div>
+                        <div><span>Down & Distance:</span> ${game.down ? `Down ${game.down} & ${game.distance} yards` : 'N/A'}</div>
+                        <div><span>Yard Line:</span> ${game.yardLine !== null ? game.yardLine : 'N/A'}</div>
+                    </div>
+                </a>
             `;
+            container.appendChild(gameCard);
         }
 
-        // Fetch and update user score summary
+        // Update user score summary box every 5 minutes
         function updateUserScoreBox() {
             const currentWeek = 10;
             const previousWeek = currentWeek - 1;
@@ -155,8 +237,7 @@
                 .then(data => {
                     userTotalPoints.innerText = 'Total Points: ' + data.user_total_score;
                     currentWeekElement.innerText = previousWeek;
-
-                    userPicksList.innerHTML = '';  // Clear existing rows
+                    userPicksList.innerHTML = '';  
 
                     data.game_picks.forEach(game => {
                         if (game.pick) {
@@ -177,11 +258,11 @@
                 });
         }
 
-        // Initial fetches and intervals for updates
+        // Initial fetches and intervals
         fetchLiveScores();
-        setInterval(fetchLiveScores, 30000);  // Update live scores every 30 seconds
+        setInterval(fetchLiveScores, 30000);  
         updateUserScoreBox();
-        setInterval(updateUserScoreBox, 300000);  // Update user score every 5 minutes
+        setInterval(updateUserScoreBox, 300000);  
       });
     </script>
 {% endblock %}

@@ -26,6 +26,8 @@ from dateutil import parser  # This helps to handle parsing strings to datetime
 
 main_bp = Blueprint('main', __name__)
 
+
+
 @main_bp.route('/')
 def index():
     # If the user is authenticated, redirect them to the dashboard
