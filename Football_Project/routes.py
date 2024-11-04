@@ -6,7 +6,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 from .extensions import db
 from Football_Project.get_the_odds import get_nfl_spreads, save_to_csv
-from Football_Project.utils import fetch_detailed_game_stats, group_games_by_day, get_saved_games, get_unpicked_games_for_week, fetch_live_scores, lock_picks_for_commenced_games, get_highest_available_confidence, save_pick_to_db, convert_to_utc
+from Football_Project.utils import fetch_detailed_game_stats, group_games_by_day, get_saved_games, get_unpicked_games_for_week, live_scores_cache, lock_picks_for_commenced_games, get_highest_available_confidence, save_pick_to_db, convert_to_utc, fetch_live_scores
 from get_the_odds import get_current_week
 from sqlalchemy import func
 from dateutil import parser
@@ -470,10 +470,7 @@ def user_score_summary():
             'weeks': weeks
         }
 
-        # Log the JSON response to verify data
-        logging.debug("Response data for user_score_summary:")
-        logging.debug(json.dumps(response_data, indent=4))
-        print("User Score Summary Data:", response_data)
+       
         return jsonify(response_data)
     else:
         # Render the HTML template as before
@@ -583,15 +580,13 @@ def nfl_picks():
 import json
 @main_bp.route('/stream-live-scores')
 def stream_live_scores():
-    def event_stream():
-        while True:
-            # Fetch the live scores (or last week's scores) every 30 seconds
-            scores_data = fetch_live_scores()
-            yield f"data: {json.dumps(scores_data)}\n\n"  # Convert to JSON string
-            time.sleep(30)  # Update every 30 seconds
-
-    return Response(event_stream(), content_type='text/event-stream')
-
+    print("Returning live scores:", live_scores_cache)  # Debugging line
+    if not live_scores_cache.get('live_games') and not live_scores_cache.get('last_week_games'):
+        # Fallback if no cached data
+        fallback_data = fetch_live_scores()
+        return jsonify(fallback_data)
+    
+    return jsonify(live_scores_cache)
 
 # Route to render the live scoreboard page
 @main_bp.route('/live-scores')

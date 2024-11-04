@@ -15,7 +15,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+# Cache for scores
+live_scores_cache = {'live_games': [], 'last_week_games': None}
 
+def fetch_and_cache_scores():
+    global live_scores_cache
+    live_scores_cache = fetch_live_scores()
+    
 
 
 def save_week_scores_to_db(year, seasontype, weeknum):
@@ -122,11 +128,11 @@ def calculate_user_scores(week):
 
 
 
-        print(f"The points= {points} for user_id: {pick.user_id}, game_id: {pick.game_id}")
+        
 
         # Update the points_earned field
         pick.points_earned = points
-        print("The points= {points}")
+        
         db.session.add(pick)
 
         # Sum up the user's total points for the week

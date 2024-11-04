@@ -6,7 +6,7 @@ from flask_login import LoginManager
 from flask_migrate import Migrate
 from .models import User
 from .extensions import db
-from .utils import auto_fetch_scores
+from .utils import auto_fetch_scores, fetch_and_cache_scores
 import atexit
 import logging
 
@@ -58,7 +58,8 @@ def create_app():
         id="auto_fetch_scores_test",
         replace_existing=True
         )
-
+        # Schedule to update scores every minute
+        scheduler.add_job(fetch_and_cache_scores, 'interval', minutes=1, id="live_scores_cache_job", replace_existing=True)
         # Set cron-based jobs for Sundays, Thursdays, and Mondays
         scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='sun', hour='12-23', minute='*/1', id=job_id, replace_existing=True)
         scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='thu,mon', hour='19-23', minute='*/1', id=job_id, replace_existing=True)
