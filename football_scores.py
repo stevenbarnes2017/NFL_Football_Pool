@@ -91,8 +91,7 @@ def main():
 
 def save_scores_to_db(games, week):
         if games:
-            for game in games:
-                print(f"Saving game: {game}")
+            for game in games:                
                 existing_game = Game.query.filter_by(
                     home_team=game['home_team'],
                     away_team=game['away_team'],
