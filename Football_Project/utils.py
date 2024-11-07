@@ -5,8 +5,6 @@ from .models import db, Game, Pick, UserScore
 from get_the_odds import get_current_week
 from football_scores import save_scores_to_db, get_football_scores
 import requests
-from apscheduler.schedulers.background import BackgroundScheduler
-import atexit
 from flask import render_template
 from pytz import timezone  # Add this
 import logging  # Ensure logging is imported at the top
@@ -15,30 +13,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def auto_fetch_scores():   
-    logger.info("Executing auto_fetch_scores job") 
-    from Football_Project import create_app
-    app = create_app()
-    with app.app_context():
-        year = 2024
-        seasontype = 2
+# Cache for scores
+live_scores_cache = {'live_games': [], 'last_week_games': None}
 
-        try:
-            current_week = get_current_week()
-            previous_week = current_week - 1
-            print(f"Current Week: {current_week}, Fetching scores for Previous Week: {previous_week}")
-
-            games = get_football_scores(year, seasontype, previous_week)
-            result = save_week_scores_to_db(year, seasontype, previous_week)
-            print(f"Result of save_week_scores_to_db: {result}")
-
-            calculate_user_scores(previous_week)
-            print(f"User scores calculated and updated for week {previous_week}.")
-
-        except Exception as e:
-            print(f"Error in auto_fetch_scores: {e}")
-
-        print("Finished running auto_fetch_scores")
+def fetch_and_cache_scores():
+    global live_scores_cache
+    live_scores_cache = fetch_live_scores()
+    
 
 
 def save_week_scores_to_db(year, seasontype, weeknum):
@@ -143,8 +124,13 @@ def calculate_user_scores(week):
                    (game.away_team == pick.team_picked and (game.away_team_score > game.home_team_score or (game.home_team_score - game.away_team_score < abs(game.spread)))):
                     points = pick.confidence
 
+
+
+        
+
         # Update the points_earned field
         pick.points_earned = points
+        
         db.session.add(pick)
 
         # Sum up the user's total points for the week
@@ -155,7 +141,7 @@ def calculate_user_scores(week):
 
     # Commit the updated points_earned values to the database
     db.session.commit()
-
+    
     # Save or update the user scores for this week in the UserScore table
     for user_id, score in user_scores.items():
         user_score = UserScore.query.filter_by(user_id=user_id, week=week).first()
@@ -164,12 +150,37 @@ def calculate_user_scores(week):
         else:
             user_score = UserScore(user_id=user_id, week=week, score=score)
             db.session.add(user_score)
-
+    print(f"User Score updated in DB for user_id: {user_id}, week: {week}, score: {score}")
     # Commit the updated user scores for the week
     db.session.commit()
 
     return user_scores  # Return the scores for this week
 
+def auto_fetch_scores():   
+    logger.debug("Executing auto_fetch_scores job") 
+    print("auto_fetch_scores triggered")
+    from Football_Project import create_app
+    app = create_app()
+    with app.app_context():
+        year = 2024
+        seasontype = 2
+
+        try:
+            current_week = get_current_week()
+            previous_week = current_week - 1
+            print(f"Current Week: {current_week}, Fetching scores for Previous Week: {previous_week}")
+
+            games = get_football_scores(year, seasontype, previous_week)
+            result = save_week_scores_to_db(year, seasontype, previous_week)
+            print(f"Result of save_week_scores_to_db: {result}")
+
+            calculate_user_scores(previous_week)
+            print(f"User scores calculated and updated for week {previous_week}.")
+
+        except Exception as e:
+            print(f"Error in auto_fetch_scores: {e}")
+
+        print("Finished running auto_fetch_scores")
 
 
 def get_unpicked_games_for_week(user_picks, week):
@@ -430,9 +441,7 @@ def fetch_live_scores():
 
         # Situation Data (down, distance, possession, yard line)
         situation = competition.get('situation', {})
-
-        # Debugging: Print the entire situation dictionary to check its structure
-        print(f"situation data for game {game.get('id')}: {situation}")
+        
 
         # Default values if data isn't present
         down = situation.get('down')
@@ -464,9 +473,6 @@ def fetch_live_scores():
             'possession': possession_team,
             'yardLine': yard_line,
         })
-
-    # Debugging: Print live games to verify the structure
-    print(f"Live Games: {live_games}")
 
     # Return live games data or fallback to last week's games if no live data
     if not live_games:
@@ -599,6 +605,25 @@ def get_user_picks(user_id, week):
     print(f"Retrieved picks for user {user_id} in week {week}: {user_picks}")
 
     return user_picks
+
+
+def get_picks(user_id, week):
+    # Query picks for the specified user and week
+    picks = Pick.query.filter_by(user_id=user_id, week=week).all()
+    # Format the picks data as needed for Excel or email
+    picks_data = [
+        {
+            "home_team": pick.game.home_team,
+            "away_team": pick.game.away_team,
+            "spread": pick.game.spread,
+            "favorite_team": pick.game.favorite_team,
+            "team_picked": pick.team_picked,
+            "confidence": pick.confidence
+        }
+        for pick in picks
+    ]
+    return picks_data
+
 
 
 

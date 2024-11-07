@@ -6,7 +6,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 from .extensions import db
 from Football_Project.get_the_odds import get_nfl_spreads, save_to_csv
-from Football_Project.utils import fetch_detailed_game_stats, group_games_by_day, get_saved_games, get_unpicked_games_for_week, fetch_live_scores, lock_picks_for_commenced_games, get_highest_available_confidence, save_pick_to_db, convert_to_utc
+from Football_Project.utils import fetch_detailed_game_stats, group_games_by_day, get_saved_games, get_unpicked_games_for_week, live_scores_cache, lock_picks_for_commenced_games, get_highest_available_confidence, save_pick_to_db, convert_to_utc, fetch_live_scores, get_picks
 from get_the_odds import get_current_week
 from sqlalchemy import func
 from dateutil import parser
@@ -24,7 +24,10 @@ from dateutil import parser  # This helps to handle parsing strings to datetime
 
 
 
+
 main_bp = Blueprint('main', __name__)
+
+
 
 @main_bp.route('/')
 def index():
@@ -364,24 +367,27 @@ from flask import jsonify, request
 @login_required
 def user_score_summary():
     # Get the selected week from query params, or default to 'all'
-    selected_week = request.args.get('week', 'all')
+    selected_week = request.args.get('week', 'all')  # Initialize here to ensure it always has a value
 
     # Check if the request is coming from the live scores page and wants the current week
     if selected_week == 'current':
         selected_week = get_current_week()
 
+    print(f"week = {selected_week}")
     try:
+        # Convert selected_week to int if it's not 'all'
         if selected_week != 'all':
             selected_week = int(selected_week)
     except ValueError:
         flash("Invalid week selected.", "danger")
         return redirect(url_for('main.user_dashboard'))
 
+    # Ensure current_user_id is defined
     current_user_id = current_user.id
 
     # Fetch total scores based on the selected week
     if selected_week == 'all':
-        # Placeholder logic for fetching scores across all weeks
+        # Fetch scores across all weeks
         user_scores = db.session.query(
             User.id,
             User.username,
@@ -439,6 +445,12 @@ def user_score_summary():
 
         game_picks.append(game_data)
 
+    # Debug logging to verify fetched data
+    import json
+    import logging
+    logging.debug(f"user_total_score: {user_total_score}")
+    logging.debug(f"game_picks: {json.dumps(game_picks, indent=2)}")
+
     # Prepare weeks for the dropdown if needed
     weeks = db.session.query(Game.week).distinct().order_by(Game.week).all()
     weeks = [week[0] for week in weeks]
@@ -460,6 +472,8 @@ def user_score_summary():
             'selected_week': selected_week,
             'weeks': weeks
         }
+
+       
         return jsonify(response_data)
     else:
         # Render the HTML template as before
@@ -471,6 +485,7 @@ def user_score_summary():
             selected_week=selected_week,
             weeks=weeks
         )
+
 
 
 @main_bp.route('/game_details/<game_id>')
@@ -568,23 +583,97 @@ def nfl_picks():
 import json
 @main_bp.route('/stream-live-scores')
 def stream_live_scores():
-    def event_stream():
-        while True:
-            # Fetch the live scores (or last week's scores) every 30 seconds
-            scores_data = fetch_live_scores()
-            yield f"data: {json.dumps(scores_data)}\n\n"  # Convert to JSON string
-            time.sleep(30)  # Update every 30 seconds
-
-    return Response(event_stream(), content_type='text/event-stream')
-
+    print("Returning live scores:", live_scores_cache)  # Debugging line
+    if not live_scores_cache.get('live_games') and not live_scores_cache.get('last_week_games'):
+        # Fallback if no cached data
+        fallback_data = fetch_live_scores()
+        return jsonify(fallback_data)
+    
+    return jsonify(live_scores_cache)
 
 # Route to render the live scoreboard page
 @main_bp.route('/live-scores')
 def live_scores_page():
     return render_template('live_scores.html')
 
+from flask_login import current_user
+from io import BytesIO
+import pandas as pd
+from flask import send_file, request
 
+@main_bp.route('/download_picks')
+def download_picks():
+    # Retrieve the selected week (e.g., from query parameter or default)
+    week = request.args.get('week', 9)  # Default to week 9 or dynamically get this value
+    
+    # Call get_picks with current_user.id and selected week
+    picks_data = get_picks(current_user.id, week)
+    
+    # Convert picks to a DataFrame
+    df = pd.DataFrame(picks_data)
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Picks')
+    output.seek(0)
+    
+    # Send the file as an Excel download
+    return send_file(
+        output, 
+        as_attachment=True, 
+        download_name='picks.xlsx', 
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
 
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+import pandas as pd
+from io import BytesIO
+
+@main_bp.route('/email_picks')
+def email_picks():
+    # Fetch picks data
+    picks_data = get_picks()
+    df = pd.DataFrame(picks_data)
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Picks')
+    output.seek(0)
+
+    # Email setup
+    sender_email = "stevenbarnes50@gmail.com"
+    receiver_email = "stevenbarnes50@gmail.com"
+    subject = "Weekly Picks"
+    body = "Here are the weekly picks attached."
+    password = "Silkyjungle432!"
+
+    # Create MIME message
+    message = MIMEMultipart()
+    message["From"] = sender_email
+    message["To"] = receiver_email
+    message["Subject"] = subject
+    message.attach(MIMEText(body, "plain"))
+
+    # Attach Excel file
+    part = MIMEBase("application", "octet-stream")
+    part.set_payload(output.getvalue())
+    encoders.encode_base64(part)
+    part.add_header("Content-Disposition", f"attachment; filename=picks.xlsx")
+    message.attach(part)
+
+    # Connect to SMTP server and send email
+    try:
+        with smtplib.SMTP("smtp.example.com", 587) as server:  # Update with your SMTP server
+            server.starttls()
+            server.login(sender_email, password)
+            server.sendmail(sender_email, receiver_email, message.as_string())
+        flash("Picks emailed successfully!")
+    except Exception as e:
+        flash(f"Error sending email: {e}")
+    
+    return redirect(url_for('see_picks'))
 
 
     
