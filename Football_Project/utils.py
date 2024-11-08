@@ -111,6 +111,10 @@ def calculate_user_scores(week):
         if not game:
             continue  # Skip if the game is not found
 
+        # Skip games that are not in progress or finished
+        if game.status not in ['STATUS_IN_PROGRESS', 'STATUS_FINAL']:
+            continue
+
         points = 0
         # Ensure that home_team_score, away_team_score, and spread are not None
         if game.home_team_score is not None and game.away_team_score is not None and game.spread is not None:
@@ -123,10 +127,6 @@ def calculate_user_scores(week):
                 if (game.home_team == pick.team_picked and (game.home_team_score > game.away_team_score or (game.away_team_score - game.home_team_score < abs(game.spread)))) or \
                    (game.away_team == pick.team_picked and (game.away_team_score > game.home_team_score or (game.home_team_score - game.away_team_score < abs(game.spread)))):
                     points = pick.confidence
-
-
-
-        
 
         # Update the points_earned field
         pick.points_earned = points
@@ -156,6 +156,7 @@ def calculate_user_scores(week):
 
     return user_scores  # Return the scores for this week
 
+
 def auto_fetch_scores():   
     logger.debug("Executing auto_fetch_scores job") 
     print("auto_fetch_scores triggered")
@@ -167,7 +168,7 @@ def auto_fetch_scores():
 
         try:
             current_week = get_current_week()
-            previous_week = current_week - 1
+            previous_week = current_week
             print(f"Current Week: {current_week}, Fetching scores for Previous Week: {previous_week}")
 
             games = get_football_scores(year, seasontype, previous_week)

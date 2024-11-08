@@ -229,18 +229,22 @@
 
         // Update user score summary box every 5 minutes
         function updateUserScoreBox() {
-            const currentWeek = 10;
-            const previousWeek = currentWeek - 1;
+    // Fetch the current week from the server dynamically
+    fetch('/get_current_week')
+        .then(response => response.json())
+        .then(data => {
+            const currentWeek = data.current_week;  // Use the current week from the server
 
-            fetch(`/user_score_summary?format=json&week=${previousWeek}`)
+            fetch(`/user_score_summary?format=json&week=${currentWeek}`)
                 .then(response => response.json())
                 .then(data => {
                     userTotalPoints.innerText = 'Total Points: ' + data.user_total_score;
-                    currentWeekElement.innerText = previousWeek;
+                    currentWeekElement.innerText = currentWeek;
                     userPicksList.innerHTML = '';  
 
+                    // Filter and render picks only for in-progress or finished games
                     data.game_picks.forEach(game => {
-                        if (game.pick) {
+                        if (game.pick && (game.status === 'STATUS_IN_PROGRESS' || game.status === 'STATUS_FINAL')) {
                             const row = document.createElement('tr');
                             row.innerHTML = `
                                 <td>${game.home_team} vs ${game.away_team}</td>
@@ -256,13 +260,17 @@
                 .catch(error => {
                     console.error('Error fetching user score summary:', error);
                 });
-        }
+        })
+        .catch(error => {
+            console.error('Error fetching current week:', error);
+        });
+}
 
         // Initial fetches and intervals
         fetchLiveScores();
         setInterval(fetchLiveScores, 30000);  
         updateUserScoreBox();
-        setInterval(updateUserScoreBox, 300000);  
+        setInterval(updateUserScoreBox, 30000);  
       });
     </script>
 {% endblock %}

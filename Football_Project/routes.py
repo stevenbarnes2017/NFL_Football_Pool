@@ -248,7 +248,10 @@ def submit_picks():
     return redirect(url_for('main.nfl_picks', week=selected_week))
 
 
-
+@main_bp.route('/get_current_week')
+def current_week():
+    week = get_current_week()  # Call your existing function
+    return jsonify({"current_week": week})
 
   
 
