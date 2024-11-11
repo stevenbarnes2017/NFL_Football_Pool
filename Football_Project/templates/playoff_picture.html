@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+
+{% extends "base.html" %}
+{% block content %}
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NFL Playoff Picture</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <h1 class="main-heading">NFL Playoff Picture</h1>
+
+    <div class="playoff-container">
+        <!-- AFC Column -->
+        <div class="conference-column">
+            <h2>AFC Playoff Picture</h2>
+
+            <!-- Clinched Playoff Spot -->
+            <h3>Clinched Playoff Spot</h3>
+            <div class="team-cards">
+                {% for team in standings['AFC']['clinched'] %}
+                    <div class="team-card">
+                        <img src="{{ team.logo }}" alt="{{ team.name }} logo" class="team-logo">
+                        <h4>{{ team.name }}</h4>
+                        <p>Record: {{ team.wins }}-{{ team.losses }}{% if team.ties > 0 %}-{{ team.ties }}{% endif %}</p>
+                        <p>Points For: {{ team.points_for }}</p>
+                        <p>Points Against: {{ team.points_against }}</p>
+                        <p>Point Differential: {{ team.point_differential }}</p>
+                        <p>Streak: {{ team.streak }}</p>
+                    </div>
+                {% endfor %}
+            </div>
+
+            <!-- In the Hunt -->
+            <h3>In the Hunt</h3>
+            <div class="team-cards">
+                {% for team in standings['AFC']['in_hunt'] %}
+                    <div class="team-card">
+                        <img src="{{ team.logo }}" alt="{{ team.name }} logo" class="team-logo">
+                        <h4>{{ team.name }}</h4>
+                        <p>Record: {{ team.wins }}-{{ team.losses }}{% if team.ties > 0 %}-{{ team.ties }}{% endif %}</p>
+                        <p>Points For: {{ team.points_for }}</p>
+                        <p>Points Against: {{ team.points_against }}</p>
+                        <p>Point Differential: {{ team.point_differential }}</p>
+                        <p>Streak: {{ team.streak }}</p>
+                    </div>
+                {% endfor %}
+            </div>
+
+            <!-- Bubble -->
+            <h3>Bubble</h3>
+            <div class="team-cards">
+                {% for team in standings['AFC']['bubble'] %}
+                    <div class="team-card">
+                        <img src="{{ team.logo }}" alt="{{ team.name }} logo" class="team-logo">
+                        <h4>{{ team.name }}</h4>
+                        <p>Record: {{ team.wins }}-{{ team.losses }}{% if team.ties > 0 %}-{{ team.ties }}{% endif %}</p>
+                        <p>Points For: {{ team.points_for }}</p>
+                        <p>Points Against: {{ team.points_against }}</p>
+                        <p>Point Differential: {{ team.point_differential }}</p>
+                        <p>Streak: {{ team.streak }}</p>
+                    </div>
+                {% endfor %}
+            </div>
+
+            <!-- Eliminated -->
+            <h3>Eliminated</h3>
+            <div class="team-cards">
+                {% for team in standings['AFC']['eliminated'] %}
+                    <div class="team-card">
+                        <img src="{{ team.logo }}" alt="{{ team.name }} logo" class="team-logo">
+                        <h4>{{ team.name }}</h4>
+                        <p>Record: {{ team.wins }}-{{ team.losses }}{% if team.ties > 0 %}-{{ team.ties }}{% endif %}</p>
+                        <p>Points For: {{ team.points_for }}</p>
+                        <p>Points Against: {{ team.points_against }}</p>
+                        <p>Point Differential: {{ team.point_differential }}</p>
+                        <p>Streak: {{ team.streak }}</p>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- NFC Column -->
+        <div class="conference-column">
+            <h2>NFC Playoff Picture</h2>
+
+            <!-- Clinched Playoff Spot -->
+            <h3>Clinched Playoff Spot</h3>
+            <div class="team-cards">
+                {% for team in standings['NFC']['clinched'] %}
+                    <div class="team-card">
+                        <img src="{{ team.logo }}" alt="{{ team.name }} logo" class="team-logo">
+                        <h4>{{ team.name }}</h4>
+                        <p>Record: {{ team.wins }}-{{ team.losses }}{% if team.ties > 0 %}-{{ team.ties }}{% endif %}</p>
+                        <p>Points For: {{ team.points_for }}</p>
+                        <p>Points Against: {{ team.points_against }}</p>
+                        <p>Point Differential: {{ team.point_differential }}</p>
+                        <p>Streak: {{ team.streak }}</p>
+                    </div>
+                {% endfor %}
+            </div>
+
+            <!-- In the Hunt -->
+            <h3>In the Hunt</h3>
+            <div class="team-cards">
+                {% for team in standings['NFC']['in_hunt'] %}
+                    <div class="team-card">
+                        <img src="{{ team.logo }}" alt="{{ team.name }} logo" class="team-logo">
+                        <h4>{{ team.name }}</h4>
+                        <p>Record: {{ team.wins }}-{{ team.losses }}{% if team.ties > 0 %}-{{ team.ties }}{% endif %}</p>
+                        <p>Points For: {{ team.points_for }}</p>
+                        <p>Points Against: {{ team.points_against }}</p>
+                        <p>Point Differential: {{ team.point_differential }}</p>
+                        <p>Streak: {{ team.streak }}</p>
+                    </div>
+                {% endfor %}
+            </div>
+
+            <!-- Bubble -->
+            <h3>Bubble</h3>
+            <div class="team-cards">
+                {% for team in standings['NFC']['bubble'] %}
+                    <div class="team-card">
+                        <img src="{{ team.logo }}" alt="{{ team.name }} logo" class="team-logo">
+                        <h4>{{ team.name }}</h4>
+                        <p>Record: {{ team.wins }}-{{ team.losses }}{% if team.ties > 0 %}-{{ team.ties }}{% endif %}</p>
+                        <p>Points For: {{ team.points_for }}</p>
+                        <p>Points Against: {{ team.points_against }}</p>
+                        <p>Point Differential: {{ team.point_differential }}</p>
+                        <p>Streak: {{ team.streak }}</p>
+                    </div>
+                {% endfor %}
+            </div>
+
+            <!-- Eliminated -->
+            <h3>Eliminated</h3>
+            <div class="team-cards">
+                {% for team in standings['NFC']['eliminated'] %}
+                    <div class="team-card">
+                        <img src="{{ team.logo }}" alt="{{ team.name }} logo" class="team-logo">
+                        <h4>{{ team.name }}</h4>
+                        <p>Record: {{ team.wins }}-{{ team.losses }}{% if team.ties > 0 %}-{{ team.ties }}{% endif %}</p>
+                        <p>Points For: {{ team.points_for }}</p>
+                        <p>Points Against: {{ team.points_against }}</p>
+                        <p>Point Differential: {{ team.point_differential }}</p>
+                        <p>Streak: {{ team.streak }}</p>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+{% endblock %}

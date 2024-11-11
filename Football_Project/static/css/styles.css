@@ -154,8 +154,13 @@ body {
 
 /* Navigation Bar Styling */
 nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
     background-color: #333;
     padding: 15px 0;
+    z-index: 1000; /* Ensures it stays above other elements */
 }
 
 nav .navbar-brand {
@@ -313,9 +318,86 @@ td.favorite-team {
 
 /* Footer Styling */
 footer {
+    width: 100%;
     background-color: #333;
     color: white;
     padding: 15px;
     text-align: center;
-    margin-top: 40px;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+
+.main-heading {
+    font-size: 2.5em;
+    text-align: center;
+    margin: 20px 0;
+}
+
+.playoff-container {
+    display: flex;
+    justify-content: space-around;
+    width: 100%;
+    max-width: 1200px;
+}
+
+.conference-column {
+    flex: 1;
+    margin: 10px;
+    padding: 10px;
+    background-color: #fff;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+}
+
+.conference-column h2 {
+    text-align: center;
+    color: #333;
+}
+
+.team-cards {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-around;
+}
+
+.team-card {
+    background-color: #e9e9e9;
+    width: 200px;
+    margin: 10px;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    text-align: center;
+}
+
+.team-logo {
+    width: 60px;
+    height: 60px;
+    margin-bottom: 10px;
+}
+
+.team-card h4 {
+    margin: 5px 0;
+    font-size: 1.2em;
+}
+
+.team-card p {
+    margin: 5px 0;
+    font-size: 0.9em;
+    color: #555;
+}
+
+.conference-column h3 {
+    text-align: center;
+    margin: 15px 0;
+    font-size: x-large;
 }

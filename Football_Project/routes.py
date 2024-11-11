@@ -12,7 +12,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 from .extensions import db
 from get_the_odds import get_nfl_spreads, save_to_csv
-from Football_Project.utils import fetch_detailed_game_stats, group_games_by_day, get_saved_games, get_unpicked_games_for_week, live_scores_cache, lock_picks_for_commenced_games, get_highest_available_confidence, save_pick_to_db, convert_to_utc, fetch_live_scores, get_picks, send_picks_email
+from Football_Project.utils import fetch_detailed_game_stats, group_games_by_day, get_saved_games, get_unpicked_games_for_week, live_scores_cache, lock_picks_for_commenced_games, get_highest_available_confidence, save_pick_to_db, convert_to_utc, fetch_live_scores, get_picks, send_picks_email, get_nfl_playoff_picture
 from Football_Project.get_the_odds import get_current_week
 from sqlalchemy import func
 from dateutil import parser
@@ -32,6 +32,11 @@ from dateutil import parser  # This helps to handle parsing strings to datetime
 
 
 main_bp = Blueprint('main', __name__)
+
+@main_bp.route('/playoff-picture')
+def playoff_picture():
+    standings = get_nfl_playoff_picture()
+    return render_template('playoff_picture.html', standings=standings)
 
 
 

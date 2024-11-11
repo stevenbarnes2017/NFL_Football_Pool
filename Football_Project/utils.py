@@ -669,8 +669,62 @@ def get_picks(user_id, week):
     ]
     return picks_data
 
+import requests
 
+def get_nfl_playoff_picture():
+    url = "https://site.api.espn.com/apis/v2/sports/football/nfl/standings"
+    response = requests.get(url)
+    
+    if response.status_code != 200:
+        print(f"Error fetching data: {response.status_code}")
+        return None
+    
+    data = response.json()
 
+    # Define conference mapping
+    conference_map = {
+        "American Football Conference": "AFC",
+        "National Football Conference": "NFC"
+    }
+    
+    playoff_picture = {
+        "AFC": {"clinched": [], "in_hunt": [], "bubble": [], "eliminated": []},
+        "NFC": {"clinched": [], "in_hunt": [], "bubble": [], "eliminated": []}
+    }
+    
+    for conference in data['children']:
+        # Map the conference name
+        conf_name = conference_map.get(conference.get('name'), conference.get('name'))
+        
+        # Access the standings entries directly under each conference
+        if 'standings' in conference and 'entries' in conference['standings']:
+            for entry in conference['standings']['entries']:
+                team_data = entry['team']
+                stats = {stat['name']: stat.get('value', 0) for stat in entry['stats']}
+                
+                team_info = {
+                    'name': team_data.get('displayName', 'Unknown Team'),
+                    'logo': team_data.get('logos', [{}])[0].get('href', ''),
+                    'wins': stats.get('wins', 0),
+                    'losses': stats.get('losses', 0),
+                    'ties': stats.get('ties', 0),
+                    'points_for': stats.get('pointsFor', 0),
+                    'points_against': stats.get('pointsAgainst', 0),
+                    'point_differential': stats.get('pointDifferential', 0),
+                    'streak': stats.get('streak', ''),
+                    'division_record': stats.get('divisionWinPercent', 0),
+                    'conference_record': stats.get('conferenceWinPercent', 0),
+                    'playoff_seed': stats.get('playoffSeed')
+                }
 
+                # Classify teams based on playoff seed
+                if team_info['playoff_seed'] and team_info['playoff_seed'] <= 4:
+                    playoff_picture[conf_name]["clinched"].append(team_info)
+                elif team_info['playoff_seed'] and team_info['playoff_seed'] <= 7:
+                    playoff_picture[conf_name]["in_hunt"].append(team_info)
+                elif team_info['playoff_seed']:
+                    playoff_picture[conf_name]["bubble"].append(team_info)
+                else:
+                    playoff_picture[conf_name]["eliminated"].append(team_info)
 
-
+    return playoff_picture
