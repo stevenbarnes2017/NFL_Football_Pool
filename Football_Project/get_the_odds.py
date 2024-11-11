@@ -2,15 +2,15 @@ import requests
 import pandas as pd
 from datetime import datetime, timedelta
 import pytz
-import os
-from pathlib import Path
-#from tkinter import Tk
-#from tkinter.filedialog import asksaveasfilename
-from pathlib import Path
+from Football_Project.models import db, Game
+
+
 
 # Your API key and the base URL for The Odds API
 API_KEY = '0d35bd240841f8d2de6fe3669eece601'
 BASE_URL = f"https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/?apiKey={API_KEY}&regions=us&markets=h2h,spreads&oddsFormat=american"
+
+
 
 # Define time zones
 utc = pytz.utc
@@ -32,44 +32,52 @@ def get_nfl_spreads():
 def get_current_week():
     # Assuming NFL season starts on a known date
     nfl_start_date = datetime(2024, 9, 5)  # Example start date
-    current_date = datetime.now()
+    current_date = datetime.utcnow()
     week = ((current_date - nfl_start_date).days // 7) + 1
     return week
 
 # Function to convert commence time to Mountain Time
 def convert_to_mountain_time(utc_time_str):
+    # Parse the time string and assume it's in UTC
     utc_time = datetime.strptime(utc_time_str, "%Y-%m-%dT%H:%M:%SZ")
     utc_time = utc.localize(utc_time)
+    
+    # Convert to Mountain Time
     mt_time = utc_time.astimezone(mountain)
+    
+    # Return the time as a string in Mountain Time zone
     return mt_time.strftime("%Y-%m-%d %H:%M:%S %Z")
 
 # Function to filter games within the next 7 days
 def is_within_next_7_days(utc_time_str):
-    current_time = datetime.utcnow().replace(tzinfo=utc)
+    current_time = datetime.now(utc)
     game_time = utc.localize(datetime.strptime(utc_time_str, "%Y-%m-%dT%H:%M:%SZ"))
-    return current_time <= game_time <= current_time + timedelta(days=14)
+    
+    return current_time <= game_time <= current_time + timedelta(days=7)
 
 # Function to parse and extract relevant spreads data
 def parse_spreads_data(odds_data):
-    
     games_list = []
+
     for game in odds_data:
         home_team = game['home_team']
         away_team = game['away_team']
         commence_time_utc = game['commence_time']
-        # Add these print statements in parse_spreads_data
-        # Print the home and away teams at the start of each loop iteration
-        print(f"Checking game: {home_team} vs {away_team} at {commence_time_utc}")
-        
+
+        # Filter by games within the next 7 days
         if not is_within_next_7_days(commence_time_utc):
             continue
         
         commence_time_mt = convert_to_mountain_time(commence_time_utc)
-
+        
         for bookmaker in game['bookmakers']:
-            if bookmaker['title'].lower() == "draftkings":
+            # Filter by bookmaker "BetUS"
+            
+            if bookmaker['title'].lower() == "bovada":
+                
                 for market in bookmaker['markets']:
                     if market['key'] == 'spreads':
+                        # Initialize spread variables
                         home_spread = None
                         away_spread = None
                         
@@ -78,7 +86,8 @@ def parse_spreads_data(odds_data):
                                 home_spread = outcome['point']
                             elif outcome['name'] == away_team:
                                 away_spread = outcome['point']
-
+                                
+                        # Determine the favorite team and its spread
                         if home_spread < 0:
                             favorite_team = home_team
                             spread = home_spread
@@ -87,35 +96,39 @@ def parse_spreads_data(odds_data):
                             spread = away_spread
                         else:
                             favorite_team = "Even"
-                            spread = None
+                            spread = None  # No spread if it's even
 
                         games_list.append({
                             "home_team": home_team,
                             "away_team": away_team,
-                            "spread": spread,
-                            "favorite_team": favorite_team,
-                            "commence_time_mt": commence_time_mt
+                            "spread": spread,  # Add favorite spread column
+                            "favorite_team": favorite_team,  # Add favorite team column                            
+                            "commence_time_mt": commence_time_mt  # Use the converted Mountain Time
                         })
 
     return games_list
 
-# Function to save spreads data to CSV in the server's writable directory
-def save_to_csv(games_list, save_path):
-    try:
-        # Save the dataframe to the CSV file
-        df = pd.DataFrame(games_list)
-        df.to_csv(save_path, index=False)
-        print(f"Spreads data saved to {save_path}")
-    except PermissionError as e:
-        print(f"An error occurred: {e}")
-        print("Permission denied. Please check your file permissions.")
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+# Function to save spreads data to CSV
+def save_to_csv(games_list, filename):
+    df = pd.DataFrame(games_list)
+    df.to_csv(filename, index=False)
+    print(f"Spreads data saved to {filename}")
+
+# Main function to fetch, parse, and return NFL spreads
+def main(save_csv=False):
+    games_list, num_of_games = get_nfl_spreads()
+    # Print the games that were parsed
+    print("Number of games found:", num_of_games)
+    print("Games List:")
+    if save_csv:
+        save_to_csv(games_list, 'nfl_spreads_next_7_days.csv')
+    
+    return games_list, num_of_games
 
 # Function to save spreads data to the database
 def save_spreads_to_db(games_list, week):     
-    from app import app, db, Game    
-    with app.app_context():
+    
+    
         for game_data in games_list:
             existing_game = Game.query.filter_by(
                 home_team=game_data['home_team'],
@@ -134,4 +147,9 @@ def save_spreads_to_db(games_list, week):
                 )
                 db.session.add(new_game)
         
-        db.session.commit()  
+        db.session.commit()  # This should be inside the `with` block
+   
+# Run the main function
+if __name__ == "__main__":
+    main(save_csv=True)
+

@@ -1,3 +1,9 @@
+import sys
+import os
+
+# Add the parent directory of the current file to sys.path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+import requests
 from flask import Blueprint, render_template, redirect, url_for, request, flash, send_file, Response
 from dateutil import parser
 from .models import db, Game, Pick, User, Settings, UserScore
@@ -5,9 +11,9 @@ from flask_login import login_required, current_user, login_user, logout_user, l
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 from .extensions import db
-from Football_Project.get_the_odds import get_nfl_spreads, save_to_csv
-from Football_Project.utils import fetch_detailed_game_stats, group_games_by_day, get_saved_games, get_unpicked_games_for_week, live_scores_cache, lock_picks_for_commenced_games, get_highest_available_confidence, save_pick_to_db, convert_to_utc, fetch_live_scores, get_picks
-from get_the_odds import get_current_week
+from get_the_odds import get_nfl_spreads, save_to_csv
+from Football_Project.utils import fetch_detailed_game_stats, group_games_by_day, get_saved_games, get_unpicked_games_for_week, live_scores_cache, lock_picks_for_commenced_games, get_highest_available_confidence, save_pick_to_db, convert_to_utc, fetch_live_scores, get_picks, send_picks_email
+from Football_Project.get_the_odds import get_current_week
 from sqlalchemy import func
 from dateutil import parser
 import time
@@ -174,7 +180,31 @@ def download_spreads():
         return "No data available for download.", 404
 
 
+@main_bp.route('/email_picks', methods=['GET', 'POST'])
+@login_required
+def email_picks():
+    user_id = current_user.id
+    recipient = request.form.get('recipient_email', current_user.email)  # Default to current user's email if not provided
 
+    # Fetch the user's picks from the database for the current week
+    current_week = get_current_week()
+    user_picks = Pick.query.filter_by(user_id=user_id, week=current_week).all()
+
+    # Prepare the picks for the email as a dictionary (Game -> team picked + confidence)
+    user_picks_dict = {}
+    for pick in user_picks:
+        game = f"Game {pick.game_id}"  # You can customize this to use more readable names if needed
+        user_picks_dict[game] = {
+            'team_picked': pick.team_picked,
+            'confidence': pick.confidence
+        }
+
+    # Send the email using the send_picks_email function
+    try:
+        send_picks_email(recipient, user_picks_dict)  # Send email to the specified recipient
+        return jsonify({'message': 'Email sent successfully!'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @main_bp.route('/submit_picks', methods=['POST'])
 @login_required
@@ -274,7 +304,7 @@ def user_dashboard():
     lock_picks_for_commenced_games(current_user.id)
     settings = Settings.query.first()
     current_week = settings.current_week if settings else 1
-    all_weeks = list(range(1, current_week + 1))  # List of all weeks up to the current week
+    all_weeks = list(range(1, current_week ))  # List of all weeks up to the current week
 
     return render_template('user_dashboard.html', name=current_user.username, current_week=current_week, all_weeks=all_weeks, now=datetime.now())
 
@@ -314,6 +344,7 @@ def results():
 @main_bp.route('/user_scores/<int:week>', methods=['GET'])
 @login_required
 def user_scores(week):
+    week = get_current_week()
     # Fetch the current user's pre-calculated score for the given week
     current_user_score = UserScore.query.filter_by(user_id=current_user.id, week=week).first()
     current_user_score = current_user_score.score if current_user_score else 0
@@ -374,9 +405,11 @@ def user_score_summary():
 
     # Check if the request is coming from the live scores page and wants the current week
     if selected_week == 'current':
-        selected_week = get_current_week()
+        selected_week = get_current_week() - 1
+        print(f"nfl start date = {datetime(2024, 9,5).date()}")
+        print(f"current date = {datetime.now().date()}")
 
-    print(f"week = {selected_week}")
+
     try:
         # Convert selected_week to int if it's not 'all'
         if selected_week != 'all':
@@ -627,56 +660,9 @@ def download_picks():
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
 
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
-import pandas as pd
-from io import BytesIO
 
-@main_bp.route('/email_picks')
-def email_picks():
-    # Fetch picks data
-    picks_data = get_picks()
-    df = pd.DataFrame(picks_data)
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Picks')
-    output.seek(0)
 
-    # Email setup
-    sender_email = "stevenbarnes50@gmail.com"
-    receiver_email = "stevenbarnes50@gmail.com"
-    subject = "Weekly Picks"
-    body = "Here are the weekly picks attached."
-    password = "Silkyjungle432!"
 
-    # Create MIME message
-    message = MIMEMultipart()
-    message["From"] = sender_email
-    message["To"] = receiver_email
-    message["Subject"] = subject
-    message.attach(MIMEText(body, "plain"))
-
-    # Attach Excel file
-    part = MIMEBase("application", "octet-stream")
-    part.set_payload(output.getvalue())
-    encoders.encode_base64(part)
-    part.add_header("Content-Disposition", f"attachment; filename=picks.xlsx")
-    message.attach(part)
-
-    # Connect to SMTP server and send email
-    try:
-        with smtplib.SMTP("smtp.example.com", 587) as server:  # Update with your SMTP server
-            server.starttls()
-            server.login(sender_email, password)
-            server.sendmail(sender_email, receiver_email, message.as_string())
-        flash("Picks emailed successfully!")
-    except Exception as e:
-        flash(f"Error sending email: {e}")
-    
-    return redirect(url_for('see_picks'))
 
 
     

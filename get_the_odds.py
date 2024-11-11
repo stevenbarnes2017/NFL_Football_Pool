@@ -31,7 +31,7 @@ def get_nfl_spreads():
 
 def get_current_week():
     # Assuming NFL season starts on a known date
-    nfl_start_date = datetime(2024, 9, 1)  # Example start date
+    nfl_start_date = datetime(2024, 9, 5)  # Example start date
     current_date = datetime.utcnow()
     week = ((current_date - nfl_start_date).days // 7) + 1
     return week

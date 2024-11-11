@@ -2,15 +2,59 @@ from datetime import datetime
 import pytz
 import platform
 from .models import db, Game, Pick, UserScore
-from get_the_odds import get_current_week
+from Football_Project.get_the_odds import get_current_week
 from football_scores import save_scores_to_db, get_football_scores
 import requests
 from flask import render_template
 from pytz import timezone  # Add this
 import logging  # Ensure logging is imported at the top
+import os
+import json
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def send_picks_email(recipient_email, user_picks):
+    # Format the picks into an email-friendly string
+    picks_body = "Here are your picks for the current week:\n\n"
+
+    # Define column widths
+    team_column_width = 25  # Adjust this width as needed
+    
+    # Loop over the dictionary items and extract only team_picked and confidence
+    for details in user_picks.values():
+        team_picked = details.get('team_picked')
+        confidence = details.get('confidence')
+        if team_picked and confidence is not None:
+            picks_body += f"{team_picked}   {confidence}\n"
+
+    # Brevo API endpoint for sending transactional emails
+    url = "https://api.brevo.com/v3/smtp/email"
+
+    # Headers for authorization and content type
+    headers = {
+        "accept": "application/json",
+        "api-key": os.getenv("BREVO_API_KEY"),
+        "content-type": "application/json"
+    }
+
+    # Email content with the formatted picks
+    email_data = {
+        "sender": {"name": "Your Name", "email": "lines31@hotmail.com"},
+        "to": [{"email": recipient_email}],
+        "subject": "Your Weekly Picks",
+        "htmlContent": f"<pre>{picks_body}</pre>"
+    }
+
+    # Send the email using a POST request
+    try:
+        response = requests.post(url, json=email_data, headers=headers)
+        response.raise_for_status()
+        print("Email sent successfully!")
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to send email: {e}")
+        raise
+
 
 
 # Cache for scores

@@ -1,7 +1,7 @@
 # admin/routes.py
 from flask import render_template, request, redirect, url_for, flash, send_file, Blueprint, current_app
 from flask_login import login_required, current_user
-from get_the_odds import get_nfl_spreads, save_spreads_to_db, get_current_week, save_to_csv
+from Football_Project.get_the_odds import get_nfl_spreads, save_spreads_to_db, get_current_week, save_to_csv
 from datetime import datetime, timedelta
 from football_scores import get_football_scores, save_scores_to_csv, save_scores_to_db
 from Football_Project.models import db, Game, Settings, User, UserScore, Pick
