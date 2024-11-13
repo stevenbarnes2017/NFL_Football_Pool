@@ -30,10 +30,20 @@ def get_nfl_spreads():
         return [], 0
 
 def get_current_week():
-    # Assuming NFL season starts on a known date
-    nfl_start_date = datetime(2024, 9, 5)  # Example start date
+    # Define the start date of the NFL season
+    nfl_start_date = datetime(2024, 9, 5)
+    
+    # Get the current date
     current_date = datetime.utcnow()
-    week = ((current_date - nfl_start_date).days // 7) + 1
+    
+    # Calculate the difference in days and weeks
+    days_since_start = (current_date - nfl_start_date).days
+    week = (days_since_start // 7) + 1
+    
+    # If today is Tuesday or later in the week, move to the next week
+    if current_date.weekday() >= 1:  # Monday is 0, Tuesday is 1
+        week += 1
+    
     return week
 
 # Function to convert commence time to Mountain Time
@@ -62,8 +72,7 @@ def parse_spreads_data(odds_data):
     for game in odds_data:
         home_team = game['home_team']
         away_team = game['away_team']
-        commence_time_utc = game['commence_time']
-
+        commence_time_utc = game['commence_time']        
         # Filter by games within the next 7 days
         if not is_within_next_7_days(commence_time_utc):
             continue
@@ -73,7 +82,7 @@ def parse_spreads_data(odds_data):
         for bookmaker in game['bookmakers']:
             # Filter by bookmaker "BetUS"
             
-            if bookmaker['title'].lower() == "bovada":
+            if bookmaker['title'].lower() == "draftkings":
                 
                 for market in bookmaker['markets']:
                     if market['key'] == 'spreads':
