@@ -645,7 +645,7 @@ from flask import send_file, request
 @main_bp.route('/download_picks')
 def download_picks():
     # Retrieve the selected week (e.g., from query parameter or default)
-    week = request.args.get('week', 9)  # Default to week 9 or dynamically get this value
+    week = request.args.get('week', get_current_week())  # Default to week 9 or dynamically get this value
     
     # Call get_picks with current_user.id and selected week
     picks_data = get_picks(current_user.id, week)
