@@ -31,19 +31,21 @@ def get_nfl_spreads():
 
 def get_current_week():
     # Define the start date of the NFL season
-    nfl_start_date = datetime(2024, 9, 5)
-    
-    # Get the current date
+    nfl_start_date = datetime(2024, 9, 5)  # Example start date, a Thursday
+
+    # Get the current date and time
     current_date = datetime.utcnow()
-    
-    # Calculate the difference in days and weeks
+
+    # Calculate the number of days since the start date
     days_since_start = (current_date - nfl_start_date).days
+
+    # Calculate the week number (starting from the first Thursday)
     week = (days_since_start // 7) + 1
-    
-    # If today is Tuesday or later in the week, move to the next week
-    if current_date.weekday() >= 1:  # Monday is 0, Tuesday is 1
-        week += 1
-    
+
+    # Check if today is Monday and prevent incrementing the week early
+    if current_date.weekday() == 0:  # 0 is Monday
+        week -= 1
+
     return week
 
 # Function to convert commence time to Mountain Time
