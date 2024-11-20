@@ -186,8 +186,7 @@
 {% block content %}
 <div class="container">
     <div class="content-box">
-        <h2>Set NFL Picks - Week {{ selected_week }}</h2>
-
+        <h1 class="main-heading" style="margin-top: 50px;">Set NFL Picks - Week {{ selected_week }}</h1>     
         <!-- Week Selection Dropdown -->
         <div class="dropdown-wrapper">
             <form method="POST" action="{{ url_for('main.nfl_picks') }}" class="dropdown-form">

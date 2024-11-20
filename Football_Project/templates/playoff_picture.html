@@ -2,15 +2,11 @@
 <html lang="en">
 
 {% extends "base.html" %}
+{% block title %}NFL Playoff Picture{% endblock %}
 {% block content %}
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NFL Playoff Picture</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-</head>
+
 <body>
-    <h1 class="main-heading">NFL Playoff Picture</h1>
+    <h1 class="main-heading" style="margin-top: 50px;">NFL Playoff Picture</h1>
 
     <div class="playoff-container">
         <!-- AFC Column -->

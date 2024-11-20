@@ -8,6 +8,7 @@
 /* Main Content Styling */
 .main-content {
     margin-top: 60px; /* Adjust this value to match the height of your nav bar */
+    padding: 20px; /* Optional: Add padding if needed */
 }
 /* Body styling for overall consistency */
 body {
@@ -15,7 +16,10 @@ body {
     background-color: #f4f4f4;
     color: #333;
     padding: 10px;
+    
 }
+
+
 
 /* Container settings */
 .container {
@@ -24,6 +28,7 @@ body {
     padding: 20px;
     overflow: visible;
 }
+    
 
 /* Scoreboard Grid: Flexbox for Horizontal Alignment */
 .scoreboard-grid {
@@ -342,7 +347,8 @@ body {
 .main-heading {
     font-size: 2.5em;
     text-align: center;
-    margin: 20px 0;
+    margin: 0 0 20px 0; /* Remove the top margin */
+    padding-top: 20px; /* Optional: Add padding for consistent spacing */
 }
 
 .playoff-container {
