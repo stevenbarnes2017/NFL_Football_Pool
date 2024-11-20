@@ -10,7 +10,7 @@ app = create_app()
 with app.app_context():
     # Load the CSV data using pandas
     try:
-        df = pd.read_csv('import_picks_week9.csv')
+        df = pd.read_csv('import_picks_week11.csv')
         print(df.head())  # Debug: Print the first few rows to ensure CSV is loaded properly
     except Exception as e:
         print(f"Error reading CSV file: {e}")
