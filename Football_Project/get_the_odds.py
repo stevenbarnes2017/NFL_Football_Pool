@@ -30,21 +30,33 @@ def get_nfl_spreads():
         return [], 0
 
 def get_current_week():
-    # Define the start date of the NFL season
-    nfl_start_date = datetime(2024, 9, 5)  # Example start date, a Thursday
+    from datetime import datetime, timedelta
 
-    # Get the current date and time
+    # Define the start date of the NFL season
+    nfl_start_date = datetime(2024, 9, 5)  # Thursday, Week 1 Start
+
+    # Get the current UTC date and time
     current_date = datetime.utcnow()
 
-    # Calculate the number of days since the start date
+    # Align the start date to the nearest Thursday
     days_since_start = (current_date - nfl_start_date).days
 
-    # Calculate the week number (starting from the first Thursday)
+    # Adjust for partial weeks if the season didn't start exactly on the current date's weekday
+    if current_date.weekday() < nfl_start_date.weekday():
+        days_since_start += (7 - nfl_start_date.weekday() + current_date.weekday())
+
+    # Calculate the week number
     week = (days_since_start // 7) + 1
 
-    # Check if today is Monday and prevent incrementing the week early
-    if current_date.weekday() == 0:  # 0 is Monday
+    # Adjust for Monday or early Tuesday morning before transitioning to the next week
+    if current_date.weekday() == 0 or (current_date.weekday() == 1 and current_date.hour < 6):
         week -= 1
+
+    # Ensure the week is within a valid range (1-18)
+    week = max(1, min(week, 18))
+
+    # Debug output for tracing
+    print(f"Debug: Current Date = {current_date}, Days Since Start = {days_since_start}, Calculated Week = {week}")
 
     return week
 
@@ -65,7 +77,7 @@ def is_within_next_7_days(utc_time_str):
     current_time = datetime.now(utc)
     game_time = utc.localize(datetime.strptime(utc_time_str, "%Y-%m-%dT%H:%M:%SZ"))
     
-    return current_time <= game_time <= current_time + timedelta(days=7)
+    return current_time <= game_time <= current_time + timedelta(days=8)
 
 # Function to parse and extract relevant spreads data
 def parse_spreads_data(odds_data):

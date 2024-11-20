@@ -9,6 +9,9 @@ from .extensions import db
 from .utils import auto_fetch_scores, fetch_and_cache_scores
 import atexit
 import logging
+# Import the Mountain timezone
+from pytz import timezone
+
 
 # Define the global variable to track scheduler state
 scheduler_started = False
@@ -44,32 +47,47 @@ def create_app():
     
     global scheduler_started
 
+    # Set the scheduler timezone to Mountain Time
+    mountain_tz = timezone('US/Mountain')
+    scheduler = BackgroundScheduler(timezone=mountain_tz)
     # Scheduler Job Initialization
-    job_id = "auto_fetch_scores_job"
+    #job_id = "auto_fetch_scores_job"
     # Check if the app is running in the main process (to avoid duplicate scheduler instances)
     if not scheduler_started and os.environ.get("WERKZEUG_RUN_MAIN") == "true":
-        # Clear existing jobs to avoid duplicates
+    # Clear existing jobs
         scheduler.remove_all_jobs(jobstore='default')
 
+    # Define game days and hours
+    game_days = ['thu', 'fri', 'sat', 'sun', 'mon']
+    game_hours = {
+        'thu': {'start': 17, 'end': 23},  # 7 PM - 11 PM MT
+        'fri': {'start': 5, 'end': 23},  # Friday evening games
+        'sat': {'start': 5, 'end': 23},  # Saturday all-day games
+        'sun': {'start': 5, 'end': 23},  # Sunday afternoon/evening
+        'mon': {'start': 17, 'end': 23}   # Monday evening games
+    }
+
+    # Add jobs for each game day
+    for day in game_days:
+        hours = game_hours.get(day, {})
         scheduler.add_job(
-        auto_fetch_scores, 
-        'interval', 
-        minutes=1, 
-        id="auto_fetch_scores_test",
-        replace_existing=True
+            fetch_and_cache_scores, 
+            'cron', 
+            day_of_week=day, 
+            hour=f"{hours['start']}-{hours['end']}", 
+            minute='*/5', 
+            id=f"fetch_and_cache_scores_{day}", 
+            replace_existing=True
         )
-        # Schedule to update scores every minute
-        scheduler.add_job(fetch_and_cache_scores, 'interval', minutes=1, id="live_scores_cache_job", replace_existing=True)
-        # Set cron-based jobs for Sundays, Thursdays, and Mondays
-        scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='sun', hour='12-23', minute='*/1', id=job_id, replace_existing=True)
-        scheduler.add_job(auto_fetch_scores, 'cron', day_of_week='thu,mon', hour='19-23', minute='*/1', id=job_id, replace_existing=True)
-        print(f"Job {job_id} added to scheduler.")
-
-        # Start the scheduler and mark it as started
-        scheduler.start()
-        scheduler_started = True
-        print("Scheduler started.")
-
+        scheduler.add_job(
+            auto_fetch_scores, 
+            'cron', 
+            day_of_week=day, 
+            hour=f"{hours['start']}-{hours['end']}", 
+            minute='*/5', 
+            id=f"auto_fetch_scores_{day}", 
+            replace_existing=True
+        )
     # Ensure the scheduler shuts down properly on app exit
     atexit.register(lambda: scheduler.shutdown(wait=False) if scheduler.running else None)
 
