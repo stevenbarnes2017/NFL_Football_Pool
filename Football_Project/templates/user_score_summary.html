@@ -3,89 +3,90 @@
 {% block title %}My Scores and Standings{% endblock %}
 
 {% block content %}
-<h1>Your Scores and User Standings</h1>
+<div class="main-content">
+    <h1>Your Scores and User Standings</h1>
 
-<!-- Form for selecting week -->
-<form action="{{ url_for('main.user_score_summary') }}" method="get">
-    <!-- Week Selection -->
-    <div>
-        <label for="week">Select Week:</label>
-        <select name="week" id="week">
-            <option value="all" {% if selected_week == 'all' %}selected{% endif %}>All Weeks</option>
-            {% for week in weeks %}
-                <option value="{{ week }}" {% if week == selected_week %}selected{% endif %}>Week {{ week }}</option>
+    <!-- Form for selecting week -->
+    <form action="{{ url_for('main.user_score_summary') }}" method="get">
+        <!-- Week Selection -->
+        <div>
+            <label for="week">Select Week:</label>
+            <select name="week" id="week">
+                <option value="all" {% if selected_week == 'all' %}selected{% endif %}>All Weeks</option>
+                {% for week in weeks %}
+                    <option value="{{ week }}" {% if week == selected_week %}selected{% endif %}>Week {{ week }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- View Scores Button -->
+        <div class="mt-4">
+            <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
+                View Scores
+            </button>
+        </div>
+    </form>
+
+    <!-- Display user standings -->
+    <h2 class="mt-6">User Standings {% if selected_week != 'all' %} for Week {{ selected_week }}{% else %} (All Weeks){% endif %}</h2>
+    <table class="min-w-full bg-white">
+        <thead>
+            <tr>
+                <th>Rank</th>
+                <th>Username</th>
+                <th>Total Points</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in user_scores %}
+            <tr class="{% if user.id == current_user.id %}highlight{% endif %}">
+                <td>{{ loop.index }}</td>
+                <td>{{ user.username }}</td>
+                <td>{{ user.total_score }}</td>
+            </tr>
             {% endfor %}
-        </select>
-    </div>
+        </tbody>
+    </table>
 
-    <!-- View Scores Button -->
-    <div class="mt-4">
-        <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
-            View Scores
-        </button>
-    </div>
-</form>
+    <!-- Display total points for the current user -->
+    <h2 class="mt-6">Your Total Points {% if selected_week != 'all' %} for Week {{ selected_week }}{% else %} (All Weeks){% endif %}</h2>
+    <p>Total Points: {{ user_total_score }}</p>
 
-<!-- Display user standings -->
-<h2 class="mt-6">User Standings {% if selected_week != 'all' %} for Week {{ selected_week }}{% else %} (All Weeks){% endif %}</h2>
-<table class="min-w-full bg-white">
-    <thead>
-        <tr>
-            <th>Rank</th>
-            <th>Username</th>
-            <th>Total Points</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for user in user_scores %}
-        <tr class="{% if user.id == current_user.id %}highlight{% endif %}">
-            <td>{{ loop.index }}</td>
-            <td>{{ user.username }}</td>
-            <td>{{ user.total_score }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-
-<!-- Display total points for the current user -->
-<h2 class="mt-6">Your Total Points {% if selected_week != 'all' %} for Week {{ selected_week }}{% else %} (All Weeks){% endif %}</h2>
-<p>Total Points: {{ user_total_score }}</p>
-
-<!-- Display detailed game results for the current user -->
-{% if game_picks %}
-<h2 class="mt-6">Your Game Results {% if selected_week != 'all' %} for Week {{ selected_week }}{% endif %}</h2>
-<table class="min-w-full bg-white">
-    <thead>
-        <tr>
-            <th>Game ID</th>
-            <th>Home Team</th>
-            <th>Away Team</th>
-            <th>Spread</th>
-            <th>Favorite Team</th>
-            <th>Home Team Score</th>
-            <th>Away Team Score</th>
-            <th>Status</th>
-            <th>Confidence</th>
-            <th>Points Earned</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for game in game_picks %}
-        <tr>
-            <td>{{ game.game_id }}</td>
-            <td>{{ game.home_team }}</td>
-            <td>{{ game.away_team }}</td>
-            <td>{{ game.spread }}</td>
-            <td>{{ game.favorite_team }}</td>
-            <td>{{ game.home_team_score }}</td>
-            <td>{{ game.away_team_score }}</td>
-            <td>{{ game.status }}</td>
-            <td>{{ game.pick.confidence if game.pick else 'N/A' }}</td>
-            <td>{{ game.pick.points_earned if game.pick else 'N/A' }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-{% endif %}
-
+    <!-- Display detailed game results for the current user -->
+    {% if game_picks %}
+    <h2 class="mt-6">Your Game Results {% if selected_week != 'all' %} for Week {{ selected_week }}{% endif %}</h2>
+    <table class="min-w-full bg-white">
+        <thead>
+            <tr>
+                <th>Game ID</th>
+                <th>Home Team</th>
+                <th>Away Team</th>
+                <th>Spread</th>
+                <th>Favorite Team</th>
+                <th>Home Team Score</th>
+                <th>Away Team Score</th>
+                <th>Status</th>
+                <th>Confidence</th>
+                <th>Points Earned</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for game in game_picks %}
+            <tr>
+                <td>{{ game.game_id }}</td>
+                <td>{{ game.home_team }}</td>
+                <td>{{ game.away_team }}</td>
+                <td>{{ game.spread }}</td>
+                <td>{{ game.favorite_team }}</td>
+                <td>{{ game.home_team_score }}</td>
+                <td>{{ game.away_team_score }}</td>
+                <td>{{ game.status }}</td>
+                <td>{{ game.pick.confidence if game.pick else 'N/A' }}</td>
+                <td>{{ game.pick.points_earned if game.pick else 'N/A' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
 {% endblock %}

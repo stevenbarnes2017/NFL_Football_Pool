@@ -3,7 +3,7 @@ __pycache__/
 *.py[cod]
 
 # Ignore instance folder if used for local settings or configs
-instance/
+#instance/
 
 # Ignore CSV files if you don’t want to track them (optional)
 *.csv

@@ -5,6 +5,10 @@
     box-sizing: border-box;
 }
 
+/* Main Content Styling */
+.main-content {
+    margin-top: 60px; /* Adjust this value to match the height of your nav bar */
+}
 /* Body styling for overall consistency */
 body {
     font-family: 'Arial', sans-serif;
@@ -158,8 +162,7 @@ nav {
     top: 0;
     left: 0;
     width: 100%;
-    background-color: #333;
-    padding: 15px 0;
+    background-color: #333;    
     z-index: 1000; /* Ensures it stays above other elements */
 }
 
@@ -179,7 +182,7 @@ nav .navbar-links a {
     text-decoration: none;
     font-size: 1.2rem;
     padding: 8px 16px;
-    margin-left: 15px;
+    margin-left: 10px;
     background-color: #333;
     border-radius: 4px;
     transition: background-color 0.3s ease, color 0.3s ease;
