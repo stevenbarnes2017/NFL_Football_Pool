@@ -5,7 +5,7 @@ from .models import db, Game, Pick, UserScore
 from Football_Project.get_the_odds import get_current_week
 from football_scores import save_scores_to_db, get_football_scores
 import requests
-from flask import render_template
+from flask import render_template, current_app
 from pytz import timezone  # Add this
 import logging  # Ensure logging is imported at the top
 import os
@@ -61,8 +61,14 @@ def send_picks_email(recipient_email, user_picks):
 live_scores_cache = {'live_games': [], 'last_week_games': None}
 
 def fetch_and_cache_scores():
-    global live_scores_cache
-    live_scores_cache = fetch_live_scores()
+    """Fetch live scores and update the cache."""
+    try:
+        with current_app.app_context():
+            global live_scores_cache
+            live_scores_cache = fetch_live_scores()
+            print("fetch_and_cache_scores executed successfully")
+    except Exception as e:
+        print(f"Error in fetch_and_cache_scores: {e}")
     
 
 
@@ -201,32 +207,33 @@ def calculate_user_scores(week):
     return user_scores  # Return the scores for this week
 
 
-def auto_fetch_scores():   
-    logger.debug("Executing auto_fetch_scores job") 
-    print("auto_fetch_scores triggered")
-    from Football_Project import create_app
-    app = create_app()
-    with app.app_context():
-        year = 2024
-        seasontype = 2
+def auto_fetch_scores():
+    """Fetch and process scores automatically."""
+    try:
+        logger.debug("Executing auto_fetch_scores job")
+        print("auto_fetch_scores triggered")
 
-        try:
+        # Use the current Flask app context
+        with current_app.app_context():
+            year = 2024
+            seasontype = 2
+
             current_week = get_current_week()
             previous_week = current_week
             print(f"Current Week: {current_week}, Fetching scores for Previous Week: {previous_week}")
 
+            # Fetch and process scores
             games = get_football_scores(year, seasontype, previous_week)
             result = save_week_scores_to_db(year, seasontype, previous_week)
             print(f"Result of save_week_scores_to_db: {result}")
 
+            # Calculate user scores
             calculate_user_scores(previous_week)
             print(f"User scores calculated and updated for week {previous_week}.")
-
-        except Exception as e:
-            print(f"Error in auto_fetch_scores: {e}")
-
+    except Exception as e:
+        print(f"Error in auto_fetch_scores: {e}")
+    finally:
         print("Finished running auto_fetch_scores")
-
 
 def get_unpicked_games_for_week(user_picks, week):
     # Get the IDs of the games the user has already picked
@@ -672,6 +679,8 @@ def get_picks(user_id, week):
 import requests
 
 def get_nfl_playoff_picture():
+    import requests
+
     url = "https://site.api.espn.com/apis/v2/sports/football/nfl/standings"
     response = requests.get(url)
     
@@ -692,7 +701,7 @@ def get_nfl_playoff_picture():
         "NFC": {"clinched": [], "in_hunt": [], "bubble": [], "eliminated": []}
     }
     
-    for conference in data['children']:
+    for conference in data.get('children', []):
         # Map the conference name
         conf_name = conference_map.get(conference.get('name'), conference.get('name'))
         
@@ -700,8 +709,16 @@ def get_nfl_playoff_picture():
         if 'standings' in conference and 'entries' in conference['standings']:
             for entry in conference['standings']['entries']:
                 team_data = entry['team']
-                stats = {stat['name']: stat.get('value', 0) for stat in entry['stats']}
+                stats = {stat['name']: stat.get('value', 0) for stat in entry.get('stats', [])}
                 
+                # Extract the clincher display value if present
+                clincher_stat = next((stat for stat in entry.get('stats', []) if stat['name'] == 'clincher'), {})
+                clincher_display_value = clincher_stat.get('displayValue', '')
+
+                # Determine clinched status based on the display value
+                clinched_playoff = clincher_display_value in ['x', 'y']
+                clinched_division = clincher_display_value in ['y', 'z']
+
                 team_info = {
                     'name': team_data.get('displayName', 'Unknown Team'),
                     'logo': team_data.get('logos', [{}])[0].get('href', ''),
@@ -714,11 +731,13 @@ def get_nfl_playoff_picture():
                     'streak': stats.get('streak', ''),
                     'division_record': stats.get('divisionWinPercent', 0),
                     'conference_record': stats.get('conferenceWinPercent', 0),
-                    'playoff_seed': stats.get('playoffSeed')
+                    'playoff_seed': stats.get('playoffSeed'),
+                    'clinched_playoff': clinched_playoff,
+                    'clinched_division': clinched_division
                 }
 
-                # Classify teams based on playoff seed
-                if team_info['playoff_seed'] and team_info['playoff_seed'] <= 4:
+                # Classify teams based on clinched status and playoff seed
+                if clinched_playoff:
                     playoff_picture[conf_name]["clinched"].append(team_info)
                 elif team_info['playoff_seed'] and team_info['playoff_seed'] <= 7:
                     playoff_picture[conf_name]["in_hunt"].append(team_info)
@@ -728,3 +747,4 @@ def get_nfl_playoff_picture():
                     playoff_picture[conf_name]["eliminated"].append(team_info)
 
     return playoff_picture
+

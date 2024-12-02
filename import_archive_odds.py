@@ -8,7 +8,7 @@ app = create_app()
 app.app_context().push()
 
 # Load the CSV data
-df = pd.read_csv('nfl_spreads_week_9.csv')
+df = pd.read_csv('nfl_spreads_week_12.csv')
 
 # Iterate over each row in the DataFrame and insert it into the database
 for index, row in df.iterrows():

@@ -9,13 +9,24 @@ from .extensions import db
 from .utils import auto_fetch_scores, fetch_and_cache_scores
 import atexit
 import logging
-# Import the Mountain timezone
 from pytz import timezone
+from apscheduler.schedulers.background import BackgroundScheduler
 
+def auto_fetch_scores_with_context(app):
+    """Wrapper for auto_fetch_scores to run with the app context."""
+    with app.app_context():
+        auto_fetch_scores()
+
+def fetch_and_cache_scores_with_context(app):
+    """Wrapper for fetch_and_cache_scores to run with the app context."""
+    with app.app_context():
+        fetch_and_cache_scores()
 
 # Define the global variable to track scheduler state
 scheduler_started = False
-scheduler = BackgroundScheduler()
+
+# Global Scheduler Definition
+scheduler = BackgroundScheduler(timezone=timezone('US/Mountain'))
 
 def create_app():
     app = Flask(__name__)
@@ -44,50 +55,38 @@ def create_app():
     @login_manager.user_loader
     def load_user(user_id):
         return User.query.get(int(user_id))
-    
-    global scheduler_started
 
-    # Set the scheduler timezone to Mountain Time
-    mountain_tz = timezone('US/Mountain')
-    scheduler = BackgroundScheduler(timezone=mountain_tz)
-    # Scheduler Job Initialization
-    #job_id = "auto_fetch_scores_job"
-    # Check if the app is running in the main process (to avoid duplicate scheduler instances)
+    # Start the scheduler only once
+    global scheduler_started
     if not scheduler_started and os.environ.get("WERKZEUG_RUN_MAIN") == "true":
-    # Clear existing jobs
+        scheduler_started = True
+
+        # Remove all existing jobs (if any)
         scheduler.remove_all_jobs(jobstore='default')
 
-    # Define game days and hours
-    game_days = ['thu', 'fri', 'sat', 'sun', 'mon']
-    game_hours = {
-        'thu': {'start': 17, 'end': 23},  # 7 PM - 11 PM MT
-        'fri': {'start': 5, 'end': 23},  # Friday evening games
-        'sat': {'start': 5, 'end': 23},  # Saturday all-day games
-        'sun': {'start': 5, 'end': 23},  # Sunday afternoon/evening
-        'mon': {'start': 17, 'end': 23}   # Monday evening games
-    }
+        # Add jobs to run every 5 minutes during active game times
+        scheduler.add_job(
+            lambda: auto_fetch_scores_with_context(app),
+            'cron',
+            day_of_week='sun, mon, thu, fri, sat',
+            hour='5-23',
+            minute='*/5',
+            id="auto_fetch_scores_job",
+            replace_existing=True
+        )
 
-    # Add jobs for each game day
-    for day in game_days:
-        hours = game_hours.get(day, {})
         scheduler.add_job(
-            fetch_and_cache_scores, 
-            'cron', 
-            day_of_week=day, 
-            hour=f"{hours['start']}-{hours['end']}", 
-            minute='*/5', 
-            id=f"fetch_and_cache_scores_{day}", 
+            lambda: fetch_and_cache_scores_with_context(app),
+            'cron',
+            day_of_week='sun, mon, thu, fri, sat',
+            hour='5-23',
+            minute='*/5',
+            id="fetch_and_cache_scores_job",
             replace_existing=True
         )
-        scheduler.add_job(
-            auto_fetch_scores, 
-            'cron', 
-            day_of_week=day, 
-            hour=f"{hours['start']}-{hours['end']}", 
-            minute='*/5', 
-            id=f"auto_fetch_scores_{day}", 
-            replace_existing=True
-        )
+
+        scheduler.start()
+
     # Ensure the scheduler shuts down properly on app exit
     atexit.register(lambda: scheduler.shutdown(wait=False) if scheduler.running else None)
 
