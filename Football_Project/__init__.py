@@ -32,9 +32,9 @@ def create_app():
     app = Flask(__name__)
 
     # App configuration
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///picks.db'
-    app.config['SECRET_KEY'] = 'password'
-    
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///picks.db')
+    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'password')
+
     # Initialize extensions
     db.init_app(app)
     migrate = Migrate(app, db)
@@ -56,30 +56,29 @@ def create_app():
     def load_user(user_id):
         return User.query.get(int(user_id))
 
-    # Start the scheduler only once
-    global scheduler_started
-    if not scheduler_started and os.environ.get("WERKZEUG_RUN_MAIN") == "true":
-        scheduler_started = True
-
+    # Start the scheduler if no jobs are scheduled
+    if not scheduler.get_jobs():
         # Remove all existing jobs (if any)
         scheduler.remove_all_jobs(jobstore='default')
 
         # Add jobs to run every 5 minutes during active game times
         scheduler.add_job(
-            lambda: auto_fetch_scores_with_context(app),
+            auto_fetch_scores_with_context,
             'cron',
-            day_of_week='sun, mon, thu, fri, sat',
-            hour='5-23',
+            args=[app],
+            day_of_week='sun, mon, tues, thu, fri, sat',
+            hour='1-23',
             minute='*/5',
             id="auto_fetch_scores_job",
             replace_existing=True
         )
 
         scheduler.add_job(
-            lambda: fetch_and_cache_scores_with_context(app),
+            fetch_and_cache_scores_with_context,
             'cron',
-            day_of_week='sun, mon, thu, fri, sat',
-            hour='5-23',
+            args=[app],
+            day_of_week='sun, mon, tues, thu, fri, sat',
+            hour='1-23',
             minute='*/5',
             id="fetch_and_cache_scores_job",
             replace_existing=True
