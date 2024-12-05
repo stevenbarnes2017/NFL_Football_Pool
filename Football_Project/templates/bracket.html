@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+
+{% extends "base.html" %}
+{% block title %}NFL Playoff Bracket{% endblock %}
+{% block head %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bracket.css') }}">
+{% endblock %}
+{% block content %}
+
+<body>
+    <h1 class="main-heading" style="margin-top: 20px; text-align: center;">NFL Playoff Bracket</h1>
+
+    <div class="bracket-container">
+        <!-- AFC Playoff Bracket -->
+        <div class="conference">
+            <h2>AFC Playoff Bracket</h2>
+            
+            <!-- Wildcard Round -->
+            <div class="round">
+                <h3>Wildcard Round</h3>
+                {% for matchup in afc_bracket['wildcard'] %}
+                <div class="matchup">
+                    {% if matchup[0] %}
+                    <div class="team">
+                        <span class="seed">{{ matchup[0]['seed'] }}</span> {{ matchup[0]['name'] }}
+                    </div>
+                    {% else %}
+                    <div class="team">TBD</div>
+                    {% endif %}
+                    
+                    {% if matchup[1] %}
+                    <div class="team">
+                        <span class="seed">{{ matchup[1]['seed'] }}</span> {{ matchup[1]['name'] }}
+                    </div>
+                    {% else %}
+                    <div class="team">TBD</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Divisional Round -->
+            <div class="round">
+                <h3>Divisional Round</h3>
+                {% for matchup in afc_bracket['divisional'] %}
+                <div class="matchup">
+                    {% if matchup[0] %}
+                    <div class="team">
+                        <span class="seed">{{ matchup[0]['seed'] }}</span> {{ matchup[0]['name'] }}
+                    </div>
+                    {% else %}
+                    <div class="team">TBD</div>
+                    {% endif %}
+                    
+                    {% if matchup[1] %}
+                    <div class="team">
+                        <span class="seed">{{ matchup[1]['seed'] }}</span> {{ matchup[1]['name'] }}
+                    </div>
+                    {% else %}
+                    <div class="team">TBD</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Conference Championship -->
+            <div class="round">
+                <h3>Conference Championship</h3>
+                {% for matchup in afc_bracket['championship'] %}
+                <div class="matchup">
+                    <div class="team">Winner of Divisional {{ loop.index }}</div>
+                    <div class="team">Winner of Divisional {{ loop.index + 1 }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- NFC Playoff Bracket -->
+        <div class="conference">
+            <h2>NFC Playoff Bracket</h2>
+
+            <!-- Wildcard Round -->
+            <div class="round">
+                <h3>Wildcard Round</h3>
+                {% for matchup in nfc_bracket['wildcard'] %}
+                <div class="matchup">
+                    {% if matchup[0] %}
+                    <div class="team">
+                        <span class="seed">{{ matchup[0]['seed'] }}</span> {{ matchup[0]['name'] }}
+                    </div>
+                    {% else %}
+                    <div class="team">TBD</div>
+                    {% endif %}
+                    
+                    {% if matchup[1] %}
+                    <div class="team">
+                        <span class="seed">{{ matchup[1]['seed'] }}</span> {{ matchup[1]['name'] }}
+                    </div>
+                    {% else %}
+                    <div class="team">TBD</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Divisional Round -->
+            <div class="round">
+                <h3>Divisional Round</h3>
+                {% for matchup in nfc_bracket['divisional'] %}
+                <div class="matchup">
+                    {% if matchup[0] %}
+                    <div class="team">
+                        <span class="seed">{{ matchup[0]['seed'] }}</span> {{ matchup[0]['name'] }}
+                    </div>
+                    {% else %}
+                    <div class="team">TBD</div>
+                    {% endif %}
+                    
+                    {% if matchup[1] %}
+                    <div class="team">
+                        <span class="seed">{{ matchup[1]['seed'] }}</span> {{ matchup[1]['name'] }}
+                    </div>
+                    {% else %}
+                    <div class="team">TBD</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Conference Championship -->
+            <div class="round">
+                <h3>Conference Championship</h3>
+                {% for matchup in nfc_bracket['championship'] %}
+                <div class="matchup">
+                    <div class="team">Winner of Divisional {{ loop.index }}</div>
+                    <div class="team">Winner of Divisional {{ loop.index + 1 }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Super Bowl -->
+        <div class="super-bowl">
+            <h2>Super Bowl</h2>
+            <div class="matchup">
+                <div class="team">
+                    {{ super_bowl['afc_champion'] if super_bowl['afc_champion'] else 'TBD' }}
+                </div>
+                <div class="team">
+                    {{ super_bowl['nfc_champion'] if super_bowl['nfc_champion'] else 'TBD' }}
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+{% endblock %}
+</html>

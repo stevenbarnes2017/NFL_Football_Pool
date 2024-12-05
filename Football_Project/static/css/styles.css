@@ -19,7 +19,48 @@ body {
     
 }
 
+.bracket-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin: 20px auto;
+    width: 90%;
+}
 
+.conference-bracket, .super-bowl {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    border: 2px solid #ddd;
+    padding: 15px;
+    border-radius: 8px;
+    background-color: #f9f9f9;
+    width: 30%;
+}
+
+.round {
+    margin: 20px 0;
+    text-align: center;
+}
+
+.matchup {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 10px 0;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background-color: #fff;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.team {
+    font-weight: bold;
+    text-align: center;
+    padding: 5px;
+    width: 100%;
+}
 
 /* Container settings */
 .container {

@@ -12,7 +12,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 from .extensions import db
 from get_the_odds import get_nfl_spreads, save_to_csv
-from Football_Project.utils import fetch_detailed_game_stats, group_games_by_day, get_saved_games, get_unpicked_games_for_week, live_scores_cache, lock_picks_for_commenced_games, get_highest_available_confidence, save_pick_to_db, convert_to_utc, fetch_live_scores, get_picks, send_picks_email, get_nfl_playoff_picture
+from Football_Project.utils import fetch_detailed_game_stats, group_games_by_day, get_saved_games, get_unpicked_games_for_week, live_scores_cache, lock_picks_for_commenced_games, get_highest_available_confidence, save_pick_to_db, convert_to_utc, fetch_live_scores, get_picks, send_picks_email, get_nfl_playoff_picture, map_bracket_data
 from Football_Project.get_the_odds import get_current_week
 from sqlalchemy import func
 from dateutil import parser
@@ -665,6 +665,16 @@ def download_picks():
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
 
+@main_bp.route('/playoff_bracket')
+def playoff_bracket():
+    standings = get_nfl_playoff_picture()  # Fetch the playoff data
+    afc_bracket, nfc_bracket, super_bowl = map_bracket_data(standings)
+    return render_template(
+        'bracket.html',
+        afc_bracket=afc_bracket,
+        nfc_bracket=nfc_bracket,
+        super_bowl=super_bowl
+    )
 
 
 

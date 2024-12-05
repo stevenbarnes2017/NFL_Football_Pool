@@ -715,9 +715,10 @@ def get_nfl_playoff_picture():
                 clincher_stat = next((stat for stat in entry.get('stats', []) if stat['name'] == 'clincher'), {})
                 clincher_display_value = clincher_stat.get('displayValue', '')
 
-                # Determine clinched status based on the display value
-                clinched_playoff = clincher_display_value in ['x', 'y']
+                # Determine clinched/eliminated status based on the display value
+                clinched_playoff = clincher_display_value in ['x', 'y', 'z']
                 clinched_division = clincher_display_value in ['y', 'z']
+                eliminated = clincher_display_value == 'e'
 
                 team_info = {
                     'name': team_data.get('displayName', 'Unknown Team'),
@@ -733,18 +734,72 @@ def get_nfl_playoff_picture():
                     'conference_record': stats.get('conferenceWinPercent', 0),
                     'playoff_seed': stats.get('playoffSeed'),
                     'clinched_playoff': clinched_playoff,
-                    'clinched_division': clinched_division
+                    'clinched_division': clinched_division,
+                    'eliminated': eliminated
                 }
 
-                # Classify teams based on clinched status and playoff seed
-                if clinched_playoff:
+                # Classify teams based on clinched/eliminated status
+                if eliminated:
+                    playoff_picture[conf_name]["eliminated"].append(team_info)
+                elif clinched_playoff:
                     playoff_picture[conf_name]["clinched"].append(team_info)
                 elif team_info['playoff_seed'] and team_info['playoff_seed'] <= 7:
                     playoff_picture[conf_name]["in_hunt"].append(team_info)
                 elif team_info['playoff_seed']:
                     playoff_picture[conf_name]["bubble"].append(team_info)
-                else:
-                    playoff_picture[conf_name]["eliminated"].append(team_info)
 
     return playoff_picture
 
+
+def map_bracket_data(standings):
+    def format_matchup(team1, team2):
+        """
+        Format a matchup as a list of two dictionaries representing the teams.
+        If a team is None (e.g., empty slot), it returns None for that team.
+        """
+        return [
+            {"seed": team1.get("playoff_seed"), "name": team1.get("name")} if team1 else None,
+            {"seed": team2.get("playoff_seed"), "name": team2.get("name")} if team2 else None
+        ]
+
+    # Check for empty lists in standings and handle safely
+    afc_clinched = standings["AFC"]["clinched"] if "clinched" in standings["AFC"] else []
+    nfc_clinched = standings["NFC"]["clinched"] if "clinched" in standings["NFC"] else []
+    afc_in_hunt = standings["AFC"]["in_hunt"] if "in_hunt" in standings["AFC"] else []
+    nfc_in_hunt = standings["NFC"]["in_hunt"] if "in_hunt" in standings["NFC"] else []
+
+    afc_bracket = {
+        "wildcard": [
+            format_matchup(afc_in_hunt[0] if len(afc_in_hunt) > 0 else None, afc_in_hunt[3] if len(afc_in_hunt) > 3 else None),
+            format_matchup(afc_in_hunt[1] if len(afc_in_hunt) > 1 else None, afc_in_hunt[2] if len(afc_in_hunt) > 2 else None)
+        ],
+        "divisional": [
+            format_matchup(afc_clinched[0] if len(afc_clinched) > 0 else None, None),  # Top-seeded team gets a bye
+            format_matchup(None, None)  # Placeholder for wildcard winners
+        ],
+        "championship": [
+            format_matchup(None, None)  # Placeholder for divisional winners
+        ],
+    }
+
+    nfc_bracket = {
+        "wildcard": [
+            format_matchup(nfc_in_hunt[0] if len(nfc_in_hunt) > 0 else None, nfc_in_hunt[3] if len(nfc_in_hunt) > 3 else None),
+            format_matchup(nfc_in_hunt[1] if len(nfc_in_hunt) > 1 else None, nfc_in_hunt[2] if len(nfc_in_hunt) > 2 else None)
+        ],
+        "divisional": [
+            format_matchup(nfc_clinched[0] if len(nfc_clinched) > 0 else None, None),  # Top-seeded team gets a bye
+            format_matchup(None, None)  # Placeholder for wildcard winners
+        ],
+        "championship": [
+            format_matchup(None, None)  # Placeholder for divisional winners
+        ],
+    }
+
+    # Format Super Bowl matchup
+    super_bowl = {
+        "afc_champion": "TBD",
+        "nfc_champion": "TBD"
+    }
+
+    return afc_bracket, nfc_bracket, super_bowl
