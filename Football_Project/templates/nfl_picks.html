@@ -20,7 +20,7 @@
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 100%;
             margin: 0 auto;
             padding: 20px;
         }
@@ -39,7 +39,7 @@
         .floating-box {
             position: fixed;
             top: 100px;
-            left: 20px;
+            right: 20px;
             background-color: #ffffff;
             border: 1px solid #ccc;
             padding: 15px;
@@ -80,7 +80,7 @@
         table {
             width: 100%;
             border-collapse: collapse;
-            table-layout: auto;
+            table-layout: fixed;
             margin-bottom: 20px;
             display: block;
             overflow-x: auto;
@@ -175,9 +175,9 @@
             }
 
             table {
-                display: block;
-                overflow-x: auto;
-                white-space: nowrap;
+                width: 100%;
+                table-layout: fixed; /* Ensures equal cell width distribution */
+                word-wrap: break-word; /* Forces content to wrap */
             }
         }
     </style>
