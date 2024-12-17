@@ -7,7 +7,7 @@ from Football_Project.models import db, Game
 
 
 # Your API key and the base URL for The Odds API
-API_KEY = '0d35bd240841f8d2de6fe3669eece601'
+API_KEY = '4ccda51669160127e18fe39e6d115d16'
 BASE_URL = f"https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/?apiKey={API_KEY}&regions=us&markets=h2h,spreads&oddsFormat=american"
 
 
