@@ -383,6 +383,7 @@ def group_games_by_day(games_list):
     grouped_games = {
         "Thursday": [],
         "Friday": [],
+        "Saturday": [],
         "Sunday": [],
         "Monday": []
     }
@@ -395,6 +396,8 @@ def group_games_by_day(games_list):
             grouped_games["Thursday"].append(game)
         elif day_of_week == "Friday":
             grouped_games["Friday"].append(game)
+        elif day_of_week == "Saturday":
+            grouped_games["Saturday"].append(game)
         elif day_of_week == "Sunday":
             grouped_games["Sunday"].append(game)
         elif day_of_week == "Monday":

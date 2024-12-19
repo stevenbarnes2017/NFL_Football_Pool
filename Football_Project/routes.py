@@ -602,7 +602,7 @@ def nfl_picks():
                     used_confidence_points.append(highest_available_confidence)
 
     else:
-        grouped_games = {"Thursday": [], "Friday": [], "Sunday": [], "Monday": []}
+        grouped_games = {"Thursday": [], "Friday": [], "Saturday": [], "Sunday": [], "Monday": []}
         num_of_games = 0
         used_confidence_points = []
 
