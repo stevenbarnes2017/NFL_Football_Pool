@@ -53,6 +53,7 @@ def send_picks_email(recipient_email, user_picks):
         print("Email sent successfully!")
     except requests.exceptions.RequestException as e:
         print(f"Failed to send email: {e}")
+        print(f"Using API Key: {headers['api-key']}")
         raise
 
 
