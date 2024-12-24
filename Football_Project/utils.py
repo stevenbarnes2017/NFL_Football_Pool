@@ -381,6 +381,7 @@ def lock_picks_for_commenced_games(user_id):
 
 def group_games_by_day(games_list):
     grouped_games = {
+        "Wednesday": [],
         "Thursday": [],
         "Friday": [],
         "Saturday": [],
@@ -391,7 +392,8 @@ def group_games_by_day(games_list):
     for game in games_list:
         commence_time_mt = game['commence_time_mt_display']  # Mountain Time for grouping
         day_of_week = commence_time_mt.strftime("%A")
-
+        if day_of_week == "Wednesday":
+            grouped_games["Wednesday"].append(game)
         if day_of_week == "Thursday":
             grouped_games["Thursday"].append(game)
         elif day_of_week == "Friday":
