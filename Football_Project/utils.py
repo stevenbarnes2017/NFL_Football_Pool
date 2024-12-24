@@ -34,7 +34,7 @@ def send_picks_email(recipient_email, user_picks):
     # Headers for authorization and content type
     headers = {
         "accept": "application/json",
-        "api-key": os.getenv("BREVO_API_KEY"),
+        "api-key": os.getenv("BREVO_API_KEY") or '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',
         "content-type": "application/json"
     }
 
@@ -52,7 +52,7 @@ def send_picks_email(recipient_email, user_picks):
         response.raise_for_status()
         print("Email sent successfully!")
     except requests.exceptions.RequestException as e:
-        print(f"Failed to send email: {e}")
+        print(f"Failed to send email: {e} api kEY {os.getenv("BREVO_API_KEY")}")
         raise
 
 
