@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sports Odds Widget</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            color: #333;
+            text-align: center;
+        }
+        header {
+            background-color: #333;
+            color: #fff;
+            padding: 1rem 0;
+        }
+        header h1 {
+            margin: 0;
+        }
+        .widget-container {
+            margin: 2rem auto;
+            padding: 1rem;
+            max-width: 800px;
+            background: #fff;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+        iframe {
+            width: 100%;
+            max-width: 350px;
+            height: 500px;
+            border: 1px solid grey;
+            margin: 1rem auto;
+        }
+        select {
+            padding: 0.5rem;
+            font-size: 1rem;
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+<body>
+    {% extends "base.html" %}
+    {% block content %}
+    <header>
+        <h1>Live Sports Odds</h1>
+    </header>
+    <div class="widget-container">
+        <label for="bookmaker-select">Choose a bookmaker:</label>
+        <select id="bookmaker-select">
+            <option value="draftkings">DraftKings</option>
+            <option value="fanduel">FanDuel</option>
+            <option value="betmgm">BetMGM</option>
+            <option value="williamhill_us">Caesars</option>
+            <option value="pointsbet">PointsBet</option>
+            <option value="betonlineag">BetOnline.ag</option>
+            <option value="betrivers">BetRivers</option>
+            <option value="betus">BetUS</option>
+        </select>
+        <iframe
+            id="odds-iframe"
+            src="https://widget.the-odds-api.com/v1/sports/americanfootball_nfl/events/?accessKey=wk_99379c702d67fb1e9698999a885091c5&bookmakerKeys=draftkings&oddsFormat=american&markets=h2h,spreads,totals&marketNames=h2h:Moneyline,spreads:Spread,totals:Total"
+            allowfullscreen>
+        </iframe>
+    </div>
+    <script>
+        document.getElementById('bookmaker-select').addEventListener('change', function() {
+            const selectedBookmaker = this.value;
+            const iframe = document.getElementById('odds-iframe');
+            iframe.src = `https://widget.the-odds-api.com/v1/sports/americanfootball_nfl/events/?accessKey=wk_99379c702d67fb1e9698999a885091c5&bookmakerKeys=${selectedBookmaker}&oddsFormat=american&markets=h2h,spreads,totals&marketNames=h2h:Moneyline,spreads:Spread,totals:Total`;
+        });
+    </script>
+    {% endblock %}
+</body>
+</html>

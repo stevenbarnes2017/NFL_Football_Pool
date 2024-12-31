@@ -16,12 +16,14 @@
                 NFL Picks
             </div>
             <div class="navbar-links">
+                <a href="{{ url_for('main.odds') }}">View Odds</a>
                 <a href="{{ url_for('main.live_scores_page') }}">Live Scores</a>
                 <a href="{{ url_for('main.playoff_picture') }}">Playoff Picture</a>
                 <a href="{{ url_for('main.dashboard') }}">Dashboard</a>
                 <a href="{{ url_for('main.nfl_picks') }}">Select Picks</a>
                 <a href="{{ url_for('main.see_picks') }}">See Picks</a>
                 <a href="{{ url_for('main.logout') }}">Logout</a>
+                
             </div>
         </div>
     </nav>

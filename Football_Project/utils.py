@@ -809,3 +809,33 @@ def map_bracket_data(standings):
     }
 
     return afc_bracket, nfc_bracket, super_bowl
+
+def get_odds_data():
+    """
+    Fetch odds for all games from The Odds API and print the raw response for debugging.
+    """
+    API_KEY = "69cf50560b9f2ef6733fda8b27c02bbb"  # Replace with your actual API key
+    URL = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds"
+    
+    params = {
+        "apiKey": API_KEY,
+        "regions": "us",  # US odds
+        "markets": "h2h,spreads,totals",  # Desired markets
+        "oddsFormat": "american",  # American odds format
+    }
+
+    try:
+        # Make the API request
+        response = requests.get(URL, params=params)
+        response.raise_for_status()  # Raise exception for HTTP errors
+
+        # Print the raw JSON response for debugging
+        print("API Response (Raw JSON):")
+        print(response.json())
+
+        # Return parsed JSON data
+        return response.json()
+
+    except requests.RequestException as e:
+        print(f"Error fetching odds data: {e}")
+        return []
