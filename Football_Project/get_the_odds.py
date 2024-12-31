@@ -7,7 +7,7 @@ from Football_Project.models import db, Game
 
 
 # Your API key and the base URL for The Odds API
-API_KEY = '6deff2488c1dcf64a6d71d11d02c8c6b'
+API_KEY = '69cf50560b9f2ef6733fda8b27c02bbb'
 BASE_URL = f"https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/?apiKey={API_KEY}&regions=us&markets=h2h,spreads&oddsFormat=american"
 
 
@@ -18,6 +18,7 @@ mountain = pytz.timezone('US/Mountain')
 
 # Function to fetch the odds data
 def get_nfl_spreads():
+    print(f"Making API call to {BASE_URL} at {datetime.now()}")
     response = requests.get(BASE_URL)
     
     if response.status_code == 200:
