@@ -1,4 +1,4 @@
-# Python
+# Python cache
 __pycache__/
 *.py[cod]
 *.so
@@ -7,13 +7,17 @@ __pycache__/
 dist/
 build/
 
-# Virtual environments
+# Virtual environments (root and anywhere in repo)
 venv/
-**/venv
-.env/
 .venv/
+**/venv/
+**/.venv/
 
-# IDEs and editors
+# Environment variables
+.env
+**/.env
+
+# IDE/editor configs
 .vscode/
 .idea/
 
@@ -24,7 +28,7 @@ Thumbs.db
 # Logs
 *.log
 
-# Configs
+# Local configs and generated files
 config.py
 instance/
 *.csv
