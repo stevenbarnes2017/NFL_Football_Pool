@@ -1,0 +1,26 @@
+<!-- admin_set_week.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Set Current Week</title>
+    
+</head>
+<body class="bg-gray-100">
+
+    <div class="container mx-auto mt-10">
+        <div class="max-w-md mx-auto bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-2xl font-bold mb-6 text-center">Set Current Week</h2>
+            <form method="POST" action="{{ url_for('admin_set_week') }}">
+                <div class="mb-4">
+                    <label class="block text-gray-700" for="current_week">Current Week:</label>
+                    <input class="w-full p-2 border border-gray-300 rounded mt-1" type="number" name="current_week" id="current_week" min="1" max="17" value="{{ current_week }}" required>
+                </div>
+                <button class="w-full bg-blue-500 text-white py-2 rounded" type="submit">Set Week</button>
+            </form>
+        </div>
+    </div>
+
+</body>
+</html>

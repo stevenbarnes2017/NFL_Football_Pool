@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+
+{% block title %}Live NFL Scores{% endblock %}
+
+{% block content %}
+    <h1 class="page-title">Live NFL Scores</h1>
+    <div class="scoreboard-grid">
+        <div id="live-scoreboard" class="scoreboard-grid"></div>
+        <h2 id="last-week-header" style="display:none;">Last Week's Scores</h2>
+        <div id="last-week-scoreboard" class="scoreboard"></div>
+    </div>
+
+    <!-- Floating Box for User's Score Summary -->
+    <div id="user-score-box" class="floating-box">
+        <h3>Your Score for Week <span id="current-week-number"></span></h3>
+        <div id="user-total-points">Total Points: 0</div>
+        <table id="user-picks-table">
+            <thead>
+                <tr>
+                    <th>Game</th>
+                    <th>Your Pick</th>
+                    <th>Confidence</th>
+                    <th>Points</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="user-picks-list">
+                <!-- Picks will be populated here -->
+            </tbody>
+        </table>
+    </div>
+
+    <style>
+        /* Floating box for user summary */
+        .floating-box {
+            position: fixed;
+            top: 110px;
+            right: 20px;
+            width: 450px;
+            max-height: 90vh;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+        .floating-box h3 {
+            margin-top: 0;
+        }
+
+        /* Table styling */
+        #user-picks-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+        }
+        #user-picks-table th, #user-picks-table td {
+            padding: 5px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        #user-picks-table th {
+            background-color: #f2f2f2;
+            color: black;
+            font-weight: bold;
+        }
+
+        /* Styling for game card layout */
+        .game-card {
+            display: flex;
+            flex-direction: column;
+            padding: 15px;
+            border: 1px solid #ddd;
+            margin-bottom: 12px;
+            border-radius: 8px;
+            background-color: #ffffff;
+            text-align: left;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .game-card:hover {
+            transform: scale(1.02);
+            background-color: #f9f9f9;
+        }
+
+        .game-card a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        /* Team logos and scores */
+        .team-logos {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .team-logo img {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: 1px solid #ddd;
+            transition: box-shadow 0.3s ease;
+        }
+
+        .team-logo img:hover {
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .score {
+            display: flex;
+            justify-content: center;
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #333;
+            margin: 8px 0;
+        }
+
+        .team-score {
+            flex: 1;
+            text-align: center;
+        }
+
+        .vs-divider {
+            font-weight: normal;
+            color: #888;
+        }
+
+        /* Game details styling */
+        .game-details {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #ddd;
+            color: #555;
+            font-size: 0.9em;
+        }
+
+        .game-details div {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .game-details span {
+            font-weight: bold;
+        }
+
+        /* Row colors for winning and losing picks */
+        .winning { color: green; }
+        .losing { color: red; }
+        .pending { color: gray; }
+    </style>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function () {
+        const liveScoreboard = document.getElementById('live-scoreboard');
+        const lastWeekHeader = document.getElementById('last-week-header');
+        const lastWeekScoreboard = document.getElementById('last-week-scoreboard');
+        const userTotalPoints = document.getElementById('user-total-points');
+        const userPicksList = document.getElementById('user-picks-list');
+        const currentWeekElement = document.getElementById('current-week-number');
+        const defaultLogo = '/static/images/default.png';
+
+        // Fetch live scores every 30 seconds
+        function fetchLiveScores() {
+            fetch('/stream-live-scores')
+                .then(response => response.json())
+                .then(data => {
+                    updateScoreboard(data);
+                })
+                .catch(error => console.error('Error fetching live scores:', error));
+        }
+
+        function updateScoreboard(data) {
+            liveScoreboard.innerHTML = '';  
+            lastWeekScoreboard.innerHTML = '';  
+
+            if (data.live_games && data.live_games.length > 0) {
+                data.live_games.forEach(game => renderGame(game, liveScoreboard));
+                lastWeekHeader.style.display = 'none';
+            } else if (data.last_week_games && data.last_week_games.length > 0) {
+                lastWeekHeader.style.display = 'block';
+                data.last_week_games.forEach(game => renderGame(game, lastWeekScoreboard));
+            } else {
+                liveScoreboard.innerHTML = '<div class="no-games">No games currently available.</div>';
+                lastWeekHeader.style.display = 'none';
+            }
+        }
+
+        function renderGame(game, container) {
+            const gameCard = document.createElement('div');
+            gameCard.classList.add('game-card');
+
+            const homeTeamLogo = `/static/images/${game.home_team}.png`;
+            const awayTeamLogo = `/static/images/${game.away_team}.png`;
+
+            gameCard.innerHTML = `
+                <a href="/game_details/${game.game_id}">
+                    <div class="team-logos">
+                        <div class="team-logo">
+                            <img src="${homeTeamLogo}" alt="${game.home_team} logo" onerror="this.onerror=null;this.src='${defaultLogo}'">
+                        </div>
+                        <div class="team-logo">
+                            <img src="${awayTeamLogo}" alt="${game.away_team} logo" onerror="this.onerror=null;this.src='${defaultLogo}'">
+                        </div>
+                    </div>
+                    <div class="score">
+                        <div class="team-score">${game.home_team} ${game.home_score}</div>
+                        <div class="vs-divider">vs</div>
+                        <div class="team-score">${game.away_team} ${game.away_score}</div>
+                    </div>
+                    <div class="game-details">
+                        <div><span>Status:</span> ${game.status}</div>
+                        <div><span>Clock:</span> ${game.clock} (Q${game.period})</div>
+                        <div><span>Possession:</span> ${game.possession || 'None'}</div>
+                        <div><span>Down & Distance:</span> ${game.down ? `Down ${game.down} & ${game.distance} yards` : 'N/A'}</div>
+                        <div><span>Yard Line:</span> ${game.yardLine !== null ? game.yardLine : 'N/A'}</div>
+                    </div>
+                </a>
+            `;
+            container.appendChild(gameCard);
+        }
+
+        // Update user score summary box every 5 minutes
+        function updateUserScoreBox() {
+    // Fetch the current week from the server dynamically
+    fetch('/get_current_week')
+        .then(response => response.json())
+        .then(data => {
+            const currentWeek = data.current_week;  // Use the current week from the server
+
+            fetch(`/user_score_summary?format=json&week=${currentWeek}`)
+                .then(response => response.json())
+                .then(data => {
+                    userTotalPoints.innerText = 'Total Points: ' + data.user_total_score;
+                    currentWeekElement.innerText = currentWeek;
+                    userPicksList.innerHTML = '';  
+
+                    // Filter and render picks only for in-progress or finished games
+                    data.game_picks.forEach(game => {
+                        if (game.pick && (game.status === 'STATUS_IN_PROGRESS' || game.status === 'STATUS_FINAL')) {
+                            const row = document.createElement('tr');
+                            row.innerHTML = `
+                                <td>${game.home_team} vs ${game.away_team}</td>
+                                <td>${game.pick.team_picked}</td>
+                                <td>${game.pick.confidence}</td>
+                                <td>${game.pick.points_earned || 0}</td>
+                                <td>${game.status}</td>
+                            `;
+                            userPicksList.appendChild(row);
+                        }
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching user score summary:', error);
+                });
+        })
+        .catch(error => {
+            console.error('Error fetching current week:', error);
+        });
+}
+
+        // Initial fetches and intervals
+        fetchLiveScores();
+        setInterval(fetchLiveScores, 30000);  
+        updateUserScoreBox();
+        setInterval(updateUserScoreBox, 30000);  
+      });
+    </script>
+{% endblock %}

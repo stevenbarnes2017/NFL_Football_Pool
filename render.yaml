@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: web
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn "app:create_app()"
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite:///picks.db
+      - key: SECRET_KEY
+        value: password
+
+  - type: worker
+    name: scheduler
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python scheduler.py
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite:///picks.db
+      - key: SECRET_KEY
+        value: password

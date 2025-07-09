@@ -1,0 +1,33 @@
+user_id,game_id,team_picked,confidence,week
+2,1,Kansas City Chiefs,16,1
+2,2,Philadelphia Eagles,15,1
+2,3,Atlanta Falcons,4,1
+2,4,Arizona Cardinals,7,1
+2,5,Chicago Bears,2,1
+2,6,New England Patriots,5,1
+2,7,Houston Texans,3,1
+2,8,Miami Dolphins,14,1
+2,9,New Orleans Saints,6,1
+2,10,Minnesota Vikings,8,1
+2,11,Los Angeles Chargers,10,1
+2,12,Denver Broncos,9,1
+2,13,Dallas Cowboys,12,1
+2,14,Tampa Bay Buccaneers,11,1
+2,15,Detroit Lions,13,1
+2,16,San Francisco 49ers,1,1
+2,17,Miami Dolphins,10,2
+2,18,Dallas Cowboys,14,2
+2,19,Detroit Lions,12,2
+2,20,Indianapolis Colts,3,2
+2,21,New York Jets,4,2
+2,22,San Francisco 49ers,13,2
+2,23,New England Patriots,7,2
+2,24,Washington Commanders,5,2
+2,25,Los Angeles Chargers,2,2
+2,26,Cleveland Browns,1,2
+2,27,Baltimore Ravens,11,2
+2,28,Arizona Cardinals,9,2
+2,29,Denver Broncos,8,2
+2,30,Kansas City Chiefs,16,2
+2,31,Houston Texans,6,2
+2,32,Philadelphia Eagles,15,2
