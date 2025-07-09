@@ -42,7 +42,7 @@ def send_picks_email(recipient_email, user_picks):
 
     # Email content with the formatted picks
     email_data = {
-        "sender": {"name": "Your Name", "email": "lines31@hotmail.com"},
+        "sender": {"name": "NFL Football Pool", "email": "lines31@hotmail.com"},
         "to": [{"email": recipient_email}],
         "subject": "Your Weekly Picks",
         "htmlContent": f"<pre>{picks_body}</pre>"
@@ -84,7 +84,7 @@ def send_password_reset_email(recipient_email, reset_url):
     """
 
     email_data = {
-        "sender": {"name": "Your App", "email": "lines31@hotmail.com"},
+        "sender": {"name": "NFL Football Pool", "email": "lines31@hotmail.com"},
         "to": [{"email": recipient_email}],
         "subject": "Reset Your Password",
         "htmlContent": html_content
