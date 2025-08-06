@@ -56,7 +56,7 @@ def get_current_week():
         season_type = 2
 
     print(f"Debug: now={now}, week={week}, season_type={season_type}")
-    return week, season_type
+    return week
 
 # Function to convert commence time to Mountain Time
 def convert_to_mountain_time(utc_time_str):

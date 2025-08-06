@@ -129,7 +129,7 @@ def admin_dashboard():
     
     current_year = datetime.utcnow().year    
     default_season_type = 2  # Default to Regular season
-    current_week, season_type = get_current_week()
+    current_week = get_current_week()
     all_weeks = list(range(1, current_week +1))
     users = User.query.order_by(User.username).all()    
     return render_template(
@@ -511,7 +511,7 @@ def process_user_scores():
 
     try:
         # Assuming this function returns the current week (you can adjust this as needed)
-        current_week, season_type = get_current_week()
+        current_week = get_current_week()
 
         # Fetch all distinct weeks available in the games table, excluding the current week
         available_weeks = db.session.query(Game.week).distinct().order_by(Game.week).all()

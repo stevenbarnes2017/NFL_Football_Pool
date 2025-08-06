@@ -192,7 +192,7 @@ def email_picks():
     recipient = request.form.get('recipient_email', current_user.email)  # Default to current user's email if not provided
 
     # Fetch the user's picks from the database for the current week
-    current_week, season_type = get_current_week()
+    current_week = get_current_week()
     user_picks = Pick.query.filter_by(user_id=user_id, week=current_week).all()
 
     # Prepare the picks for the email as a dictionary (Game -> team picked + confidence)
@@ -372,7 +372,7 @@ def user_scores(week):
 @login_required
 def see_picks():
     # Dynamically get the current week based on the NFL season start date
-    current_week, season_type = get_current_week()
+    current_week = get_current_week()
 
     # Get the selected week from the form or default to the current week
     if request.method == 'POST':
@@ -553,7 +553,7 @@ def convert_utc_to_mountain(utc_time):
 @login_required
 def nfl_picks():
     selected_week = request.form.get('week', type=int) or request.args.get('week', default=None, type=int)
-    current_week, season_type = get_current_week()
+    current_week = get_current_week()
     
     if not selected_week:
         selected_week = current_week

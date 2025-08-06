@@ -253,7 +253,7 @@ def auto_fetch_scores():
 
             year = datetime.utcnow().year
 
-            current_week, season_type = get_current_week()
+            current_week = get_current_week()
             print(f"Year: {year}, Season Type: {season_type}, Fetching scores for Week: {current_week}")
 
             games = get_football_scores(year, season_type, current_week)
@@ -369,7 +369,7 @@ def lock_picks_for_commenced_games(user_id):
     import pytz
 
     now_utc = datetime.utcnow()
-    current_week, season_type = get_current_week()
+    current_week = get_current_week()
 
     # Fetch commenced games
     commenced_games = Game.query.filter(Game.week == current_week).all()
