@@ -146,29 +146,33 @@ def main(save_csv=False):
     
     return games_list, num_of_games
 
-# Function to save spreads data to the database
-def save_spreads_to_db(games_list, week):     
-    
-    
-        for game_data in games_list:
-            existing_game = Game.query.filter_by(
-                home_team=game_data['home_team'],
-                away_team=game_data['away_team'],
-                week=week
-            ).first()
+def save_spreads_to_db(games_list, week):
+    updated = 0
+    skipped = 0
 
-            if not existing_game:
-                new_game = Game(
-                    home_team=game_data['home_team'],
-                    away_team=game_data['away_team'],
-                    spread=game_data['spread'],
-                    favorite_team=game_data['favorite_team'],
-                    commence_time_mt=game_data['commence_time_mt'],
-                    week=week
-                )
-                db.session.add(new_game)
-        
-        db.session.commit()  # This should be inside the `with` block
+    for game_data in games_list:
+        # Try to match by home_team, away_team, and kickoff time
+        game = Game.query.filter_by(
+            home_team=game_data['home_team'],
+            away_team=game_data['away_team'],
+            week=week
+        ).first()
+
+        if game:
+            game.spread = game_data['spread']
+            game.favorite_team = game_data['favorite_team']
+            game.commence_time_mt = game_data['commence_time_mt']
+            updated += 1
+        else:
+            print(f"❌ No match for {game_data['home_team']} vs {game_data['away_team']} in week {week}")
+            skipped += 1
+
+    db.session.commit()
+    print(f"✅ Updated {updated} games")
+    print(f"⏭️ Skipped {skipped} unmatched games")
+
+
+
    
 # Run the main function
 if __name__ == "__main__":

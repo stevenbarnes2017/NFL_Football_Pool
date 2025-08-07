@@ -235,8 +235,8 @@ def calculate_user_scores(week):
         else:
             user_score = UserScore(user_id=user_id, week=week, score=score)
             db.session.add(user_score)
-    print(f"User Score updated in DB for user_id: {user_id}, week: {week}, score: {score}")
-    # Commit the updated user scores for the week
+        print(f"User Score updated in DB for user_id: {user_id}, week: {week}, score: {score}")
+        # Commit the updated user scores for the week
     db.session.commit()
 
     return user_scores  # Return the scores for this week
@@ -903,3 +903,6 @@ def verify_token(token, expiration=3600):
 
 def get_serializer():
     return URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+
+def generate_game_id(home_abbr, away_abbr, kickoff_dt):
+    return f"2025-{home_abbr}-vs-{away_abbr}-{kickoff_dt.strftime('%Y%m%d')}"
