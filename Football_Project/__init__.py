@@ -36,6 +36,10 @@ def create_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///picks.db')
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'password')
 
+    # Point Migrate to the correct directory (inside your package)
+    migrations_dir = os.path.join(app.root_path, "migrations")
+    Migrate(app, db, directory=migrations_dir)
+
     # Initialize extensions
     db.init_app(app)
     Migrate(app, db)
