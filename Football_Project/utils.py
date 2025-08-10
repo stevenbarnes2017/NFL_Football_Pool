@@ -12,7 +12,7 @@ import os
 import json
 from itsdangerous import URLSafeTimedSerializer
 
-
+season_type = 1  # 1 = preseason, 2 = regular, 3 = postseason
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -250,7 +250,7 @@ def auto_fetch_scores():
 
         with current_app.app_context():
             from datetime import datetime
-
+            
             year = datetime.utcnow().year
 
             current_week = get_current_week()
@@ -906,3 +906,4 @@ def get_serializer():
 
 def generate_game_id(home_abbr, away_abbr, kickoff_dt):
     return f"2025-{home_abbr}-vs-{away_abbr}-{kickoff_dt.strftime('%Y%m%d')}"
+

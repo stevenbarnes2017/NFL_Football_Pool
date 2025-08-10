@@ -1,7 +1,8 @@
 from .extensions import db
 from flask_login import UserMixin
 from datetime import datetime
-
+from sqlalchemy import DateTime
+from zoneinfo import ZoneInfo
 # ----------------------------
 # User Model
 # ----------------------------
@@ -32,7 +33,7 @@ class Pick(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     game_id = db.Column(db.Integer, db.ForeignKey('game.id'), nullable=False)
     team_picked = db.Column(db.String(100), nullable=True)
-    confidence = db.Column(db.Integer, nullable=False)
+    confidence = db.Column(db.Integer, nullable=True)
     pick_time = db.Column(db.DateTime, default=datetime.utcnow)
     week = db.Column(db.Integer, nullable=False)
     points_earned = db.Column(db.Integer, default=0)
@@ -62,7 +63,7 @@ class Game(db.Model):
     away_team = db.Column(db.String(50), nullable=False)
     spread = db.Column(db.Float, nullable=True)
     favorite_team = db.Column(db.String(50), nullable=True)
-    commence_time_mt = db.Column(db.String(50), nullable=True)
+    commence_time_mt = db.Column(DateTime(timezone=True), nullable=True)  # store MT tz-aware
     home_team_score = db.Column(db.Integer, nullable=True)
     away_team_score = db.Column(db.Integer, nullable=True)
     saved_at = db.Column(db.DateTime, default=datetime.utcnow)

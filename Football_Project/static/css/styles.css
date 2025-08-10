@@ -171,6 +171,10 @@ nav {
     z-index: 1000; /* Ensures it stays above other elements */
 }
 
+.navbar {
+    height: 65px;
+}
+
 nav .navbar-brand {
     color: white;
     font-size: 1.5rem;
@@ -206,8 +210,9 @@ nav::after {
 /* Dropdown and Floating Box Styling */
 .dropdown-wrapper {
     display: flex;
-    justify-content: center;
-    align-items: center;
+    justify-content: left;
+    align-items: left;
+    margin-top: 20px;     /* NEW - pushes it down from navbar */
     margin-bottom: 20px;
 }
 
@@ -410,3 +415,10 @@ body {
     margin: 15px 0;
     font-size: x-large;
 }
+
+
+/* Ensure all page content clears the fixed navbar */
+body {
+    padding-top: 88px; /* navbar height (72px) + breathing room */
+}
+

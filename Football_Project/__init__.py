@@ -81,7 +81,7 @@ def create_app():
             replace_existing=True
         )
 
-        # scheduler.start()  # Enable if you want to start it right away
+        scheduler.start()  # Enable if you want to start it right away
 
     atexit.register(lambda: scheduler.shutdown(wait=False) if scheduler.running else None)
 

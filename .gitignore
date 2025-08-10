@@ -30,5 +30,5 @@ Thumbs.db
 
 # Local configs and generated files
 config.py
-instance/
+#instance/
 *.csv

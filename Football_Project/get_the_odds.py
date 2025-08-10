@@ -1,38 +1,32 @@
+import os
 import requests
 import pandas as pd
 from datetime import datetime, timedelta
 import pytz
+
 from Football_Project.models import db, Game
 
+# =============================
+# Config
+# =============================
+API_KEY = os.getenv("ODDS_API_KEY", "8b42837961f5ba838a1e1fc381e7600c")
+BASE_URL = (
+    "https://api.the-odds-api.com/v4/"
+    "sports/americanfootball_nfl_preseason/odds/"
+    f"?apiKey={API_KEY}&regions=us&markets=h2h,spreads&oddsFormat=american"
+)
+BOOKMAKER_MATCH = "draftkings"  # lowercase compare
 
-
-# Your API key and the base URL for The Odds API
-API_KEY = '8b42837961f5ba838a1e1fc381e7600c'
-BASE_URL = f"https://api.the-odds-api.com/v4/sports/americanfootball_nfl_preseason/odds/?apiKey={API_KEY}&regions=us&markets=h2h,spreads&oddsFormat=american"
-
-
-
-# Define time zones
+# Time zones
 utc = pytz.utc
-mountain = pytz.timezone('US/Mountain')
+mountain = pytz.timezone("US/Mountain")
 
-# Function to fetch the odds data
-def get_nfl_spreads():
-    print(f"Making API call to {BASE_URL} at {datetime.now()}")
-    response = requests.get(BASE_URL)
-    
-    if response.status_code == 200:
-        odds_data = response.json()
-        games_list = parse_spreads_data(odds_data)
-        num_of_games = len(games_list)
-        return games_list, num_of_games
-    else:
-        print(f"Error: {response.status_code} - {response.text}")
-        return [], 0
 
+# =============================
+# Week calc
+# =============================
 def get_current_week():
-    from datetime import datetime
-
+    """Return the current NFL week (preseason 1–4, regular 1–18) based on dates."""
     preseason_start = datetime(2025, 7, 31)
     regular_start = datetime(2025, 9, 4)
     now = datetime.utcnow()
@@ -48,7 +42,7 @@ def get_current_week():
         delta = (now - regular_start).days
         week = (delta // 7) + 1
 
-        # Adjust if Monday or early Tuesday
+        # Adjust if Monday or early Tuesday (scorekeeping nuance)
         if now.weekday() == 0 or (now.weekday() == 1 and now.hour < 6):
             week -= 1
 
@@ -58,113 +52,135 @@ def get_current_week():
     print(f"Debug: now={now}, week={week}, season_type={season_type}")
     return week
 
-# Function to convert commence time to Mountain Time
-def convert_to_mountain_time(utc_time_str):
-    # Parse the time string and assume it's in UTC
-    utc_time = datetime.strptime(utc_time_str, "%Y-%m-%dT%H:%M:%SZ")
-    utc_time = utc.localize(utc_time)
-    
-    # Convert to Mountain Time
-    mt_time = utc_time.astimezone(mountain)
-    
-    # Return the time as a string in Mountain Time zone
-    return mt_time.strftime("%Y-%m-%d %H:%M:%S %Z")
 
-# Function to filter games within the next 7 days
-def is_within_next_7_days(utc_time_str):
+# =============================
+# Time helpers
+# =============================
+def convert_to_mountain_time(utc_time_str: str) -> datetime:
+    """
+    Convert an API UTC time string like '2025-08-10T17:00:00Z'
+    to a tz-aware datetime in US/Mountain.
+    """
+    dt_utc = datetime.strptime(utc_time_str, "%Y-%m-%dT%H:%M:%SZ")
+    dt_utc = utc.localize(dt_utc)           # attach UTC tz
+    return dt_utc.astimezone(mountain)      # aware Mountain Time datetime
+
+
+def is_within_next_7_days(utc_time_str: str) -> bool:
+    """Keep only games scheduled within the next 7 days (inclusive)."""
     current_time = datetime.now(utc)
     game_time = utc.localize(datetime.strptime(utc_time_str, "%Y-%m-%dT%H:%M:%SZ"))
-    
-    return current_time <= game_time <= current_time + timedelta(days=8)
+    return current_time <= game_time <= current_time + timedelta(days=7)
 
-# Function to parse and extract relevant spreads data
+
+# =============================
+# API + Parsing
+# =============================
+def get_nfl_spreads():
+    print(f"Making API call to {BASE_URL} at {datetime.now()}")
+    response = requests.get(BASE_URL, timeout=30)
+
+    if response.status_code == 200:
+        odds_data = response.json()
+        games_list = parse_spreads_data(odds_data)
+        num_of_games = len(games_list)
+        return games_list, num_of_games
+    else:
+        print(f"Error: {response.status_code} - {response.text}")
+        return [], 0
+
+
 def parse_spreads_data(odds_data):
+    """
+    Extract: home_team, away_team, favorite team, spread, commence_time_mt (tz-aware datetime).
+    Filter to games within the next 7 days.
+    Prefer spreads from BOOKMAKER_MATCH (e.g., DraftKings).
+    """
     games_list = []
 
     for game in odds_data:
-        home_team = game['home_team']
-        away_team = game['away_team']
-        commence_time_utc = game['commence_time']        
+        home_team = game["home_team"]
+        away_team = game["away_team"]
+        commence_time_utc = game["commence_time"]
+
         # Filter by games within the next 7 days
         if not is_within_next_7_days(commence_time_utc):
             continue
-        
-        commence_time_mt = convert_to_mountain_time(commence_time_utc)
-        
-        for bookmaker in game['bookmakers']:
-            # Filter by bookmaker "BetUS"
-            
-            if bookmaker['title'].lower() == "draftkings":
-                
-                for market in bookmaker['markets']:
-                    if market['key'] == 'spreads':
-                        # Initialize spread variables
-                        home_spread = None
-                        away_spread = None
-                        
-                        for outcome in market['outcomes']:
-                            if outcome['name'] == home_team:
-                                home_spread = outcome['point']
-                            elif outcome['name'] == away_team:
-                                away_spread = outcome['point']
-                                
-                        # Determine the favorite team and its spread
-                        if home_spread < 0:
-                            favorite_team = home_team
-                            spread = home_spread
-                        elif away_spread < 0:
-                            favorite_team = away_team
-                            spread = away_spread
-                        else:
-                            favorite_team = "Even"
-                            spread = None  # No spread if it's even
 
-                        games_list.append({
-                            "home_team": home_team,
-                            "away_team": away_team,
-                            "spread": spread,  # Add favorite spread column
-                            "favorite_team": favorite_team,  # Add favorite team column                            
-                            "commence_time_mt": commence_time_mt  # Use the converted Mountain Time
-                        })
+        commence_time_mt = convert_to_mountain_time(commence_time_utc)
+
+        # Look for the preferred bookmaker
+        for bookmaker in game.get("bookmakers", []):
+            if bookmaker.get("title", "").lower() != BOOKMAKER_MATCH:
+                continue
+
+            for market in bookmaker.get("markets", []):
+                if market.get("key") != "spreads":
+                    continue
+
+                home_spread = None
+                away_spread = None
+
+                for outcome in market.get("outcomes", []):
+                    name = outcome.get("name")
+                    point = outcome.get("point")
+                    if name == home_team:
+                        home_spread = point
+                    elif name == away_team:
+                        away_spread = point
+
+                # Choose favorite (guard against None)
+                favorite_team = "Even"
+                spread = None
+                if home_spread is not None and home_spread < 0:
+                    favorite_team = home_team
+                    spread = home_spread
+                elif away_spread is not None and away_spread < 0:
+                    favorite_team = away_team
+                    spread = away_spread
+
+                games_list.append(
+                    {
+                        "home_team": home_team,
+                        "away_team": away_team,
+                        "spread": spread,                # favorite's spread (negative)
+                        "favorite_team": favorite_team,  # team favored
+                        "commence_time_mt": commence_time_mt,  # tz-aware datetime
+                    }
+                )
 
     return games_list
 
-# Function to save spreads data to CSV
-def save_to_csv(games_list, filename):
-    df = pd.DataFrame(games_list)
-    df.to_csv(filename, index=False)
-    print(f"Spreads data saved to {filename}")
 
-# Main function to fetch, parse, and return NFL spreads
-def main(save_csv=False):
-    games_list, num_of_games = get_nfl_spreads()
-    # Print the games that were parsed
-    print("Number of games found:", num_of_games)
-    print("Games List:")
-    if save_csv:
-        save_to_csv(games_list, 'nfl_spreads_next_7_days.csv')
-    
-    return games_list, num_of_games
-
-def save_spreads_to_db(games_list, week):
+# =============================
+# Persistence / Export
+# =============================
+def save_spreads_to_db(games_list, week: int):
+    """
+    Update existing Game rows for the given week by (home_team, away_team, week).
+    Assign tz-aware datetime to Game.commence_time_mt.
+    """
     updated = 0
     skipped = 0
 
     for game_data in games_list:
-        # Try to match by home_team, away_team, and kickoff time
-        game = Game.query.filter_by(
-            home_team=game_data['home_team'],
-            away_team=game_data['away_team'],
-            week=week
-        ).first()
+        game = (
+            Game.query.filter_by(
+                home_team=game_data["home_team"],
+                away_team=game_data["away_team"],
+                week=week,
+            ).first()
+        )
 
         if game:
-            game.spread = game_data['spread']
-            game.favorite_team = game_data['favorite_team']
-            game.commence_time_mt = game_data['commence_time_mt']
+            game.spread = game_data["spread"]
+            game.favorite_team = game_data["favorite_team"]
+            game.commence_time_mt = game_data["commence_time_mt"]  # datetime ✅
             updated += 1
         else:
-            print(f"❌ No match for {game_data['home_team']} vs {game_data['away_team']} in week {week}")
+            print(
+                f"❌ No match for {game_data['home_team']} vs {game_data['away_team']} in week {week}"
+            )
             skipped += 1
 
     db.session.commit()
@@ -172,9 +188,33 @@ def save_spreads_to_db(games_list, week):
     print(f"⏭️ Skipped {skipped} unmatched games")
 
 
+def save_to_csv(games_list, filename):
+    """
+    Export for debugging. Convert datetimes to ISO strings just for CSV.
+    """
+    rows = []
+    for g in games_list:
+        r = dict(g)
+        if isinstance(r.get("commence_time_mt"), datetime):
+            r["commence_time_mt"] = r["commence_time_mt"].isoformat()
+        rows.append(r)
 
-   
-# Run the main function
+    pd.DataFrame(rows).to_csv(filename, index=False)
+    print(f"Spreads data saved to {filename}")
+
+
+# =============================
+# CLI helper
+# =============================
+def main(save_csv=False):
+    games_list, num_of_games = get_nfl_spreads()
+    print("Number of games found:", num_of_games)
+
+    if save_csv:
+        save_to_csv(games_list, "nfl_spreads_next_7_days.csv")
+
+    return games_list, num_of_games
+
+
 if __name__ == "__main__":
     main(save_csv=True)
-

@@ -1,8 +1,8 @@
-"""Initial setup
+"""init again
 
-Revision ID: d2be61e9446a
+Revision ID: cb4c4bcdd1a1
 Revises: 
-Create Date: 2025-08-07 12:55:48.620475
+Create Date: 2025-08-09 23:40:05.469453
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'd2be61e9446a'
+revision = 'cb4c4bcdd1a1'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -25,7 +25,7 @@ def upgrade():
     sa.Column('away_team', sa.String(length=50), nullable=False),
     sa.Column('spread', sa.Float(), nullable=True),
     sa.Column('favorite_team', sa.String(length=50), nullable=True),
-    sa.Column('commence_time_mt', sa.String(length=50), nullable=True),
+    sa.Column('commence_time_mt', sa.DateTime(timezone=True), nullable=True),
     sa.Column('home_team_score', sa.Integer(), nullable=True),
     sa.Column('away_team_score', sa.Integer(), nullable=True),
     sa.Column('saved_at', sa.DateTime(), nullable=True),
@@ -57,7 +57,7 @@ def upgrade():
     sa.Column('user_id', sa.Integer(), nullable=False),
     sa.Column('game_id', sa.Integer(), nullable=False),
     sa.Column('team_picked', sa.String(length=100), nullable=True),
-    sa.Column('confidence', sa.Integer(), nullable=False),
+    sa.Column('confidence', sa.Integer(), nullable=True),
     sa.Column('pick_time', sa.DateTime(), nullable=True),
     sa.Column('week', sa.Integer(), nullable=False),
     sa.Column('points_earned', sa.Integer(), nullable=True),

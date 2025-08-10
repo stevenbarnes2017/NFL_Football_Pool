@@ -23,7 +23,6 @@ from flask import request, flash, redirect, url_for, render_template
 from flask_login import current_user, login_required
 from datetime import datetime
 from pytz import timezone  # Add this
-from dateutil import parser  # This helps to handle parsing strings to datetime
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 #from flask_mail import Message  # if you use Flask-Mail
 from .utils import generate_token, verify_token
@@ -214,73 +213,109 @@ def email_picks():
 @main_bp.route('/submit_picks', methods=['POST'])
 @login_required
 def submit_picks():
-    selected_week = request.form.get('week')
-    num_of_games = int(request.form.get('num_of_games'))
-    user_id = current_user.id
+    from datetime import datetime
+    import pytz
 
-    # Ensure we're not using any part of dateutil
-    print(">>> Using pytz for timezone handling, dateutil should not be involved.")
-    
-    mountain_tz = pytz.timezone("America/Denver")
     utc = pytz.utc
+    now_utc = datetime.now(utc)
 
-    now_utc = datetime.now(pytz.utc)
+    # Week
+    try:
+        week = int(request.form.get('week', '0'))
+    except (TypeError, ValueError):
+        flash("Invalid week.", "danger")
+        return redirect(url_for('main.nfl_picks'))
 
-    for key in request.form.keys():
-        if key.startswith('game_id_'):
-            game_id = request.form.get(key)
-            if not game_id:
-                print(f"Skipping game as no game ID was found for key {key}.")
-                continue
+    # Pull all games for the week (we’ll read inputs keyed by NATURAL id)
+    games = Game.query.filter_by(week=week).all()
 
-            game = Game.query.get(game_id)
-            if not game:
-                print(f"Game {game_id} does not exist.")
-                continue
+    created = updated = locked = skipped = 0
 
-            commence_time_str = game.commence_time_mt
-            print(f"Commence time (string) for game {game_id}: {commence_time_str}")
+    for game in games:
+        nat_id = game.game_id  # e.g. "2025-W2-IND-at-BAL"
 
+        pick_key = f"pick_{nat_id}"
+        conf_key = f"confidence_{nat_id}"
+
+        team_picked = (request.form.get(pick_key) or "").strip()
+        conf_raw = (request.form.get(conf_key) or "").strip()
+
+        # If the user sent nothing for this game, skip it quietly
+        if team_picked == "" and conf_raw == "":
+            continue
+
+        # Lock check
+        if game.commence_time_mt and now_utc >= game.commence_time_mt.astimezone(utc):
+            locked += 1
+            continue
+
+        # Parse confidence if present; empty string means "clear it"
+        conf_val = None
+        conf_set_to_null = False
+        if conf_raw == "":
+            conf_set_to_null = True  # explicit clear
+        else:
             try:
-                dt_str, tz_abbr = commence_time_str.rsplit(' ', 1)
-                naive_time = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
-
-                if tz_abbr == 'MDT':
-                    print(">>> Localizing with Mountain Time (MDT)")
-                    commence_time = mountain_tz.localize(naive_time)
-                elif tz_abbr == 'MST':
-                    print(">>> Localizing with Mountain Time (MST)")
-                    commence_time = mountain_tz.localize(naive_time)
-                else:
-                    raise ValueError(f"Unknown timezone abbreviation: {tz_abbr}")
-
-                commence_time = commence_time.astimezone(pytz.utc)
-            except (ValueError, TypeError) as e:
-                print(f"Error parsing commence time for game {game_id}: {e}")
-                flash(f"Error with commence time for game {game_id}.")
+                conf_val = int(conf_raw)
+            except ValueError:
+                flash(f"Confidence for {nat_id} must be a number.", "warning")
+                skipped += 1
                 continue
 
-            print(f"Commence time (datetime) for game {game_id}: {commence_time}")
+        # Upsert by (user_id, week, numeric FK)
+        existing = Pick.query.filter_by(
+            user_id=current_user.id,
+            week=week,
+            game_id=game.id  # IMPORTANT: numeric FK to Game.id
+        ).first()
 
-            if now_utc >= commence_time:
-                print(f"Game {game_id} has already started, pick cannot be made.")
+        if existing:
+            changed = False
+            if team_picked:
+                existing.team_picked = team_picked
+                changed = True
+            if conf_set_to_null:
+                existing.confidence = None
+                changed = True
+            elif conf_val is not None:
+                existing.confidence = conf_val
+                changed = True
+
+            if changed:
+                existing.pick_time = datetime.utcnow()
+                updated += 1
+            else:
+                skipped += 1
+        else:
+            # New pick: require at least team OR confidence (both allowed).
+            # If team missing but confidence provided, we can store a placeholder team or skip.
+            # Here we require team to be chosen for a new pick.
+            if not team_picked:
+                skipped += 1
                 continue
+            # Confidence can be None (since column is now nullable).
+            db.session.add(Pick(
+                user_id=current_user.id,
+                week=week,
+                game_id=game.id,      # numeric FK
+                team_picked=team_picked,
+                confidence=(None if conf_set_to_null else conf_val),
+            ))
+            created += 1
 
-            team_picked = request.form.get(f'pick_{game_id}')
-            confidence_score = request.form.get(f'confidence_{game_id}')
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error saving picks: {e}", "danger")
+        return redirect(url_for('main.nfl_picks', week=week))
 
-            print(f"Processing pick for game {game_id}: {team_picked}, confidence: {confidence_score}")
+    flash(
+        f"Created: {created}, Updated: {updated}, Locked: {locked}, Skipped: {skipped}",
+        "success" if (created or updated) else "warning"
+    )
+    return redirect(url_for('main.nfl_picks', week=week))
 
-            if not team_picked or not confidence_score:
-                flash(f'Missing pick or confidence score for game {game_id}')
-                print(f"Skipping game {game_id} due to missing pick or confidence.")
-                continue
-
-            save_pick_to_db(user_id, int(selected_week), game_id, team_picked, int(confidence_score))
-            print(f"Pick saved for game {game_id}")
-
-    flash('Picks submitted successfully!')
-    return redirect(url_for('main.nfl_picks', week=selected_week))
 
 
 @main_bp.route('/get_current_week')
@@ -542,81 +577,102 @@ def game_details(game_id):
     # Render the template for detailed game stats
     return render_template('game_details.html', data=detailed_data)
 
-mountain_tz = timezone('America/Denver')
+mountain_tz = pytz.timezone('America/Denver')
 
 def convert_utc_to_mountain(utc_time):
-    """Convert UTC time back to Mountain Time."""
+    """Convert UTC time (datetime or ISO string) to Mountain Time, or return None."""
+    if utc_time is None:
+        return None
+
+    # If stored as string, parse it first
+    if isinstance(utc_time, str):
+        # Handle Zulu suffix by replacing 'Z' with UTC offset
+        s = utc_time.strip().replace("Z", "+00:00")
+        utc_time = datetime.fromisoformat(s)
+
+    # If naive datetime, assume it's UTC
+    if utc_time.tzinfo is None:
+        from datetime import timezone
+        utc_time = utc_time.replace(tzinfo=timezone.utc)
+
     return utc_time.astimezone(mountain_tz)
 
 
 @main_bp.route('/nfl_picks', methods=['GET', 'POST'])
 @login_required
 def nfl_picks():
-    selected_week = request.form.get('week', type=int) or request.args.get('week', default=None, type=int)
+    from datetime import datetime
+    import pytz
+
+    # Week selection
+    selected_week = request.form.get('week', type=int) or request.args.get('week', type=int)
     current_week = get_current_week()
-    
     if not selected_week:
         selected_week = current_week
 
-    user_id = current_user.id
-    now_utc = datetime.utcnow().replace(tzinfo=pytz.utc)  # Current time in UTC
-    print(f"Current UTC time: {now_utc}")  # Debug current time
+    utc = pytz.utc
+    mt = pytz.timezone("America/Denver")
+    now_utc = datetime.now(utc)
 
-    # Retrieve user's picks for the selected week
-    user_picks_db = Pick.query.filter_by(user_id=user_id, week=selected_week).all()
-    user_picks = {pick.game_id: (pick.team_picked, pick.confidence) for pick in user_picks_db}
+    # Games for the week
+    games = Game.query.filter_by(week=selected_week).order_by(Game.commence_time_mt).all()
+    num_of_games = len(games)
 
-    # Retrieve saved games for the selected week
-    saved_games = get_saved_games(week=selected_week)
-    if saved_games:
-        num_of_games = len(saved_games)
+    # JOIN Pick -> Game so we can key by NATURAL ID for the template
+    rows = (
+        db.session.query(Pick, Game)
+        .join(Game, Pick.game_id == Game.id)
+        .filter(Pick.user_id == current_user.id, Pick.week == selected_week)
+        .all()
+    )
+    # user_picks: { natural_game_id: (team_picked, confidence_or_None) }
+    user_picks = {g.game_id: (p.team_picked, p.confidence) for p, g in rows}
+    # only numbers for the sidebar; exclude None
+    used_confidence_points = [p.confidence for p, _ in rows if p.confidence is not None]
 
-        for game in saved_games:
-            commence_time_str = game['commence_time_mt']
-            print(f"Original commence time string for game {game['id']}: {commence_time_str}")
+    # Which games are locked (kickoff passed)?
+    locked_ids = set()
+    for g in games:
+        if g.commence_time_mt and now_utc >= g.commence_time_mt.astimezone(utc):
+            locked_ids.add(g.game_id)
 
-            # Convert commence_time_mt to UTC using the conversion function
-            try:
-                game['commence_time_mt'] = convert_to_utc(commence_time_str)
-                print(f"Game {game['id']} converted commence time (UTC): {game['commence_time_mt']}")
-            except Exception as e:
-                print(f"Error converting commence time for game {game['id']}: {e}")
-                continue  # Skip this game if there's a conversion error
+    # Group games by Mountain weekday for display
+    grouped_games = {}
+    for g in games:
+        dt_mt = g.commence_time_mt.astimezone(mt) if g.commence_time_mt else None
+        day = dt_mt.strftime("%A") if dt_mt else "Unknown"
+        grouped_games.setdefault(day, []).append(g)
 
-        # Now convert the UTC time back to Mountain Time for display and grouping
-        for game in saved_games:
-            game['commence_time_mt_display'] = convert_utc_to_mountain(game['commence_time_mt'])
-            print(f"Game {game['id']} converted commence time (Mountain Time for display): {game['commence_time_mt_display']}")
+    # OPTIONAL: if you auto-assign confidence for already-started, no-pick games,
+    # do it here and also append to used_confidence_points so the sidebar reflects it.
+    # If you don't want auto-assignment, delete this block.
+    total_conf_points = list(range(1, num_of_games + 1))
+    def highest_available(all_pts, used_pts):
+        avail = sorted(set(all_pts) - set(used_pts), reverse=True)
+        return avail[0] if avail else None
+    for g in games:
+        if g.game_id in locked_ids and g.game_id not in user_picks:
+            hi = highest_available(total_conf_points, used_confidence_points)
+            if hi:
+                user_picks[g.game_id] = ('No pick made', hi)
+                used_confidence_points.append(hi)
 
-        # Group games by Mountain Time day
-        grouped_games = group_games_by_day(saved_games)
-        total_confidence_points = list(range(1, num_of_games + 1))
-        used_confidence_points = [pick.confidence for pick in user_picks_db]
-
-        for game in saved_games:
-            game_id = game['id']
-            if now_utc >= game['commence_time_mt'] and game_id not in user_picks:
-                highest_available_confidence = get_highest_available_confidence(total_confidence_points, used_confidence_points)
-                if highest_available_confidence:
-                    user_picks[game_id] = ('No pick made', highest_available_confidence)
-                    used_confidence_points.append(highest_available_confidence)
-
-    else:
-        grouped_games = {"Wenesday": [], "Thursday": [], "Friday": [], "Saturday": [], "Sunday": [], "Monday": []}
-        num_of_games = 0
-        used_confidence_points = []
+    # (Optional) debug so you can verify values will render:
+    print("user_picks ->", user_picks)
+    print("used_confidence_points ->", used_confidence_points)
 
     all_weeks = list(range(1, current_week + 1))
 
     return render_template(
         'nfl_picks.html',
-        grouped_games=group_games_by_day(saved_games),
+        grouped_games=grouped_games,
         num_of_games=num_of_games,
         now_utc=now_utc,
         selected_week=selected_week,
         all_weeks=all_weeks,
-        user_picks=user_picks,
-        used_confidence_points=used_confidence_points  # Pass the used confidence points
+        user_picks=user_picks,                # <-- drives the input value
+        used_confidence_points=used_confidence_points,
+        locked_ids=locked_ids
     )
 
 
