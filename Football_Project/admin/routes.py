@@ -39,7 +39,7 @@ def update_admin_status(user_id):
     user = User.query.get_or_404(user_id)
     user.is_admin = 'is_admin' in request.form
     db.session.commit()
-    return redirect(url_for('manage_users'))
+    return redirect(url_for('admin.manage_users'))
 
 @admin_bp.route('/admin/delete_user/<int:user_id>', methods=['POST'])
 @login_required
