@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <div class="profile-container">
+        <h1>Edit Profile</h1>
+        <p class="subtitle">Update your account information</p>
+
+        <form method="POST" action="{{ url_for('main.edit_profile') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            
+            <div class="profile-field">
+                <label for="username">Username:</label>
+                <input type="text" name="username" id="username" 
+                       value="{{ user.username }}" required class="form-input">
+            </div>
+
+            <div class="profile-field">
+                <label for="full_name">Full Name:</label>
+                <input type="text" name="full_name" id="full_name" 
+                       value="{{ user.full_name or '' }}" class="form-input">
+            </div>
+
+            <div class="profile-field">
+                <label for="email">Email:</label>
+                <input type="email" name="email" id="email" 
+                       value="{{ user.email }}" required class="form-input">
+            </div>
+
+            <div class="profile-field">
+                <label for="phone">Phone:</label>
+                <input type="text" name="phone" id="phone" 
+                       value="{{ user.phone or '' }}" class="form-input">
+            </div>
+
+            <div class="profile-field">
+                <label for="favorite_team">Favorite Team:</label>
+                <input type="text" name="favorite_team" id="favorite_team" 
+                       value="{{ user.favorite_team or '' }}" class="form-input">
+            </div>
+
+            <div class="profile-field">
+                <label for="current_password">Current Password:</label>
+                <input type="password" name="current_password" id="current_password" 
+                       class="form-input" placeholder="Required to change password">
+            </div>
+
+            <div class="profile-field">
+                <label for="new_password">New Password:</label>
+                <input type="password" name="new_password" id="new_password"
+                       class="form-input" placeholder="Leave blank to keep current password">
+            </div>
+
+            <div class="profile-actions">
+                <button type="submit" class="submit-button">Update Profile</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

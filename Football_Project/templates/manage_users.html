@@ -22,15 +22,30 @@
                 <tr>
                     <td class="py-2 px-4 border-b">{{ user.username }}</td>
                     <td class="py-2 px-4 border-b">{{ user.email }}</td>
+
+                    <!-- Admin toggle -->
                     <td class="py-2 px-4 border-b text-center">
                         <form method="POST" action="{{ url_for('admin.update_admin_status', user_id=user.id) }}">
-                            <input type="checkbox" name="is_admin" {% if user.is_admin %}checked{% endif %} onChange="this.form.submit()">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <!-- Hidden value ensures unchecked sends "0" -->
+                            <input type="hidden" name="is_admin" value="0">
+                            <input type="checkbox"
+                                   name="is_admin"
+                                   value="1"
+                                   {% if user.is_admin %}checked{% endif %}
+                                   onchange="this.form.submit()">
                         </form>
                     </td>
+
+                    <!-- Edit / Delete actions -->
                     <td class="py-2 px-4 border-b">
                         <a href="{{ url_for('admin.edit_user', user_id=user.id) }}" class="text-blue-500 hover:underline">Edit</a>
                         |
-                        <form method="POST" action="{{ url_for('admin.delete_user', user_id=user.id) }}" style="display:inline;">
+                        <form method="POST"
+                              action="{{ url_for('admin.delete_user', user_id=user.id) }}"
+                              style="display:inline;"
+                              onsubmit="return confirm('Delete this user?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="text-red-500 hover:underline">Delete</button>
                         </form>
                     </td>

@@ -7,19 +7,23 @@
 
 /* Main Content Styling */
 .main-content {
-    margin-top: 60px; /* Adjust this value to match the height of your nav bar */
-    padding: 20px; /* Optional: Add padding if needed */
+    margin-top: 60px;
+    padding: 20px;
 }
+
 /* Body styling for overall consistency */
 body {
     font-family: 'Arial', sans-serif;
     background-color: #f4f4f4;
     color: #333;
     padding: 10px;
-    
+    padding-top: 88px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    margin: 0;
 }
-
-
 
 /* Container settings */
 .container {
@@ -28,14 +32,13 @@ body {
     padding: 20px;
     overflow: visible;
 }
-    
 
 /* Scoreboard Grid: Flexbox for Horizontal Alignment */
 .scoreboard-grid {
     display: flex;
-    flex-wrap: wrap;                  /* Wrap to next row if no space */
-    gap: 20px;                        /* Spacing between cards */
-    justify-content: flex-start;      /* Align cards to the start */
+    flex-wrap: wrap;
+    gap: 20px;
+    justify-content: flex-start;
     align-items: flex-start;
     width: calc(100% - 50px);
     padding: 20px;
@@ -43,25 +46,24 @@ body {
     box-sizing: border-box;
 }
 
-
 /* Game Card Styling */
 .game-card {
     background-color: #ffffff;
     border-radius: 10px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     padding: 20px;
-    width: 300px;                     /* Fixed width for cards */
+    width: 300px;
     text-align: center;
     transition: transform 0.3s;
-    overflow: hidden;                 /* Prevent overflow */
-    box-sizing: border-box;           /* Include padding in width */
-    word-wrap: break-word;            /* Wrap long words to fit */
+    overflow: hidden;
+    box-sizing: border-box;
+    word-wrap: break-word;
     margin-bottom: 0;
     flex: 0 1 auto;
 }
 
 .game-card:hover {
-    transform: translateY(-10px);     /* Add subtle hover effect */
+    transform: translateY(-10px);
 }
 
 /* Team Logo Styling */
@@ -72,10 +74,16 @@ body {
     margin-bottom: 15px;
 }
 
+.team-logo {
+    width: 60px;
+    height: 60px;
+    margin-bottom: 10px;
+}
+
 .team-logo img {
     width: 50px;
     height: 50px;
-    object-fit: contain;              /* Contain image within the defined size */
+    object-fit: contain;
 }
 
 /* Score Styling */
@@ -104,61 +112,8 @@ body {
 
 /* Highlight the team in possession */
 .possession-highlight {
-    color: #d9534f;                   /* Use red to highlight possession */
+    color: #d9534f;
     font-weight: bold;
-}
-
-/* Responsive Design */
-
-/* Medium screens: Cards take up half the width */
-@media (max-width: 1024px) {
-    .game-card {
-        width: calc(50% - 20px);      /* Cards take up half width with space */
-        margin-bottom: 20px;
-    }
-}
-
-/* Mobile Styles */
-@media (max-width: 768px) {
-    /* Make game cards responsive */
-    .game-card {
-        width: 100%;                    /* Take full width on smaller screens */
-        margin-bottom: 10px;            /* Add space between cards */
-    }
-
-    /* Adjust grid padding and remove left margin */
-    .scoreboard-grid {
-        padding: 10px;
-        margin-left: 0;                 /* Remove left margin on mobile */
-    }
-
-    /* Move floating box below content */
-    .floating-box {
-        position: static;
-        width: 100%;                    /* Full width on mobile */
-        margin-top: 20px;
-        max-height: none;               /* Allow full height for scrolling */
-    }
-}
-
-/* Small screens: Cards take full width */
-@media (max-width: 768px) {
-    .scoreboard-grid {
-        justify-content: center;      /* Center cards on small screens */
-    }
-    .game-card {
-        width: 90%;                   /* Cards take most of the container width */
-        margin-bottom: 20px;
-    }
-
-    .team-logo img {
-        width: 40px;                  /* Adjust logo size for smaller screens */
-        height: 40px;
-    }
-
-    .score {
-        font-size: 1.2rem;
-    }
 }
 
 /* Navigation Bar Styling */
@@ -168,7 +123,7 @@ nav {
     left: 0;
     width: 100%;
     background-color: #333;    
-    z-index: 1000; /* Ensures it stays above other elements */
+    z-index: 1000;
 }
 
 .navbar {
@@ -184,6 +139,8 @@ nav .navbar-brand {
 
 nav .navbar-links {
     float: right;
+    display: flex;
+    align-items: center;
 }
 
 nav .navbar-links a {
@@ -198,7 +155,7 @@ nav .navbar-links a {
 }
 
 nav .navbar-links a:hover {
-    background-color: #218838; /* Green hover color */
+    background-color: #218838;
 }
 
 nav::after {
@@ -207,31 +164,66 @@ nav::after {
     clear: both;
 }
 
-/* Dropdown and Floating Box Styling */
-.dropdown-wrapper {
-    display: flex;
-    justify-content: left;
-    align-items: left;
-    margin-top: 20px;     /* NEW - pushes it down from navbar */
-    margin-bottom: 20px;
+/* Dropdown Styling */
+.dropdown {
+    position: relative;
+    display: inline-block;
+    margin-left: 10px;
 }
 
-.dropdown-form {
+.dropbtn {
+    color: white;
+    font-size: 1.2rem;
+    padding: 8px 16px;
+    background-color: #333;
+    border: none;
+    cursor: pointer;
+    border-radius: 4px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 5px;
+    transition: background-color 0.3s ease;
 }
 
-.dropdown-form label {
-    font-weight: bold;
-    font-size: 1.2rem;
-}
-
-.dropdown-form select {
-    padding: 10px;
+.dropdown-content {
+    display: none;
+    position: absolute;
+    right: 0;
+    background-color: #f9f9f9;
+    min-width: 160px;
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+    z-index: 1001;
     border-radius: 4px;
-    border: 1px solid #ccc;
-    font-size: 1rem;
+    overflow: hidden;
+}
+
+.dropdown-content a {
+    color: #333 !important;
+    padding: 12px 16px !important;
+    text-decoration: none;
+    display: block;
+    text-align: left;
+    font-size: 1rem !important;
+    background-color: transparent !important;
+    margin: 0 !important;
+    transition: background-color 0.2s ease;
+}
+
+.dropdown-content a:hover {
+    background-color: #f1f1f1 !important;
+    color: #218838 !important;
+}
+
+.dropdown:hover .dropdown-content {
+    display: block;
+}
+
+.dropdown:hover .dropbtn {
+    background-color: #218838;
+}
+
+.fa-caret-down {
+    margin-left: 5px;
 }
 
 /* Floating box */
@@ -247,12 +239,6 @@ nav::after {
     max-width: auto;
     text-align: center;
     z-index: 100;
-}
-
-/* Styling for used confidence numbers */
-.number-used {
-    text-decoration: line-through;
-    color: #d9534f;
 }
 
 /* Header and Form Styling */
@@ -308,11 +294,6 @@ th {
     background-color: #f1f1f1;
 }
 
-/* Bold Favorite Team */
-td.favorite-team {
-    font-weight: bold;
-}
-
 /* Button Styling */
 .submit-button {
     background-color: #28a745;
@@ -338,22 +319,12 @@ footer {
     text-align: center;
 }
 
-body {
-    font-family: Arial, sans-serif;
-    background-color: #f4f4f4;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    flex-direction: column;
-}
-
+/* Playoff Styling */
 .main-heading {
     font-size: 2.5em;
     text-align: center;
-    margin: 0 0 20px 0; /* Remove the top margin */
-    padding-top: 20px; /* Optional: Add padding for consistent spacing */
+    margin: 0 0 20px 0;
+    padding-top: 20px;
 }
 
 .playoff-container {
@@ -372,9 +343,14 @@ body {
     border-radius: 8px;
 }
 
-.conference-column h2 {
+.conference-column h2, .conference-column h3 {
     text-align: center;
     color: #333;
+}
+
+.conference-column h3 {
+    margin: 15px 0;
+    font-size: x-large;
 }
 
 .team-cards {
@@ -393,12 +369,6 @@ body {
     text-align: center;
 }
 
-.team-logo {
-    width: 60px;
-    height: 60px;
-    margin-bottom: 10px;
-}
-
 .team-card h4 {
     margin: 5px 0;
     font-size: 1.2em;
@@ -410,15 +380,134 @@ body {
     color: #555;
 }
 
-.conference-column h3 {
+/* Responsive Design */
+@media (max-width: 1024px) {
+    .game-card {
+        width: calc(50% - 20px);
+        margin-bottom: 20px;
+    }
+}
+
+/* ...existing code until media query... */
+
+@media (max-width: 768px) {
+    .game-card {
+        width: 100%;
+        margin-bottom: 10px;
+    }
+
+    .scoreboard-grid {
+        padding: 10px;
+        margin-left: 0;
+        justify-content: center;
+    }
+
+    .floating-box {
+        position: static;
+        width: 100%;
+        margin-top: 20px;
+        max-height: none;
+    }
+
+    .team-logo img {
+        width: 40px;
+        height: 40px;
+    }
+
+    .score {
+        font-size: 1.2rem;
+    }
+
+    .dropdown {
+        position: static;
+    }
+
+    .dropdown-content {
+        width: 100%;
+        position: absolute;
+        left: 0;
+        right: 0;
+    }
+
+    .dropbtn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    nav .navbar-links {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
+
+/* Profile Styles */
+.profile-container {
+    max-width: 800px;
+    margin: 20px auto;
+    padding: 20px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.profile-container h1 {
     text-align: center;
-    margin: 15px 0;
-    font-size: x-large;
+    color: #333;
+    margin-bottom: 10px;
 }
 
-
-/* Ensure all page content clears the fixed navbar */
-body {
-    padding-top: 88px; /* navbar height (72px) + breathing room */
+.subtitle {
+    text-align: center;
+    color: #666;
+    margin-bottom: 30px;
 }
 
+.profile-info {
+    margin: 20px 0;
+}
+
+.profile-field {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    border-bottom: 1px solid #eee;
+}
+
+.profile-field label {
+    color: #666;
+}
+
+.profile-value {
+    font-weight: bold;
+    color: #333;
+}
+
+.profile-actions {
+    text-align: center;
+    margin-top: 30px;
+}
+
+.edit-button {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 16px;
+    background-color: #28a745;
+    color: white;
+    border-radius: 4px;
+    text-decoration: none;
+    transition: background-color 0.3s;
+}
+
+.edit-button:hover {
+    background-color: #218838;
+}
+
+.edit-icon {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 8px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='white'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z'%3E%3C/path%3E%3C/svg%3E") no-repeat center;
+    background-size: contain;
+}

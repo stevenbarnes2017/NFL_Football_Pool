@@ -103,51 +103,76 @@ def profile():
 @login_required
 def edit_profile():
     if request.method == 'POST':
+        # Get form data
         username = request.form.get('username', '').strip()
         email = request.form.get('email', '').strip()
-        current_password = request.form.get('current_password', '')
-        new_password = request.form.get('new_password', '')
         full_name = request.form.get('full_name', '').strip()
+        phone = request.form.get('phone', '').strip()
+        favorite_team = request.form.get('favorite_team', '').strip()
+        new_password = request.form.get('new_password', '')
+        current_password = request.form.get('current_password', '')
 
-        # Validate current password if changing password
-        if new_password:
-            if not check_password_hash(current_user.password, current_password):
-                flash('Current password is incorrect.', 'danger')
+        # Check if username/email already exists
+        if username != current_user.username:
+            if User.query.filter_by(username=username).first():
+                flash('Username already taken.', 'danger')
                 return redirect(url_for('main.edit_profile'))
 
-            current_user.password = generate_password_hash(new_password, method='pbkdf2:sha256')
+        if email != current_user.email:
+            if User.query.filter_by(email=email).first():
+                flash('Email already taken.', 'danger')
+                return redirect(url_for('main.edit_profile'))
 
-        # Update other fields
-        current_user.username = username
-        current_user.email = email
-        current_user.full_name = full_name
+        try:
+            # Update password if provided
+            if new_password:
+                if not current_password:
+                    flash('Current password required to change password.', 'danger')
+                    return redirect(url_for('main.edit_profile'))
+                
+                if not check_password_hash(current_user.password, current_password):
+                    flash('Current password is incorrect.', 'danger')
+                    return redirect(url_for('main.edit_profile'))
+                
+                current_user.password = generate_password_hash(new_password)
 
-        db.session.commit()
-        flash('Your profile has been updated.', 'success')
-        return redirect(url_for('main.edit_profile'))  # or wherever you want to send them
+            # Update user fields
+            current_user.username = username
+            current_user.email = email
+            current_user.full_name = full_name
+            current_user.phone = phone
+            current_user.favorite_team = favorite_team
+
+            db.session.commit()
+            flash('Profile updated successfully.', 'success')
+            return redirect(url_for('main.profile'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash('Error updating profile.', 'danger')
+            return redirect(url_for('main.edit_profile'))
 
     return render_template('edit_profile.html', user=current_user)
-
 
 @main_bp.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        user = User.query.filter_by(username=username).first()
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
 
+        user = User.query.filter_by(username=username).first()
         if user and check_password_hash(user.password, password):
             login_user(user)
 
-            # Redirect to admin dashboard if the user is an admin
-            if user.is_admin:
-                return redirect(url_for('admin.admin_dashboard'))  # Corrected line
-            
-            # Otherwise, redirect to the regular user dashboard
-            return redirect(url_for('main.dashboard'))
-        else:
-            flash('Invalid username or password', 'danger')
-            return redirect(url_for('main.login'))
+            # honor ?next= for protected redirects
+            next_url = request.args.get('next')
+            if next_url:
+                return redirect(next_url)
+
+            return redirect(url_for('admin.admin_dashboard' if user.is_admin else 'main.dashboard'))
+
+        flash('Invalid username or password', 'danger')
+        # fall through to render the template so flashes show
 
     return render_template('login.html')
 

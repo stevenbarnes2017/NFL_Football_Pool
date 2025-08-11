@@ -4,6 +4,7 @@ import atexit
 from flask import Flask
 from flask_login import LoginManager
 from flask_migrate import Migrate
+from flask_wtf.csrf import CSRFProtect
 from apscheduler.schedulers.background import BackgroundScheduler
 from pytz import timezone
 from dotenv import load_dotenv
@@ -17,6 +18,7 @@ load_dotenv()
 # Global scheduler (Mountain time)
 scheduler = BackgroundScheduler(timezone=timezone('US/Mountain'))
 migrate = Migrate()  # use init_app pattern
+csrf = CSRFProtect()  # Initialize CSRF protection
 
 def auto_fetch_scores_with_context(app):
     with app.app_context():
@@ -32,9 +34,13 @@ def create_app():
     # Config
     app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///picks.db')
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'password')
+    app.config['WTF_CSRF_SECRET_KEY'] = os.getenv('WTF_CSRF_SECRET_KEY', 'csrf-key-value')
 
-    # Init DB, then Migrate (point to package migrations dir)
+    # Init extensions
     db.init_app(app)
+    csrf.init_app(app)  # Initialize CSRF protection
+    
+    # Init migrations
     migrations_dir = os.path.join(app.root_path, "migrations")  # Football_Project/migrations
     migrate.init_app(app, db, directory=migrations_dir)
 

@@ -1,14 +1,49 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Your Profile</title>
-</head>
-<body>
-    <h1>Profile</h1>
-    <p><strong>Username:</strong> {{ user.username }}</p>
-    <p><strong>Email:</strong> {{ user.email }}</p>
-    <a href="{{ url_for('edit_profile') }}">Edit Profile</a>
-</body>
-</html>
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <div class="profile-container">
+        <h1>Your Profile</h1>
+        <p class="subtitle">Manage your account information</p>
+
+        <div class="profile-info">
+            <div class="profile-field">
+                <label>Username:</label>
+                <span class="profile-value">{{ user.username }}</span>
+            </div>
+
+            <div class="profile-field">
+                <label>Full Name:</label>
+                <span class="profile-value">{{ user.full_name or 'Not set' }}</span>
+            </div>
+
+            <div class="profile-field">
+                <label>Email:</label>
+                <span class="profile-value">{{ user.email }}</span>
+            </div>
+
+            <div class="profile-field">
+                <label>Phone:</label>
+                <span class="profile-value">{{ user.phone or 'Not set' }}</span>
+            </div>
+
+            <div class="profile-field">
+                <label>Favorite Team:</label>
+                <span class="profile-value">{{ user.favorite_team or 'Not set' }}</span>
+            </div>
+
+            <div class="profile-field">
+                <label>Account Type:</label>
+                <span class="profile-value">{{ 'Admin' if user.is_admin else 'User' }}</span>
+            </div>
+        </div>
+
+        <div class="profile-actions">
+            <a href="{{ url_for('main.edit_profile') }}" class="edit-button">
+                <i class="edit-icon"></i>
+                Edit Profile
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -7,7 +7,7 @@
   <div class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow-lg">
     <h2 class="text-3xl font-extrabold mb-4 text-center text-gray-900 tracking-tight">Admin Dashboard</h2>
 
-    <!-- Link to TailwindCSS -->
+    <!-- Tailwind (optional if already in base.html) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css">
 
     <!-- Flash Messages -->
@@ -29,8 +29,16 @@
       <!-- Fetch Odds Section -->
       <div class="card flex flex-col border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
         <h3 class="text-xl font-semibold mb-3 text-gray-800">Fetch Odds</h3>
-        <p class="text-gray-700 flex-grow">Automatically fetches odds for the current week (Week {{ current_week }}).</p>
+        <p class="text-gray-700 flex-grow">
+          Automatically fetches odds for the current week
+          {% if current_week %}(Week {{ current_week }}){% endif %}.
+        </p>
         <form action="{{ url_for('admin.fetch_odds') }}" method="post" class="mt-auto">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <!-- Optional override controls:
+          <input type="hidden" name="week_option" value="override">
+          <input type="number" name="week_number" value="{{ current_week or '' }}" class="w-full p-2 border rounded mt-2" placeholder="Week #">
+          -->
           <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-3 rounded-lg w-full font-semibold">
             Fetch Odds
           </button>
@@ -43,6 +51,7 @@
         <p class="text-gray-600 flex-grow">Scores are fetched automatically, but you can manually fetch them if needed.</p>
 
         <form action="{{ url_for('admin.fetch_scores') }}" method="post" class="mt-auto">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="year" value="{{ current_year }}">
 
           <label for="seasontype" class="block text-gray-600 font-medium mt-2">Season Type:</label>
@@ -53,7 +62,7 @@
           </select>
 
           <label for="weeknum" class="block text-gray-600 font-medium mt-2">Week Number:</label>
-          <input type="number" name="weeknum" id="weeknum" class="w-full p-2 border border-gray-300 rounded mt-1" required>
+          <input type="number" name="weeknum" id="weeknum" class="w-full p-2 border border-gray-300 rounded mt-1" value="{{ current_week or '' }}" required>
 
           <div class="mt-4 flex justify-between">
             <button type="submit" name="action" value="save_to_db" class="bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg font-semibold">
@@ -89,6 +98,7 @@
       <div class="lg:col-span-3 border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
         <h3 class="text-xl font-semibold mb-3 text-center text-gray-800">Process User Scores</h3>
         <form action="{{ url_for('admin.process_user_scores') }}" method="post" class="text-center">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="bg-purple-500 hover:bg-purple-600 text-white py-2 px-4 rounded-lg w-full font-semibold transition-colors duration-200">
             Process All User Scores
           </button>

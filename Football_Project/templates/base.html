@@ -9,25 +9,31 @@
 </head>
 <body>
 
-    <!-- Navigation Bar (reintroduced) -->
     <nav class="navbar">
-        <div class="container">
-            <div class="navbar-brand">
-                NFL Picks
-            </div>
-            <div class="navbar-links">
-                <!--<a href="{{ url_for('main.odds') }}">View Odds</a>-->
-                <a href="{{ url_for('main.live_scores_page') }}">Live Scores</a>
-                <a href="{{ url_for('main.playoff_picture') }}">Playoff Picture</a>
-                <a href="{{ url_for('main.dashboard') }}">Dashboard</a>
-                <a href="{{ url_for('main.nfl_picks') }}">Select Picks</a>
-                <a href="{{ url_for('main.see_picks') }}">See Picks</a>
-                <a href="{{ url_for('main.logout') }}">Logout</a>
-                
+    <div class="container">
+        <div class="navbar-brand">
+            NFL Picks
+        </div>
+        <div class="navbar-links">
+            <!--<a href="{{ url_for('main.odds') }}">View Odds</a>-->
+            <a href="{{ url_for('main.live_scores_page') }}">Live Scores</a>
+            <a href="{{ url_for('main.playoff_picture') }}">Playoff Picture</a>
+            <a href="{{ url_for('main.dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('main.nfl_picks') }}">Select Picks</a>
+            <a href="{{ url_for('main.see_picks') }}">See Picks</a>
+            <div class="dropdown">
+                <button class="dropbtn">Settings 
+                    <i class="fa fa-caret-down"></i>
+                </button>
+                <div class="dropdown-content">
+                    <a href="{{ url_for('main.profile') }}">Profile</a>
+                    <a href="{{ url_for('main.edit_profile') }}">Edit Profile</a>
+                    <a href="{{ url_for('main.logout') }}">Logout</a>
+                </div>
             </div>
         </div>
-    </nav>
-
+    </div>
+</nav>
     <!-- Page Content -->
     <div class="container main-content">
         {% block content %}{% endblock %}
