@@ -5,7 +5,7 @@ from .models import db, Game, Pick, UserScore
 from Football_Project.get_the_odds import get_current_week
 from football_scores import save_scores_to_db, get_football_scores
 import requests
-from flask import render_template, current_app
+from flask import render_template, current_app, request
 from pytz import timezone  # Add this
 import logging  # Ensure logging is imported at the top
 import os
@@ -365,28 +365,32 @@ def convert_to_utc(time_value):
 
 
 def lock_picks_for_commenced_games(user_id):
-    from datetime import datetime
+    from datetime import datetime, timezone
     import pytz
 
-    now_utc = datetime.utcnow()
+    now_utc = datetime.now(timezone.utc)  # aware UTC
     current_week = get_current_week()
 
-    # Fetch commenced games
     commenced_games = Game.query.filter(Game.week == current_week).all()
 
     games_list = []
     used_confidence_points = []
 
     for game in commenced_games:
-        # Convert commence_time_mt to UTC datetime
+        # Always get an aware UTC datetime here
         if isinstance(game.commence_time_mt, str):
             game_commence_time_utc = convert_to_utc(game.commence_time_mt)
         elif isinstance(game.commence_time_mt, datetime):
-            game_commence_time_utc = game.commence_time_mt.astimezone(pytz.utc)
+            if game.commence_time_mt.tzinfo is None:
+                # If stored naive, assume it's MT
+                local_tz = pytz.timezone('America/Denver')
+                localized_dt = local_tz.localize(game.commence_time_mt)
+                game_commence_time_utc = localized_dt.astimezone(pytz.utc)
+            else:
+                game_commence_time_utc = game.commence_time_mt.astimezone(pytz.utc)
         else:
             raise ValueError(f"Invalid commence_time format for game {game.id}")
 
-        # Append game to list
         games_list.append({
             'id': game.id,
             'home_team': game.home_team,
@@ -397,7 +401,7 @@ def lock_picks_for_commenced_games(user_id):
             'commence_time_mt': game.commence_time_mt
         })
 
-        # Lock games that have started
+        # Both sides now aware UTC → safe to compare
         if game_commence_time_utc <= now_utc:
             existing_pick = Pick.query.filter_by(user_id=user_id, game_id=game.id).first()
             if not existing_pick:
@@ -405,21 +409,19 @@ def lock_picks_for_commenced_games(user_id):
                 missed_pick = Pick(
                     user_id=user_id,
                     game_id=game.id,
-                    confidence_points=available_points,
+                    week=current_week,  # week should be set
+                    confidence=available_points,
                     points_earned=0
                 )
                 db.session.add(missed_pick)
 
-    # Commit locked picks
     db.session.commit()
 
-    # 🆕 Get used confidence points for the current user & week
     used_confidence_points = [
-        pick.confidence_points
+        pick.confidence
         for pick in Pick.query.filter_by(user_id=user_id, week=current_week).all()
     ]
 
-    # Render with all required context
     return render_template(
         'nfl_picks.html',
         now_utc=now_utc,
@@ -427,7 +429,6 @@ def lock_picks_for_commenced_games(user_id):
         selected_week=current_week,
         used_confidence_points=used_confidence_points
     )
-
 
 def group_games_by_day(games_list):
     grouped_games = {
@@ -906,4 +907,21 @@ def get_serializer():
 
 def generate_game_id(home_abbr, away_abbr, kickoff_dt):
     return f"2025-{home_abbr}-vs-{away_abbr}-{kickoff_dt.strftime('%Y%m%d')}"
+
+def resolve_selected_week(default_week_provider):
+    """
+    Try to get the selected week from form/querystring.
+    Falls back to default_week_provider() (your get_current_week).
+    Supports common field names from your templates.
+    """
+    for key in ("week", "selected_week", "week_number"):
+        val = request.values.get(key)  # works for both form and query args
+        if val is not None:
+            try:
+                wk = int(val)
+                if 1 <= wk <= 22:  # regular season + playoffs if you use them
+                    return wk
+            except ValueError:
+                pass
+    return default_week_provider()
 

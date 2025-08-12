@@ -12,7 +12,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 from .extensions import db
 from Football_Project.get_the_odds import get_nfl_spreads, save_to_csv
-from Football_Project.utils import fetch_detailed_game_stats, group_games_by_day, get_saved_games, get_unpicked_games_for_week, live_scores_cache, lock_picks_for_commenced_games, get_highest_available_confidence, save_pick_to_db, convert_to_utc, fetch_live_scores, get_picks, send_picks_email, get_nfl_playoff_picture, map_bracket_data, get_odds_data, generate_token, verify_token, get_serializer, send_password_reset_email
+from Football_Project.utils import fetch_detailed_game_stats, group_games_by_day, get_saved_games, get_unpicked_games_for_week, live_scores_cache, lock_picks_for_commenced_games, get_highest_available_confidence, save_pick_to_db, convert_to_utc, fetch_live_scores, get_picks, send_picks_email, get_nfl_playoff_picture, map_bracket_data, get_odds_data, generate_token, verify_token, get_serializer, send_password_reset_email, resolve_selected_week
 from Football_Project.get_the_odds import get_current_week
 from sqlalchemy import func
 from dateutil import parser
@@ -209,29 +209,50 @@ def download_spreads():
         return "No data available for download.", 404
 
 
-@main_bp.route('/email_picks', methods=['GET', 'POST'])
+@main_bp.route('/email_picks', methods=['POST'])
 @login_required
 def email_picks():
+    from flask import current_app, request
+
     user_id = current_user.id
-    recipient = request.form.get('recipient_email', current_user.email)  # Default to current user's email if not provided
+    recipient = request.form.get('recipient_email', current_user.email)
 
-    # Fetch the user's picks from the database for the current week
-    current_week = get_current_week()
-    user_picks = Pick.query.filter_by(user_id=user_id, week=current_week).all()
+    # ← this reads week from the form (week/selected_week/week_number)
+    selected_week = resolve_selected_week(get_current_week)
 
-    # Prepare the picks for the email as a dictionary (Game -> team picked + confidence)
+    # Query picks for THAT week
+    user_picks = (Pick.query
+                  .filter(Pick.user_id == user_id, Pick.week == int(selected_week))
+                  .order_by(Pick.confidence.desc())
+                  .all())
+
+    # Helpful log to verify what's coming in
+    current_app.logger.info(
+        "email_picks: user=%s week_param=%s resolved_week=%s picks=%d form=%s",
+        current_user.username,
+        request.form.get('week'),
+        selected_week,
+        len(user_picks),
+        dict(request.form)
+    )
+
+    if not user_picks:
+        flash(f"No picks found for Week {selected_week}.", "warning")
+        return redirect(url_for('main.see_picks'))
+
+    # Build the dict your email helper expects
     user_picks_dict = {}
     for pick in user_picks:
-        game = f"Game {pick.game_id}"  # You can customize this to use more readable names if needed
-        user_picks_dict[game] = {
+        label = f"Game {pick.game_id}"
+        user_picks_dict[label] = {
             'team_picked': pick.team_picked,
             'confidence': pick.confidence
         }
 
-    # Send the email using the send_picks_email function
     try:
-        send_picks_email(recipient, user_picks_dict)  # Send email to the specified recipient
-        return render_template('user_dashboard.html', name=current_user.username, now=datetime.now())
+        send_picks_email(recipient, user_picks_dict)  # keeps your signature
+        flash(f"Emailed picks for Week {selected_week} to {recipient}.", "success")
+        return redirect(url_for('main.user_dashboard'))
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
