@@ -231,7 +231,7 @@ def email_picks():
     # Send the email using the send_picks_email function
     try:
         send_picks_email(recipient, user_picks_dict)  # Send email to the specified recipient
-        return jsonify({'message': 'Email sent successfully!'}), 200
+        return render_template('user_dashboard.html', name=current_user.username, now=datetime.now())
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
