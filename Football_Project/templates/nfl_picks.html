@@ -130,7 +130,7 @@
 </div>
 
 <script>
-   document.addEventListener('DOMContentLoaded', function () {
+  document.addEventListener('DOMContentLoaded', function () {
     const numOfGames = parseInt("{{ num_of_games }}", 10);
 
     // Seed from server (filter out nulls/invalids)
@@ -160,13 +160,15 @@
       const items = [];
       for (let i = 1; i <= numOfGames; i++) {
         const used = usedNumbers.has(i);
-        items.push(`<span class="${used ? 'number-used' : ''}">${i}</span>`);
+        // inline style keeps the rest of your page untouched
+        const style = used ? 'text-decoration:line-through;color:#dc2626;' : '';
+        items.push(`<span class="${used ? 'number-used' : ''}" style="${style}">${i}</span>`);
       }
       availableNumbersBox.innerHTML = items.join(', ');
     }
 
     inputs.forEach(input => {
-      input.addEventListener('change', (e) => {
+      const onChange = (e) => {
         const raw = (e.target.value || '').trim();
         const prevRaw = e.target.getAttribute('data-prev-value') || '';
         const prev = prevRaw === '' ? NaN : parseInt(prevRaw, 10);
@@ -189,15 +191,12 @@
           return;
         }
 
-        // No change — keep as is
-        if (Number.isInteger(prev) && val === prev) {
-          return;
-        }
+        // No change
+        if (Number.isInteger(prev) && val === prev) return;
 
-        // Duplicate check: number already used elsewhere
+        // Duplicate check
         if (usedNumbers.has(val)) {
           alert(`Confidence number ${val} has already been used!`);
-          // Revert
           e.target.value = Number.isInteger(prev) ? String(prev) : '';
           updateAvailableNumbers();
           return;
@@ -208,11 +207,16 @@
         usedNumbers.add(val);
         e.target.setAttribute('data-prev-value', String(val));
         updateAvailableNumbers();
-      });
+      };
+
+      // update as you type and on blur/change
+      input.addEventListener('input', onChange);
+      input.addEventListener('change', onChange);
     });
 
     updateAvailableNumbers();
   });
 </script>
+
 {% endblock %}
 
