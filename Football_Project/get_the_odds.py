@@ -19,37 +19,37 @@ BOOKMAKER_MATCH = "draftkings"  # lowercase compare
 
 # Time zones
 utc = pytz.utc
-mountain = pytz.timezone("US/Mountain")
+mountain = pytz.timezone("US/Mountain")  # Mountain Time
+MT = pytz.timezone("US/Mountain")
 
 
 # =============================
 # Week calc
 # =============================
 def get_current_week():
-    """Return the current NFL week (preseason 1–4, regular 1–18) based on dates."""
+    # 1) Prefer the schedule: earliest upcoming game decides the week
+    now_mt = datetime.now(MT).replace(tzinfo=None)  # DB stores naive MT
+    upcoming = (Game.query
+                    .filter(Game.commence_time_mt > now_mt)
+                    .order_by(Game.commence_time_mt.asc())
+                    .first())
+    if upcoming:
+        return upcoming.week
+
+    # 2) Fallback to calendar math if no schedule is loaded
     preseason_start = datetime(2025, 7, 31)
     regular_start = datetime(2025, 9, 4)
     now = datetime.utcnow()
 
     if now < regular_start:
-        # Preseason
         delta = (now - preseason_start).days
-        week = (delta // 7) + 1
-        week = max(1, min(week, 4))
-        season_type = 1
+        week = max(1, min((delta // 7) + 1, 4))
     else:
-        # Regular season
         delta = (now - regular_start).days
         week = (delta // 7) + 1
-
-        # Adjust if Monday or early Tuesday (scorekeeping nuance)
         if now.weekday() == 0 or (now.weekday() == 1 and now.hour < 6):
             week -= 1
-
         week = max(1, min(week, 18))
-        season_type = 2
-
-    print(f"Debug: now={now}, week={week}, season_type={season_type}")
     return week
 
 
