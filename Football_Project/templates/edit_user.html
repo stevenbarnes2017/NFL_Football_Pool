@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Edit User</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet" />
+</head>
+<body class="bg-gray-100">
+
+<div class="container mx-auto mt-10">
+  <div class="max-w-xl mx-auto bg-white p-6 rounded-lg shadow-lg">
+    <h2 class="text-2xl font-bold mb-6 text-center">Edit User</h2>
+
+    <form method="POST" action="{{ url_for('admin.edit_user', user_id=user.id) }}">
+      <!-- CSRF -->
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="mb-4">
+        <label class="block text-gray-700" for="username">Username</label>
+        <input class="w-full p-2 border border-gray-300 rounded mt-1"
+               type="text" id="username" name="username"
+               value="{{ user.username }}" required>
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-gray-700" for="full_name">Full Name</label>
+        <input class="w-full p-2 border border-gray-300 rounded mt-1"
+               type="text" id="full_name" name="full_name"
+               value="{{ user.full_name or '' }}">
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-gray-700" for="email">Email</label>
+        <input class="w-full p-2 border border-gray-300 rounded mt-1"
+               type="email" id="email" name="email"
+               value="{{ user.email }}" required>
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-gray-700" for="phone">Phone</label>
+        <input class="w-full p-2 border border-gray-300 rounded mt-1"
+               type="tel" id="phone" name="phone"
+               value="{{ user.phone or '' }}">
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-gray-700" for="favorite_team">Favorite Team</label>
+        <input class="w-full p-2 border border-gray-300 rounded mt-1"
+               type="text" id="favorite_team" name="favorite_team"
+               value="{{ user.favorite_team or '' }}">
+      </div>
+
+      <!-- Admin checkbox: always submits a value -->
+      <div class="mb-6">
+        <!-- send 0 if unchecked -->
+        <input type="hidden" name="is_admin" value="0">
+        <label class="inline-flex items-center space-x-2">
+          <input type="checkbox" name="is_admin" value="1"
+                 {% if user.is_admin %}checked{% endif %}>
+          <span class="text-gray-700">Admin</span>
+        </label>
+      </div>
+
+      <div class="mb-6">
+        <label class="block text-gray-700" for="new_password">New Password (optional)</label>
+        <input class="w-full p-2 border border-gray-300 rounded mt-1"
+               type="password" id="new_password" name="new_password"
+               placeholder="Leave blank to keep current password">
+      </div>
+
+      <div class="flex items-center justify-between">
+        <a href="{{ url_for('admin.manage_users') }}"
+           class="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50">
+          Cancel
+        </a>
+        <button type="submit"
+                class="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">
+          Save Changes
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+</body>
+</html>

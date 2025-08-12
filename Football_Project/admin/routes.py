@@ -63,7 +63,10 @@ def edit_user(user_id):
 @login_required
 def update_admin_status(user_id):
     user = User.query.get_or_404(user_id)
-    new_is_admin = request.form.get('is_admin') == '1'
+
+    # handle multiple values from hidden + checkbox
+    vals = [v.strip().lower() for v in request.form.getlist('is_admin')]
+    new_is_admin = any(v in ('1', 'true', 'on', 'yes') for v in vals)
 
     # prevent demoting self and ensure at least one admin
     if user.id == current_user.id and not new_is_admin:
@@ -77,6 +80,7 @@ def update_admin_status(user_id):
     db.session.commit()
     flash("Admin status updated.", "success")
     return redirect(url_for('admin.manage_users'))
+
 
 @admin_bp.route('/delete_user/<int:user_id>', methods=['POST'])
 @login_required
