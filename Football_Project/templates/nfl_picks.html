@@ -130,93 +130,100 @@
 </div>
 
 <script>
-  document.addEventListener('DOMContentLoaded', function () {
-    const numOfGames = parseInt("{{ num_of_games }}", 10);
+document.addEventListener('DOMContentLoaded', function () {
+  const numOfGames = parseInt("{{ num_of_games }}", 10);
 
-    // Seed from server (filter out nulls/invalids)
-    const seedUsed = new Set(
-      (JSON.parse('{{ used_confidence_points | tojson | safe }}') || [])
-        .filter(n => Number.isInteger(n) && n >= 1 && n <= numOfGames)
-    );
+  // Seed from server (filter out nulls/invalids)
+  const seedUsed = new Set(
+    (JSON.parse('{{ used_confidence_points | tojson | safe }}') || [])
+      .filter(n => Number.isInteger(n) && n >= 1 && n <= numOfGames)
+  );
 
-    // Track "live" usage from editable inputs
-    const usedNumbers = new Set(seedUsed);
+  // Track "live" usage from committed inputs (not while typing)
+  const usedNumbers = new Set(seedUsed);
 
-    const inputs = Array.from(document.querySelectorAll('.confidence-input'));
-    const availableNumbersBox = document.getElementById('available-numbers');
+  const inputs = Array.from(document.querySelectorAll('.confidence-input'));
+  const availableNumbersBox = document.getElementById('available-numbers');
 
-    // Initialize prev values and merge into usedNumbers
-    inputs.forEach(input => {
-      const v = parseInt((input.value || '').trim(), 10);
-      if (Number.isInteger(v) && v >= 1 && v <= numOfGames) {
-        input.setAttribute('data-prev-value', String(v));
-        usedNumbers.add(v);
-      } else {
-        input.setAttribute('data-prev-value', '');
-      }
-    });
+  // Initialize prev values and merge into usedNumbers
+  inputs.forEach(input => {
+    const v = parseInt((input.value || '').trim(), 10);
+    if (Number.isInteger(v) && v >= 1 && v <= numOfGames) {
+      input.setAttribute('data-prev-value', String(v));
+      usedNumbers.add(v);
+    } else {
+      input.setAttribute('data-prev-value', '');
+    }
+  });
 
-    function updateAvailableNumbers() {
-      const items = [];
-      for (let i = 1; i <= numOfGames; i++) {
-        const used = usedNumbers.has(i);
-        // inline style keeps the rest of your page untouched
-        const style = used ? 'text-decoration:line-through;color:#dc2626;' : '';
-        items.push(`<span class="${used ? 'number-used' : ''}" style="${style}">${i}</span>`);
-      }
-      availableNumbersBox.innerHTML = items.join(', ');
+  function updateAvailableNumbers() {
+    const items = [];
+    for (let i = 1; i <= numOfGames; i++) {
+      const used = usedNumbers.has(i);
+      const style = used ? 'text-decoration:line-through;color:#dc2626;' : '';
+      items.push(`<span class="${used ? 'number-used' : ''}" style="${style}">${i}</span>`);
+    }
+    availableNumbersBox.innerHTML = items.join(', ');
+  }
+
+  function commitValue(e) {
+    const raw = (e.target.value || '').trim();
+    const prevRaw = e.target.getAttribute('data-prev-value') || '';
+    const prev = prevRaw === '' ? NaN : parseInt(prevRaw, 10);
+
+    // CLEAR: allow blank to clear, free previous
+    if (raw === '') {
+      if (Number.isInteger(prev)) usedNumbers.delete(prev);
+      e.target.setAttribute('data-prev-value', '');
+      updateAvailableNumbers();
+      return;
     }
 
-    inputs.forEach(input => {
-      const onChange = (e) => {
-        const raw = (e.target.value || '').trim();
-        const prevRaw = e.target.getAttribute('data-prev-value') || '';
-        const prev = prevRaw === '' ? NaN : parseInt(prevRaw, 10);
+    // Parse and validate new value
+    const val = parseInt(raw, 10);
+    if (!Number.isInteger(val) || val < 1 || val > numOfGames) {
+      alert(`Please choose a valid confidence number (1–${numOfGames}).`);
+      // Revert to previous visual value
+      e.target.value = Number.isInteger(prev) ? String(prev) : '';
+      updateAvailableNumbers();
+      return;
+    }
 
-        // CLEAR: allow blank to clear, free previous
-        if (raw === '') {
-          if (Number.isInteger(prev)) usedNumbers.delete(prev);
-          e.target.setAttribute('data-prev-value', '');
-          updateAvailableNumbers();
-          return;
-        }
+    // No change — keep as is
+    if (Number.isInteger(prev) && val === prev) return;
 
-        // Parse and validate new value
-        const val = parseInt(raw, 10);
-        if (!Number.isInteger(val) || val < 1 || val > numOfGames) {
-          alert(`Please choose a valid confidence number (1–${numOfGames}).`);
-          // Revert to previous visual value
-          e.target.value = Number.isInteger(prev) ? String(prev) : '';
-          updateAvailableNumbers();
-          return;
-        }
+    // Duplicate check: number already used elsewhere
+    if (usedNumbers.has(val)) {
+      alert(`Confidence number ${val} has already been used!`);
+      // Revert
+      e.target.value = Number.isInteger(prev) ? String(prev) : '';
+      updateAvailableNumbers();
+      return;
+    }
 
-        // No change
-        if (Number.isInteger(prev) && val === prev) return;
-
-        // Duplicate check
-        if (usedNumbers.has(val)) {
-          alert(`Confidence number ${val} has already been used!`);
-          e.target.value = Number.isInteger(prev) ? String(prev) : '';
-          updateAvailableNumbers();
-          return;
-        }
-
-        // Successful change: free previous, reserve new
-        if (Number.isInteger(prev)) usedNumbers.delete(prev);
-        usedNumbers.add(val);
-        e.target.setAttribute('data-prev-value', String(val));
-        updateAvailableNumbers();
-      };
-
-      // update as you type and on blur/change
-      input.addEventListener('input', onChange);
-      input.addEventListener('change', onChange);
-    });
-
+    // Successful change: free previous, reserve new
+    if (Number.isInteger(prev)) usedNumbers.delete(prev);
+    usedNumbers.add(val);
+    e.target.setAttribute('data-prev-value', String(val));
     updateAvailableNumbers();
+  }
+
+  // Only validate on BLUR (cursor leaves) or when pressing Enter
+  inputs.forEach(input => {
+    input.addEventListener('blur', commitValue);
+    input.addEventListener('change', commitValue); // fallback for some browsers
+    input.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        input.blur(); // triggers commitValue via 'blur'
+      }
+    });
   });
+
+  updateAvailableNumbers();
+});
 </script>
+
 
 {% endblock %}
 
