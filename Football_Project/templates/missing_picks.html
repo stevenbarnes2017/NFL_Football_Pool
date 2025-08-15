@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Missing Picks – Week {{ week }}{% endblock %}
+
+{% block content %}
+<!-- Tailwind CDN (remove if already included in base.html) -->
+<link rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" />
+
+<div class="container mx-auto py-8">
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-3xl font-extrabold text-gray-900">Missing Picks – Week {{ week }}</h1>
+    <a href="{{ url_for('admin.admin_dashboard') }}" class="text-blue-600 underline">Back to Admin Dashboard</a>
+  </div>
+
+  <!-- Filter card -->
+  <div class="bg-white border rounded-lg p-4 mb-6">
+    <form method="get" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Week</label>
+        <input type="number" name="week" value="{{ week }}" min="1"
+               class="w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:border-blue-300" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Filter</label>
+        <select name="filter"
+                class="w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:border-blue-300">
+          <option value="any"      {% if filter_mode=='any' %}selected{% endif %}>Missing any picks</option>
+          <option value="none"     {% if filter_mode=='none' %}selected{% endif %}>No picks</option>
+          <option value="complete" {% if filter_mode=='complete' %}selected{% endif %}>Complete</option>
+          <option value="all"      {% if filter_mode=='all' %}selected{% endif %}>All users</option>
+        </select>
+      </div>
+      <div class="flex items-end">
+        <button class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
+          Apply
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Stats -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <a href="{{ url_for('admin.missing_picks', week=week, filter='none') }}"
+       class="p-4 bg-white border rounded-lg hover:shadow">
+      <div class="text-sm text-gray-500">Users with 0 picks</div>
+      <div class="text-3xl font-bold">{{ counts.none if counts else 0 }}</div>
+    </a>
+    <a href="{{ url_for('admin.missing_picks', week=week, filter='any') }}"
+       class="p-4 bg-white border rounded-lg hover:shadow">
+      <div class="text-sm text-gray-500">Users missing any</div>
+      <div class="text-3xl font-bold">{{ counts.any if counts else 0 }}</div>
+    </a>
+    <a href="{{ url_for('admin.missing_picks', week=week, filter='complete') }}"
+       class="p-4 bg-white border rounded-lg hover:shadow">
+      <div class="text-sm text-gray-500">Users complete</div>
+      <div class="text-3xl font-bold">{{ counts.complete if counts else 0 }}</div>
+    </a>
+    <div class="p-4 bg-white border rounded-lg">
+      <div class="text-sm text-gray-500">Total games this week</div>
+      <div class="text-3xl font-bold">{{ total_games }}</div>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="overflow-x-auto bg-white border rounded-lg">
+    <table class="min-w-full table-auto">
+      <thead class="bg-gray-100">
+        <tr>
+          <th class="px-4 py-3 text-left text-white-700">User</th>
+          <th class="px-4 py-3 text-left text-white-700"># Picks Made</th>
+          <th class="px-4 py-3 text-left text-white-700"># Remaining</th>
+          <th class="px-4 py-3 text-left text-white-700">Progress</th>
+          <th class="px-4 py-3 text-left text-white-700">Last Pick Time</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y">
+        {% for r in rows %}
+        {% set pct = 0 if total_games == 0 else (r.picks_made * 100 // total_games) %}
+        <tr class="hover:bg-gray-50">
+          <td class="px-4 py-3 font-medium">
+            <a class="text-blue-600 underline hover:no-underline"
+               href="{{ url_for('admin.view_user_picks', user_id=r.user_id, week=week) }}"
+               title="View {{ r.username }}'s picks for Week {{ week }}">
+              {{ r.username }}
+            </a>
+          </td>
+          <td class="px-4 py-3">{{ r.picks_made }}</td>
+          <td class="px-4 py-3">
+            {% if r.remaining > 0 %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-sm font-semibold bg-yellow-100 text-yellow-800">
+                {{ r.remaining }}
+              </span>
+            {% else %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-sm font-semibold bg-green-100 text-green-800">
+                0
+              </span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3">
+            <div class="w-48 bg-gray-200 rounded h-3">
+              <div class="h-3 rounded {% if pct==100 %}bg-green-500{% else %}bg-blue-500{% endif %}"
+                   style="width: {{ pct }}%"></div>
+            </div>
+            <div class="text-xs text-gray-500 mt-1">{{ pct }}%</div>
+          </td>
+          <td class="px-4 py-3 text-sm text-gray-600">
+            {% if r.last_pick_time %}
+              {{ r.last_pick_time.strftime('%Y-%m-%d %H:%M:%S') }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="px-4 py-6 text-center text-gray-500" colspan="5">
+            No users match this filter.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Footer actions -->
+  <div class="mt-6 flex flex-wrap gap-3">
+    <a href="{{ url_for('admin.missing_picks', week=week, filter='any') }}"
+       class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
+      Open Missing Picks Dashboard
+    </a>
+    <a href="{{ url_for('admin.admin_dashboard') }}"
+       class="border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded">
+      Back to Admin Dashboard
+    </a>
+  </div>
+</div>
+{% endblock %}

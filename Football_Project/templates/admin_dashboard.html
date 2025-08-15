@@ -23,8 +23,59 @@
       {% endwith %}
     </div>
 
+    {# ===== Missing Picks Banner (admin-only hint) ===== #}
+    {% if counts and counts.any and counts.any > 0 %}
+    <div class="mb-5 rounded border border-yellow-300 bg-yellow-50 p-4">
+      <div class="font-semibold">⚠ {{ counts.any }} users have not finished picks for Week {{ week or current_week }}.</div>
+      <div class="mt-2 space-x-3">
+        <a class="underline text-blue-600" href="{{ url_for('admin.missing_picks', week=(week or current_week), filter='none') }}">
+          Users with 0 picks ({{ counts.none }})
+        </a>
+        <a class="underline text-blue-600" href="{{ url_for('admin.missing_picks', week=(week or current_week), filter='any') }}">
+          Users missing any picks ({{ counts.any }})
+        </a>
+        <a class="underline text-blue-600" href="{{ url_for('admin.missing_picks', week=(week or current_week), filter='complete') }}">
+          Complete ({{ counts.complete }})
+        </a>
+      </div>
+    </div>
+    {% endif %}
+
     <!-- Dashboard Grid Layout -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <!-- Missing Picks Quick Actions (NEW) -->
+      <div class="card flex flex-col border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
+        <h3 class="text-xl font-semibold mb-3 text-gray-800">Missing Picks</h3>
+        <p class="text-gray-700">See who has 0 picks, partial picks, or is complete for Week {{ week or current_week }}.</p>
+
+        <div class="grid grid-cols-2 gap-3 my-4">
+          <a href="{{ url_for('admin.missing_picks', week=(week or current_week), filter='none') }}"
+             class="border rounded p-3 text-center hover:bg-gray-50">
+            <div class="text-sm text-gray-500">Users with 0 picks</div>
+            <div class="text-2xl font-bold">{{ counts.none if counts else '—' }}</div>
+          </a>
+          <a href="{{ url_for('admin.missing_picks', week=(week or current_week), filter='any') }}"
+             class="border rounded p-3 text-center hover:bg-gray-50">
+            <div class="text-sm text-gray-500">Users missing any</div>
+            <div class="text-2xl font-bold">{{ counts.any if counts else '—' }}</div>
+          </a>
+          <a href="{{ url_for('admin.missing_picks', week=(week or current_week), filter='complete') }}"
+             class="border rounded p-3 text-center hover:bg-gray-50">
+            <div class="text-sm text-gray-500">Users complete</div>
+            <div class="text-2xl font-bold">{{ counts.complete if counts else '—' }}</div>
+          </a>
+          <div class="border rounded p-3 text-center">
+            <div class="text-sm text-gray-500">Total users</div>
+            <div class="text-2xl font-bold">{{ counts.total_users if counts else '—' }}</div>
+          </div>
+        </div>
+
+        <a href="{{ url_for('admin.missing_picks', week=(week or current_week), filter='any') }}"
+           class="bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded-lg w-full font-semibold text-center">
+          Open Missing Picks Dashboard
+        </a>
+      </div>
 
       <!-- Fetch Odds Section -->
       <div class="card flex flex-col border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">

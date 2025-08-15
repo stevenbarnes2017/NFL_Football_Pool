@@ -11,6 +11,7 @@ import logging  # Ensure logging is imported at the top
 import os
 import json
 from itsdangerous import URLSafeTimedSerializer
+from sqlalchemy import func, literal
 
 season_type = 1  # 1 = preseason, 2 = regular, 3 = postseason
 logging.basicConfig(level=logging.INFO)

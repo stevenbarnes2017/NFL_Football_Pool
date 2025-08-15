@@ -1,11 +1,10 @@
 # Football_Project/admin/routes.py
-from flask import render_template, request, redirect, url_for, flash, send_file, current_app, abort
+from flask import render_template, request, redirect, url_for, flash, send_file, current_app, abort, Blueprint
 from flask_login import login_required, current_user
 from datetime import datetime
 import os
-
+from sqlalchemy import func, literal
 from . import admin_bp
-
 # Data / services
 from Football_Project.get_the_odds import get_nfl_spreads, save_spreads_to_db, get_current_week, save_to_csv
 from football_scores import get_football_scores, save_scores_to_csv  # NOTE: don't import save_scores_to_db here
@@ -131,10 +130,6 @@ def add_user():
 
     return render_template('add_user.html')
 
-# -------------------------
-# Admin dashboard + odds
-# -------------------------
-
 @admin_bp.route('/admin_dashboard')
 @login_required
 def admin_dashboard():
@@ -143,14 +138,21 @@ def admin_dashboard():
     current_week = get_current_week()
     weeks = list(range(1, current_week + 1))
     users = User.query.order_by(User.username).all()
+
+    # Missing picks counts for banner/cards
+    total_games = _total_games_for_week(current_week)
+    counts = _missing_counts_for_week(current_week, total_games)
+
     return render_template(
         'admin_dashboard.html',
         current_year=current_year,
         default_season_type=default_season_type,
         weeks=weeks,
-        users=users
+        users=users,
+        current_week=current_week,  # needed for template links
+        week=current_week,          # also pass as 'week' for consistency
+        counts=counts               # needed for missing picks display
     )
-
 @admin_bp.route('/fetch_odds', methods=['POST'])
 @login_required
 def fetch_odds():
@@ -487,4 +489,243 @@ def process_user_scores():
 
     return redirect(url_for('admin.admin_dashboard'))
 
+# assumes you already have these:
+# from Football_Project import db
+# from Football_Project.models import User, Pick, Game
+# from Football_Project.utils import get_current_week  # or wherever you defined it
+
+def _total_games_for_week(week: int) -> int:
+    return db.session.query(func.count(Game.id)).filter(Game.week == week).scalar() or 0
+
+def _user_pick_aggregate_for_week(week: int):
+    """
+    Returns a query with per-user aggregates for the given week:
+      - picks_made (count)
+      - last_pick_time (max created_at)
+    Then outer-joins to all users so admins see every user row, even with 0 picks.
+    """
+    # subquery: per-user pick counts and latest timestamp for the target week
+    pick_agg = (
+        db.session.query(
+            Pick.user_id.label("user_id"),
+            func.count(Pick.id).label("picks_made"),
+            func.max(Pick.pick_time).label("last_pick_time"),
+        )
+        .filter(Pick.week == week)
+        .group_by(Pick.user_id)
+        .subquery()
+    )
+
+    return pick_agg
+
+
+
+
+
+@admin_bp.route('/missing_picks', methods=['GET'])
+@login_required
+def missing_picks():
+    if not current_user.is_admin:
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for('main.index'))
+
+    # inputs
+    week = request.args.get('week', type=int) or get_current_week()
+    filter_mode = request.args.get('filter', default='any')  # none | any | complete | all
+
+    total_games = _total_games_for_week(week)
+    pick_agg = _user_pick_aggregate_for_week(week)
+
+    # Build expressions once
+    picks_made = func.coalesce(pick_agg.c.picks_made, 0)
+    remaining_expr = (literal(total_games) - picks_made)
+
+    # Outer-join users to the pick aggregates so every user shows
+    base_q = (
+        db.session.query(
+            User.id.label("user_id"),
+            User.username.label("username"),
+            picks_made.label("picks_made"),
+            remaining_expr.label("remaining"),
+            pick_agg.c.last_pick_time.label("last_pick_time"),
+        )
+        .outerjoin(pick_agg, pick_agg.c.user_id == User.id)
+    )
+
+    # Apply filter mode using WHERE (SQLite doesn't allow HAVING here)
+    if filter_mode == 'none':
+        # users with 0 picks
+        base_q = base_q.filter(picks_made == 0)
+    elif filter_mode == 'any':
+        # users who still have remaining picks (partial or zero)
+        base_q = base_q.filter(remaining_expr > 0)
+    elif filter_mode == 'complete':
+        # users fully done
+        base_q = base_q.filter(remaining_expr == 0)
+    # 'all' = no extra filter
+
+    # Correct ordering: remaining desc, then username
+    base_q = base_q.order_by(remaining_expr.desc(), User.username.asc())
+
+    rows = base_q.all()
+
+    # Precompute counts for quick links and dashboard summary
+    counts = _missing_counts_for_week(week, total_games)
+
+    return render_template(
+        "missing_picks.html",
+        week=week,
+        total_games=total_games,
+        rows=rows,
+        filter_mode=filter_mode,
+        counts=counts,
+    )
+
+
+def _missing_counts_for_week(week: int, total_games: int):
+    pick_agg = _user_pick_aggregate_for_week(week)
+
+    # all users with 0 picks
+    none_count = (
+        db.session.query(func.count(User.id))
+        .outerjoin(pick_agg, pick_agg.c.user_id == User.id)
+        .filter(func.coalesce(pick_agg.c.picks_made, 0) == 0)
+        .scalar()
+        or 0
+    )
+
+    # users with some but not all picks (partial)
+    partial_count = (
+        db.session.query(func.count(User.id))
+        .outerjoin(pick_agg, pick_agg.c.user_id == User.id)
+        .filter(func.coalesce(pick_agg.c.picks_made, 0) > 0)
+        .filter(func.coalesce(pick_agg.c.picks_made, 0) < total_games)
+        .scalar()
+        or 0
+    )
+
+    # users complete
+    complete_count = (
+        db.session.query(func.count(User.id))
+        .outerjoin(pick_agg, pick_agg.c.user_id == User.id)
+        .filter(func.coalesce(pick_agg.c.picks_made, 0) == total_games)
+        .scalar()
+        or 0
+    )
+
+    return {
+        "none": none_count,
+        "partial": partial_count,
+        "complete": complete_count,
+        "any": none_count + partial_count,
+        "total_users": none_count + partial_count + complete_count,
+    }
+
+@admin_bp.route('/user_picks/<int:user_id>', methods=['GET'], endpoint='view_user_picks')
+@login_required
+def view_user_picks(user_id: int):
+    if not current_user.is_admin:
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for('main.index'))
+
+    week = request.args.get('week', type=int) or get_current_week()
+    user = User.query.get_or_404(user_id)
+    total_games = _total_games_for_week(week)
+
+    joined_rows = []
+    joined = False
+
+    # Try best-available join path in order of specificity
+    try:
+        if hasattr(Pick, 'game_id'):
+            # 1) Direct game_id join
+            joined_rows = (
+                db.session.query(Pick, Game)
+                .join(Game, Game.id == Pick.game_id)
+                .filter(Pick.user_id == user_id, Pick.week == week)
+                .order_by(Game.commence_time_mt.asc())
+                .all()
+            )
+            joined = True
+
+        elif hasattr(Pick, 'home_team') and hasattr(Pick, 'away_team'):
+            # 2) Join by explicit teams + week
+            joined_rows = (
+                db.session.query(Pick, Game)
+                .join(
+                    Game,
+                    (Game.week == Pick.week)
+                    & (Game.home_team == Pick.home_team)
+                    & (Game.away_team == Pick.away_team)
+                )
+                .filter(Pick.user_id == user_id, Pick.week == week)
+                .order_by(Game.commence_time_mt.asc())
+                .all()
+            )
+            joined = True
+
+        elif hasattr(Pick, 'team_picked'):
+            # 3) Join by week + the team picked belonging to the game
+            joined_rows = (
+                db.session.query(Pick, Game)
+                .join(
+                    Game,
+                    (Game.week == Pick.week)
+                    & or_(Game.home_team == Pick.team_picked,
+                          Game.away_team == Pick.team_picked)
+                )
+                .filter(Pick.user_id == user_id, Pick.week == week)
+                .order_by(Game.commence_time_mt.asc())
+                .all()
+            )
+            joined = True
+    except Exception:
+        joined = False
+
+    if joined:
+        def norm(p, g):
+            pick_team = getattr(p, 'team_picked', None)
+            # Confidence field fallback chain
+            confidence = (
+                getattr(p, 'confidence', None)
+                or getattr(p, 'confidence_points', None)
+                or getattr(p, 'confidence_number', None)
+            )
+            kickoff = getattr(g, 'commence_time_mt', None) or getattr(g, 'commence_time', None)
+            matchup = f"{getattr(g,'away_team','?')} @ {getattr(g,'home_team','?')}"
+            return dict(matchup=matchup, kickoff=kickoff, pick_team=pick_team, confidence=confidence)
+
+        view_rows = [norm(p, g) for (p, g) in joined_rows]
+        picks_made = len(view_rows)
+
+    else:
+        # Fallback: show picks even if we can't match a Game row
+        picks = (
+            Pick.query.filter_by(user_id=user_id, week=week)
+            .order_by(getattr(Pick, 'pick_time', getattr(Pick, 'created_at', Pick.id)).desc())
+            .all()
+        )
+
+        def norm_p(p):
+            pick_team = getattr(p, 'team_picked', None)
+            confidence = (
+                getattr(p, 'confidence', None)
+                or getattr(p, 'confidence_points', None)
+                or getattr(p, 'confidence_number', None)
+            )
+            matchup = getattr(p, "matchup", None) or f"Game #{getattr(p, 'game_id', '—')}"
+            kickoff = None
+            return dict(matchup=matchup, kickoff=kickoff, pick_team=pick_team, confidence=confidence)
+
+        view_rows = [norm_p(p) for p in picks]
+        picks_made = len(view_rows)
+
+    return render_template(
+        "admin_view_user_picks.html",
+        user=user,
+        week=week,
+        total_games=total_games,
+        picks_made=picks_made,
+        rows=view_rows,
+    )
 

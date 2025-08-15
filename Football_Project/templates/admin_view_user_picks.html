@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}{{ user.username }} – Week {{ week }} Picks{% endblock %}
+
+{% block content %}
+<div class="container mx-auto py-8">
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-3xl font-bold">Picks for {{ user.username }} – Week {{ week }}</h1>
+    <div class="space-x-3">
+      <a class="underline text-blue-600" href="{{ url_for('admin.missing_picks', week=week, filter='any') }}">Back to Missing Picks</a>
+      <a class="underline text-blue-600" href="{{ url_for('admin.admin_dashboard') }}">Admin Dashboard</a>
+    </div>
+  </div>
+
+  <div class="mb-4 p-4 border rounded bg-gray-50">
+    <div class="text-sm text-gray-600">Progress</div>
+    <div class="flex items-center gap-3">
+      {% set pct = 0 if total_games == 0 else (picks_made * 100 // total_games) %}
+      <div class="w-64 h-3 bg-gray-200 rounded">
+        <div class="h-3 bg-green-500 rounded" style="width: {{ pct }}%"></div>
+      </div>
+      <div class="text-sm text-gray-700">{{ picks_made }} / {{ total_games }} ({{ pct }}%)</div>
+    </div>
+  </div>
+
+  <div class="overflow-x-auto bg-white border rounded">
+    <table class="min-w-full table-auto">
+      <thead class="bg-gray-100">
+        <tr>
+          <th class="px-4 py-3 text-left">Matchup</th>
+          <th class="px-4 py-3 text-left">Kickoff (MT)</th>
+          <th class="px-4 py-3 text-left">Pick</th>
+          <th class="px-4 py-3 text-left">Confidence</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr class="border-t">
+          <td class="px-4 py-3">{{ r.matchup }}</td>
+          <td class="px-4 py-3 text-sm text-gray-600">
+            {% if r.kickoff %}              
+              {{ r.kickoff.strftime('%Y-%m-%d %H:%M') }} (MT)
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="px-4 py-3 font-medium">{{ r.pick_team or '—' }}</td>
+          <td class="px-4 py-3">{{ r.confidence if r.confidence is not none else '—' }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="px-4 py-6 text-center text-gray-500" colspan="4">No picks for this user in Week {{ week }}.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
