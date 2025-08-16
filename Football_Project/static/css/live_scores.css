@@ -1,0 +1,78 @@
+/* Floating box for user summary */
+#user-score-box.floating-box {
+  position: fixed;
+  top: 120px;            /* move it down so it clears the user menu */
+  right: 20px;
+  width: 450px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background-color: #f8f9fa;
+  border: 1px solid #ddd;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 0 10px rgba(0,0,0,0.1);
+  z-index: 40;           /* keep below menus; raise if needed */
+}
+
+#user-picks-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+
+#user-picks-table th,
+#user-picks-table td {
+  padding: 5px;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+}
+
+#user-picks-table th {
+  background-color: #f2f2f2;
+  color: #000;
+  font-weight: bold;
+}
+
+/* Cards etc. */
+.game-card {
+  display: flex;
+  flex-direction: column;
+  padding: 15px;
+  border: 1px solid #ddd;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  background-color: #fff;
+  text-align: left;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  transition: transform 0.3s ease;
+}
+
+.game-card:hover { transform: scale(1.02); background-color: #f9f9f9; }
+.game-card a { color: inherit; text-decoration: none; }
+
+.team-logos { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.team-logo img { width: 60px; height: 60px; border-radius: 50%; border: 1px solid #ddd; transition: box-shadow 0.3s ease; }
+.team-logo img:hover { box-shadow: 0 0 8px rgba(0, 0, 0, 0.2); }
+
+.score { display: flex; justify-content: center; font-size: 1.3em; font-weight: bold; color: #333; margin: 8px 0; }
+.team-score { flex: 1; text-align: center; }
+.vs-divider { font-weight: normal; color: #888; }
+
+.game-details { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd; color: #555; font-size: 0.9em; }
+.game-details div { display: flex; justify-content: space-between; }
+.game-details span { font-weight: bold; }
+
+.winning { color: green; }
+.losing  { color: red; }
+.pending { color: gray; }
+
+/* Mobile tweak: dock the box at the bottom */
+@media (max-width: 768px) {
+  #user-score-box.floating-box {
+    top: auto;
+    right: 16px;
+    left: 16px;
+    bottom: 16px;
+    max-height: 55vh;
+  }
+}

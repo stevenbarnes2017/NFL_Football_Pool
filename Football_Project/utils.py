@@ -12,6 +12,9 @@ import os
 import json
 from itsdangerous import URLSafeTimedSerializer
 from sqlalchemy import func, literal
+from .scoring import norm_status
+from collections import defaultdict
+
 
 season_type = 1  # 1 = preseason, 2 = regular, 3 = postseason
 logging.basicConfig(level=logging.INFO)
@@ -175,72 +178,114 @@ def get_saved_games(week=None):
     return games_list
 
 # Function to tally user scores based on the week
-def calculate_user_scores(week):
-    user_scores = {}
-    tolerance = 0.001  # A small value to handle floating-point comparison issues
-
-    # Get all games and picks for the specified week
+def calculate_user_scores(week: int, write_final_only: bool = True):
+    """
+    Recalculate points_earned on each Pick for the given week (live).
+    Persist weekly totals to UserScore using FINAL games only (default).
+    Returns a dict of totals:
+      - if write_final_only=True -> FINAL-only totals
+      - else -> LIVE (in-progress + final) totals
+    """
     games = Game.query.filter_by(week=week).all()
     picks = Pick.query.filter_by(week=week).all()
 
+    # quick visibility
+    distinct_statuses = {norm_status(g.status) for g in games}
+    print(f"[scores] Week {week} statuses in DB: {distinct_statuses}")
+
+    live_total_by_user  = defaultdict(int)
+    final_total_by_user = defaultdict(int)
+
+    considered, awarded = 0, 0
+
+    # Pre-index games for speed
+    games_by_id = {g.id: g for g in games}
+
     for pick in picks:
-        # Skip recalculating if the score has been manually overridden
         if pick.is_overridden:
-            if pick.user_id in user_scores:
-                user_scores[pick.user_id] += pick.points_earned
-            else:
-                user_scores[pick.user_id] = pick.points_earned
+            # honor manual override both in live and (if final) rollups
+            live_total_by_user[pick.user_id]  += pick.points_earned or 0
+            final_total_by_user[pick.user_id] += pick.points_earned or 0
             continue
 
-        # Existing logic for calculating points based on game data
-        game = next((g for g in games if g.id == pick.game_id), None)
+        game = games_by_id.get(pick.game_id)
         if not game:
-            continue  # Skip if the game is not found
-
-        # Skip games that are not in progress or finished
-        if game.status not in ['STATUS_IN_PROGRESS', 'STATUS_FINAL']:
             continue
 
-        points = 0
-        # Ensure that home_team_score, away_team_score, and spread are not None
-        if game.home_team_score is not None and game.away_team_score is not None and game.spread is not None:
-            # Calculate points for favorite and underdog based on spread
-            if pick.team_picked == game.favorite_team:
-                if (game.home_team == game.favorite_team and game.home_team_score - game.away_team_score > abs(game.spread)) or \
-                   (game.away_team == game.favorite_team and game.away_team_score - game.home_team_score > abs(game.spread)):
-                    points = pick.confidence
-            else:
-                if (game.home_team == pick.team_picked and (game.home_team_score > game.away_team_score or (game.away_team_score - game.home_team_score < abs(game.spread)))) or \
-                   (game.away_team == pick.team_picked and (game.away_team_score > game.home_team_score or (game.home_team_score - game.away_team_score < abs(game.spread)))):
-                    points = pick.confidence
+        g_status = norm_status(game.status)
 
-        # Update the points_earned field
+        if g_status not in ('STATUS_IN_PROGRESS', 'STATUS_FINAL'):
+            # nothing to award yet
+            continue
+
+        considered += 1
+        points = 0
+
+        home = game.home_team_score
+        away = game.away_team_score
+
+        if home is None or away is None:
+            # cannot judge without scores
+            points = 0
+        else:
+            # If spread is missing, award by straight winner
+            if game.spread is None:
+                winner = game.home_team if home > away else game.away_team
+                if pick.team_picked == winner:
+                    points = pick.confidence or 0
+            else:
+                # ATS: favorite must cover
+                fav = game.favorite_team
+                if not fav:
+                    # fall back to straight winner if favorite unknown
+                    winner = game.home_team if home > away else game.away_team
+                    if pick.team_picked == winner:
+                        points = pick.confidence or 0
+                else:
+                    # margin from favorite's perspective
+                    if game.home_team == fav:
+                        margin = home - away
+                    else:
+                        margin = away - home
+
+                    covered = margin > abs(game.spread)
+
+                    if pick.team_picked == fav and covered:
+                        points = pick.confidence or 0
+                    elif pick.team_picked != fav and not covered:
+                        points = pick.confidence or 0
+
+        # Update the pick row for live views
         pick.points_earned = points
-        
         db.session.add(pick)
 
-        # Sum up the user's total points for the week
-        if pick.user_id in user_scores:
-            user_scores[pick.user_id] += points
-        else:
-            user_scores[pick.user_id] = points
+        # Live total (in-progress + final)
+        live_total_by_user[pick.user_id] += points
 
-    # Commit the updated points_earned values to the database
-    db.session.commit()
-    
-    # Save or update the user scores for this week in the UserScore table
-    for user_id, score in user_scores.items():
-        user_score = UserScore.query.filter_by(user_id=user_id, week=week).first()
-        if user_score:
-            user_score.score = score  # Update existing record
-        else:
-            user_score = UserScore(user_id=user_id, week=week, score=score)
-            db.session.add(user_score)
-        print(f"User Score updated in DB for user_id: {user_id}, week: {week}, score: {score}")
-        # Commit the updated user scores for the week
+        # Weekly locked totals: only from FINAL games
+        if g_status == 'STATUS_FINAL':
+            final_total_by_user[pick.user_id] += points
+            awarded += 1 if points else 0
+
     db.session.commit()
 
-    return user_scores  # Return the scores for this week
+    print(f"[scores] Week {week}: picks={len(picks)} considered={considered} final_awards>0={awarded}")
+
+    # Persist to UserScore weekly table (locked totals only)
+    if write_final_only:
+        for user_id, score in final_total_by_user.items():
+            row = UserScore.query.filter_by(user_id=user_id, week=week).first()
+            if row:
+                row.score = score
+                row.calculated_at = datetime.utcnow()
+            else:
+                db.session.add(UserScore(user_id=user_id, week=week, score=score))
+        db.session.commit()
+        # For callers that expect a dict of totals, return what we wrote (final-only)
+        return dict(final_total_by_user)
+
+    # If someone needs live totals instead:
+    return dict(live_total_by_user)
 
 
 def auto_fetch_scores():
@@ -365,25 +410,37 @@ def convert_to_utc(time_value):
     return utc_time
 
 
+def highest_available_confidence(user_id: int, week: int) -> int | None:
+    """Return the highest confidence number not yet used by this user in this week."""
+    # how many games this week = how many confidence points exist
+    total_games = Game.query.filter_by(week=week).count()
+    all_confidences = set(range(1, total_games + 1))
+    used = {
+        p.confidence
+        for p in Pick.query.filter_by(user_id=user_id, week=week)
+        .filter(Pick.confidence.isnot(None))
+        .all()
+    }
+    available = sorted(list(all_confidences - used), reverse=True)
+    return available[0] if available else None
+
+
 def lock_picks_for_commenced_games(user_id):
     from datetime import datetime, timezone
     import pytz
 
-    now_utc = datetime.now(timezone.utc)  # aware UTC
+    now_utc = datetime.now(timezone.utc)
     current_week = get_current_week()
 
     commenced_games = Game.query.filter(Game.week == current_week).all()
 
     games_list = []
-    used_confidence_points = []
-
     for game in commenced_games:
-        # Always get an aware UTC datetime here
+        # normalize to aware UTC
         if isinstance(game.commence_time_mt, str):
             game_commence_time_utc = convert_to_utc(game.commence_time_mt)
         elif isinstance(game.commence_time_mt, datetime):
             if game.commence_time_mt.tzinfo is None:
-                # If stored naive, assume it's MT
                 local_tz = pytz.timezone('America/Denver')
                 localized_dt = local_tz.localize(game.commence_time_mt)
                 game_commence_time_utc = localized_dt.astimezone(pytz.utc)
@@ -399,28 +456,39 @@ def lock_picks_for_commenced_games(user_id):
             'spread': game.spread,
             'favorite_team': game.favorite_team,
             'commence_time_utc': game_commence_time_utc,
-            'commence_time_mt': game.commence_time_mt
+            'commence_time_mt': game.commence_time_mt,
         })
 
-        # Both sides now aware UTC → safe to compare
+        # lock if kicked off
         if game_commence_time_utc <= now_utc:
             existing_pick = Pick.query.filter_by(user_id=user_id, game_id=game.id).first()
+
             if not existing_pick:
-                available_points = get_highest_available_confidence(user_id, current_week)
+                # Case A: no pick at all -> create a missed pick with highest available confidence
+                avail = highest_available_confidence(user_id, current_week)
                 missed_pick = Pick(
                     user_id=user_id,
                     game_id=game.id,
-                    week=current_week,  # week should be set
-                    confidence=available_points,
-                    points_earned=0
+                    week=current_week,
+                    team_picked=None,        # no team chosen
+                    confidence=avail,
+                    points_earned=0,
                 )
                 db.session.add(missed_pick)
+
+            elif existing_pick.team_picked and (existing_pick.confidence is None or existing_pick.confidence == 0):
+                # Case B: team chosen but no confidence -> assign highest available
+                avail = highest_available_confidence(user_id, current_week)
+                existing_pick.confidence = avail
+                db.session.add(existing_pick)
+
+            # else: team + confidence already set -> leave it
 
     db.session.commit()
 
     used_confidence_points = [
-        pick.confidence
-        for pick in Pick.query.filter_by(user_id=user_id, week=current_week).all()
+        p.confidence for p in Pick.query.filter_by(user_id=user_id, week=current_week)
+        .filter(Pick.confidence.isnot(None)).all()
     ]
 
     return render_template(
@@ -430,6 +498,7 @@ def lock_picks_for_commenced_games(user_id):
         selected_week=current_week,
         used_confidence_points=used_confidence_points
     )
+
 
 def group_games_by_day(games_list):
     grouped_games = {

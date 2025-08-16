@@ -20,7 +20,7 @@ from werkzeug.security import generate_password_hash
 def admin_guard():
     # This runs for every admin blueprint request.
     if not current_user.is_authenticated:
-        return redirect(url_for('main.login'))
+        return redirect(url_for('auth.login'))
     if not current_user.is_admin:
         flash("Admins only.", "danger")
         return redirect(url_for('main.index'))
@@ -359,7 +359,7 @@ def admin_calculate_scores():
     try:
         for w in weeks:
             # calculate_user_scores should return {user_id: total_points_for_week}
-            user_scores = calculate_user_scores(week=w)
+            user_scores = calculate_user_scores(week=w, write_final_only=True)
             if not isinstance(user_scores, dict):
                 continue
 

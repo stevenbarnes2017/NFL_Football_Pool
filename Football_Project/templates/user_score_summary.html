@@ -42,7 +42,7 @@
             <tr class="{% if user.id == current_user.id %}highlight{% endif %}">
                 <td>{{ loop.index }}</td>
                 <td>{{ user.username }}</td>
-                <td>{{ user.total_score }}</td>
+                <td>{{ user.total_score|int }}</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -50,7 +50,7 @@
 
     <!-- Display total points for the current user -->
     <h2 class="mt-6">Your Total Points {% if selected_week != 'all' %} for Week {{ selected_week }}{% else %} (All Weeks){% endif %}</h2>
-    <p>Total Points: {{ user_total_score }}</p>
+    <p>Total Points: {{ user_total_score|int }}</p>
 
     <!-- Display detailed game results for the current user -->
     {% if game_picks %}

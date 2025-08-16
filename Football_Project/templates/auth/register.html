@@ -1,0 +1,69 @@
+{% block title %}Register{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css">
+
+<div class="container mx-auto mt-10">
+  <div class="max-w-md mx-auto bg-white p-6 rounded-lg shadow-lg">
+    <h2 class="text-2xl font-bold mb-6 text-center">Register</h2>
+
+    {# flash messages #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="mb-3 text-sm px-3 py-2 rounded
+                      {% if category in ['danger','error'] %}bg-red-100 text-red-800
+                      {% elif category == 'success' %}bg-green-100 text-green-800
+                      {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+            {{ message }}
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('auth.register') }}" novalidate>
+      {{ form.hidden_tag() }}
+
+      <div class="mb-4">
+        {{ form.username.label(class="block text-gray-700") }}
+        {{ form.username(class="w-full p-2 border border-gray-300 rounded mt-1") }}
+        {% for e in form.username.errors %}
+          <div class="text-sm text-red-600 mt-1">{{ e }}</div>
+        {% endfor %}
+      </div>
+
+      <div class="mb-4">
+        {{ form.email.label(class="block text-gray-700") }}
+        {{ form.email(class="w-full p-2 border border-gray-300 rounded mt-1") }}
+        {% for e in form.email.errors %}
+          <div class="text-sm text-red-600 mt-1">{{ e }}</div>
+        {% endfor %}
+      </div>
+
+      <div class="mb-4">
+        {{ form.password.label(class="block text-gray-700") }}
+        {{ form.password(class="w-full p-2 border border-gray-300 rounded mt-1") }}
+        {% for e in form.password.errors %}
+          <div class="text-sm text-red-600 mt-1">{{ e }}</div>
+        {% endfor %}
+      </div>
+
+      <div class="mb-6">
+        {{ form.password_confirm.label(class="block text-gray-700") }}
+        {{ form.password_confirm(class="w-full p-2 border border-gray-300 rounded mt-1") }}
+        {% for e in form.password_confirm.errors %}
+          <div class="text-sm text-red-600 mt-1">{{ e }}</div>
+        {% endfor %}
+      </div>
+
+      {{ form.submit(class="w-full bg-blue-500 text-white py-2 rounded") }}
+    </form>
+
+    <div class="text-center mt-4">
+      <p>Already have an account?
+        <a class="text-blue-500" href="{{ url_for('auth.login') }}">Login</a>
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}

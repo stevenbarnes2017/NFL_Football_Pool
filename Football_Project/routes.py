@@ -46,7 +46,7 @@ def index():
             return redirect(url_for('main.dashboard'))  # Redirect to regular user dashboard
     else:
         # If the user is not authenticated, redirect to the login page
-        return redirect(url_for('main.login'))
+        return redirect(url_for('auth.login'))
 
 
 
@@ -64,35 +64,9 @@ def my_picks():
 
     return render_template('my_picks.html', picks=user_picks, weeks=weeks, selected_week=selected_week)
 
-@main_bp.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        username = request.form.get('username')
-        email = request.form.get('email')  # Capture email from the form
-        password = request.form.get('password')
-
-        # Check if the username or email already exists
-        user = User.query.filter_by(username=username).first()
-        if user:
-            flash('Username already exists', 'danger')
-            return redirect(url_for('main.register'))
-
-        user_by_email = User.query.filter_by(email=email).first()
-        if user_by_email:
-            flash('Email already exists', 'danger')
-            return redirect(url_for('main.register'))
-
-        # Hash the password before storing it
-        hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
-        new_user = User(username=username, email=email, password=hashed_password)  # Include email
-        
-        db.session.add(new_user)
-        db.session.commit()
-
-        flash('Registration successful! You can now log in.', 'success')
-        return redirect(url_for('main.login'))
-
-    return render_template('register.html')
+@main_bp.route("/register")
+def legacy_register():
+    return redirect(url_for("auth.register"))
 
 @main_bp.route('/profile')
 @login_required
@@ -154,34 +128,13 @@ def edit_profile():
 
     return render_template('edit_profile.html', user=current_user)
 
-@main_bp.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.form.get('username', '').strip()
-        password = request.form.get('password', '')
+@main_bp.route("/login")
+def legacy_login():
+    return redirect(url_for("auth.login"))
 
-        user = User.query.filter_by(username=username).first()
-        if user and check_password_hash(user.password, password):
-            login_user(user)
-
-            # honor ?next= for protected redirects
-            next_url = request.args.get('next')
-            if next_url:
-                return redirect(next_url)
-
-            return redirect(url_for('admin.admin_dashboard' if user.is_admin else 'main.dashboard'))
-
-        flash('Invalid username or password', 'danger')
-        # fall through to render the template so flashes show
-
-    return render_template('login.html')
-
-@main_bp.route('/logout')
-@login_required
-def logout():
-    logout_user()
-    flash('You have been logged out.', 'success')
-    return redirect(url_for('main.index'))
+@main_bp.route("/logout")
+def legacy_logout():
+    return redirect(url_for("auth.logout"))
 
 @main_bp.route('/dashboard')
 @login_required
@@ -801,7 +754,7 @@ def forgot_password():
         else:
             flash('If that email exists, a reset link has been sent.', 'info')
 
-        return redirect(url_for('main.login'))
+        return redirect(url_for('auth.login'))
 
     return render_template('forgot_password.html')
 
@@ -831,7 +784,7 @@ def reset_password(token):
         user.password = generate_password_hash(new_password)
         db.session.commit()
         flash('Your password has been reset.', 'success')
-        return redirect(url_for('main.login'))
+        return redirect(url_for('auth.login'))
 
     return render_template('reset_password.html')
 

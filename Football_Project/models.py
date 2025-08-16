@@ -3,9 +3,11 @@ from flask_login import UserMixin
 from datetime import datetime
 from sqlalchemy import DateTime
 from zoneinfo import ZoneInfo
+from werkzeug.security import generate_password_hash, check_password_hash
 # ----------------------------
 # User Model
 # ----------------------------
+PREFERRED_PWHASH = "pbkdf2:sha256:50000"  # Standardize password hashing
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), nullable=False, unique=True)
@@ -13,18 +15,36 @@ class User(db.Model, UserMixin):
     email = db.Column(db.String(150), unique=True)
     phone = db.Column(db.String(20))
     favorite_team = db.Column(db.String(50))
-    password = db.Column(db.String(200), nullable=False)
+    password = db.Column(db.String(255), nullable=False)  # 255 is safe for hashes
     is_admin = db.Column(db.Boolean, default=False)
 
-    scores = db.relationship(
-        'UserScore',
-        backref='user',
-        lazy=True,
-        cascade='all, delete-orphan'
-    )
+    # Remove the duplicated relationship; you had 'scores' twice
     picks = db.relationship('Pick', backref='user', lazy=True, cascade='all, delete-orphan')
     scores = db.relationship('UserScore', backref='user', lazy=True, cascade='all, delete-orphan')
 
+    def set_password(self, plaintext: str) -> None:
+        # Standardize what we write going forward (consistent format)
+        self.password = generate_password_hash(plaintext, method=PREFERRED_PWHASH)
+
+    def check_password(self, plaintext: str) -> bool:
+        """
+        Works for both hashed (any Werkzeug-supported scheme, e.g. pbkdf2, scrypt)
+        and legacy plaintext values.
+        """
+        try:
+            return check_password_hash(self.password, plaintext)
+        except Exception:
+            # Stored value isn't a recognized hash → treat as legacy plaintext
+            return self.password == plaintext
+
+    def is_password_hashed(self) -> bool:
+        """Optional helper; detect if the stored value looks like a hash."""
+        try:
+            # If this doesn't raise, it's a supported hash string
+            check_password_hash(self.password, "x")
+            return True
+        except Exception:
+            return False
 # ----------------------------
 # Pick Model
 # ----------------------------

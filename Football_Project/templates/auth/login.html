@@ -11,7 +11,7 @@
     <div class="max-w-md mx-auto bg-white p-6 rounded-lg shadow-lg">
       <h2 class="text-2xl font-bold mb-6 text-center">Login</h2>
 
-      <form method="POST" action="{{ url_for('main.login') }}">
+      <form method="POST" action="{{ url_for('auth.login') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="mb-4">
           <label class="block text-gray-700" for="username">Username</label>
@@ -35,7 +35,7 @@
       {% endwith %}
 
       <div class="text-center mt-4">
-        <p>Don't have an account? <a class="text-blue-500" href="{{ url_for('main.register') }}">Register</a></p>
+        <p>Don't have an account? <a class="text-blue-500" href="{{ url_for('auth.register') }}">Register</a></p>
       </div>
       <p class="mt-4 text-center">
         <a href="{{ url_for('main.forgot_password') }}" class="text-blue-500">I forgot my password</a>

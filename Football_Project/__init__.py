@@ -47,7 +47,10 @@ def create_app():
     # Auth
     login_manager = LoginManager()
     login_manager.init_app(app)
-    login_manager.login_view = 'main.login'
+    # 🚨 point Flask-Login at the new login view
+    login_manager.login_view = "auth.login"      # was 'main.login'
+    login_manager.login_message = "Please sign in to continue."
+    login_manager.login_message_category = "warning"
 
     @login_manager.user_loader
     def load_user(user_id):
@@ -56,6 +59,10 @@ def create_app():
     # Blueprints
     from .admin import admin_bp
     app.register_blueprint(admin_bp)
+
+    from .auth import auth_bp          # ← add this import
+    app.register_blueprint(auth_bp)    # ← and register it
+
     from .routes import main_bp
     app.register_blueprint(main_bp)
 
