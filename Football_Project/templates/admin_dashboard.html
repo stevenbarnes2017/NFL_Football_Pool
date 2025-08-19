@@ -14,8 +14,8 @@
     gap: 10px;
     flex-wrap: wrap;
     margin: 8px 0 24px;
-    justify-content: center;  /* ← center the buttons */
-    align-items: center;       /* optional, for vertical centering on wrap */
+    justify-content: center;  /* center the buttons row */
+    align-items: center;
   }
   .btn { display:inline-block; padding:8px 12px; border-radius:6px; border:1px solid #ccc; background:#f8f8f8; color:#222; text-decoration:none; }
   .btn:hover { background:#eee; }
@@ -38,10 +38,10 @@
   .mp-table { width:100%; border-collapse:collapse; }
   .mp-table th, .mp-table td { border-top:1px solid #f0f0f0; padding:10px 12px; }
   .mp-table thead th { background:#fafafa; text-align:left; }
-  .mp-row.missing { background:#fff7ed; }   /* soft highlight */
+  .mp-row.missing { background:#fff7ed; }
   .mp-name a { text-decoration:none; }
   .mp-name a:hover { text-decoration:underline; }
-  .mp-controls { display:flex; gap:8px; justify-content:flex-end; padding:10px 18px; }
+  .mp-controls { display:flex; gap:8px; justify-content:space-between; padding:10px 18px; }
   .mp-btn { display:inline-block; padding:6px 10px; border:1px solid #ccc; border-radius:6px; background:#f8f8f8; color:#222; text-decoration:none; }
   .mp-btn:hover { background:#eee; }
 </style>
@@ -70,16 +70,17 @@
   </div>
 </div>
 
-<!-- Everyday actions -->
+<!-- Quick actions -->
 <h2>Quick Actions</h2>
 <div class="buttons">
   <a class="btn btn-primary" href="{{ url_for('admin.admin_scores', week=stats.current_week) }}">Game Results / Scores</a>
-  <a class="btn" href="{{ url_for('main.leaderboard', tab='season') }}">Open Leaderboard</a>
+  <a class="btn" href="{{ url_for('main.leaderboard', tab='weekly', week=stats.current_week) }}">Weekly Leaderboard</a>
+  <a class="btn" href="{{ url_for('main.leaderboard', tab='season') }}">Season Leaderboard</a>
   <a class="btn" href="{{ url_for('admin.admin_scores') }}">Audit All Weeks</a>
   <a class="btn" href="{{ url_for('admin.manage_users') }}">Manage Users</a>
 </div>
 
-{# --- Missing picks panel (clickable & tidy) --- #}
+{# Missing picks panel #}
 {% if counts %}
   {% set rows = counts.get('rows', []) %}
   {% set only_missing = request.args.get('only_missing') %}
@@ -89,25 +90,22 @@
       <div class="mp-sub">Unlocked games: {{ counts['unlocked_games'] }} / {{ counts['total_games'] }}</div>
     </div>
 
-    <div class="mp-controls" style="justify-content:space-between;">
-  <!-- LEFT: go to the “missing picks” view -->
-  <div>
-    <!-- If you have a dedicated page/route, replace with:
-         href="{{ url_for('admin.missing_picks', week=stats.current_week) }}" -->
-    <a class="mp-btn" href="{{ url_for('admin.missing_picks', only_missing=1) }}">
-      Missing Picks Dashboard
-    </a>
-  </div>
+    <div class="mp-controls">
+      <a class="mp-btn"
+         href="{{ url_for('admin.missing_picks', week=stats.current_week, only_missing=1) }}">
+        Missing Picks Dashboard
+      </a>
 
-  <!-- RIGHT: toggle filter -->
-  <div>
-    {% if only_missing %}
-      <a class="mp-btn" href="{{ url_for('admin.admin_dashboard') }}">Show all users</a>
-    {% else %}
-      <a class="mp-btn" href="{{ url_for('admin.admin_dashboard', only_missing=1) }}">Show only missing</a>
-    {% endif %}
-  </div>
-</div>
+      {% if only_missing %}
+        <a class="mp-btn" href="{{ url_for('admin.admin_dashboard', week=stats.current_week) }}">
+          Show all users
+        </a>
+      {% else %}
+        <a class="mp-btn" href="{{ url_for('admin.admin_dashboard', week=stats.current_week, only_missing=1) }}">
+          Show only missing
+        </a>
+      {% endif %}
+    </div>
 
     <table class="mp-table">
       <thead>
@@ -133,7 +131,6 @@
             {% endif %}
           {% endfor %}
         {% else %}
-          {# Fallback if rows isn't provided: render simple by_user map (non-clickable) #}
           {% for username, n in counts.get('by_user', {})|dictsort(by='value', reverse=True) %}
             {% if not only_missing or n > 0 %}
               <tr class="mp-row {{ 'missing' if n > 0 else '' }}">
@@ -154,11 +151,35 @@
   </div>
 {% endif %}
 
-<!-- Rare or manual actions live here -->
+<!-- Manual actions -->
 <details style="margin-top:22px;">
   <summary>Manual Actions</summary>
-  <div class="buttons" style="margin-top:6px;">
 
+  {% set default_week = stats.current_week - 1 if stats.current_week > 1 else stats.current_week %}
+
+  <form action="{{ url_for('admin.fetch_scores') }}" method="post"
+        style="margin-top:10px; display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="year" value="{{ current_year }}">
+    <input type="hidden" name="seasontype" value="1">
+
+    <label style="display:block;">
+      <span style="display:block; font-size:12px; color:#666; margin-bottom:4px;">Week</span>
+      <input type="number" name="weeknum" value="{{ default_week }}" min="1"
+             style="padding:8px; border:1px solid #ccc; border-radius:6px; width:90px;">
+    </label>
+
+    <button class="btn" name="action" value="download_csv" type="submit">
+      Download Scores CSV
+    </button>
+
+    <button class="btn" name="action" value="save_to_db" type="submit"
+            onclick="return confirm('Manually save scores to the DB for this week?');">
+      Save Scores to DB (Manual)
+    </button>
+  </form>
+
+  <div class="buttons" style="margin-top:10px;">
     <form action="{{ url_for('admin.process_user_scores') }}" method="post"
           onsubmit="return confirm('Emergency only. Recalculate scores manually?');">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -176,7 +197,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn" type="submit">Fetch Odds (Manual)</button>
     </form>
-
   </div>
 </details>
+
 {% endblock %}

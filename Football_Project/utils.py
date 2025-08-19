@@ -14,6 +14,7 @@ from itsdangerous import URLSafeTimedSerializer
 from sqlalchemy import func, literal
 from .scoring import norm_status
 from collections import defaultdict
+import re
 
 
 season_type = 1  # 1 = preseason, 2 = regular, 3 = postseason
@@ -528,41 +529,87 @@ def group_games_by_day(games_list):
 
     return grouped_games
 
+def _norm_team(s: str) -> str:
+    # normalize names: lower, strip non-alnum
+    return re.sub(r'[^a-z0-9]', '', (s or '').lower())
+
+def _tkey(home: str, away: str) -> str:
+    return f"{_norm_team(home)}|{_norm_team(away)}"
+
+def _map_status(s: str | None) -> str:
+    if not s:
+        return "STATUS_SCHEDULED"
+    t = s.strip().lower()
+    if t in {"final", "finished", "completed", "status_final"}:
+        return "STATUS_FINAL"
+    if t in {"in progress", "live", "status_in_progress"}:
+        return "STATUS_IN_PROGRESS"
+    return "STATUS_SCHEDULED"
 
 
-
-def save_game_scores_to_db(game_scores, week):
+def save_game_scores_to_db(scores: list[dict], week: int) -> str:
     """
-    Save or update game scores in the database for a specific week.
+    scores: each item should expose at least:
+      - home_team / away_team
+      - home_score / away_score
+      - status (optional)
+      - (optional) any of: id / gameId / game_id / fixture_id / event_id
     """
-    for game in game_scores:
-        home_team = game.get('home_team')
-        away_team = game.get('away_team')
-        home_score = game.get('home_score')
-        away_score = game.get('away_score')
-        status = game.get('status')
 
-        # Find the existing game record or create a new one
-        game_record = Game.query.filter_by(home_team=home_team, away_team=away_team, week=week).first()
+    games = Game.query.filter_by(week=week).all()
 
-        if game_record:
-            # Update the existing game record
-            game_record.home_team_score = home_score
-            game_record.away_team_score = away_score
-            game_record.status = status
-        else:
-            # Create a new game record if it doesn't exist
-            game_record = Game(
-                home_team=home_team,
-                away_team=away_team,
-                home_team_score=home_score,
-                away_team_score=away_score,
-                status=status,
-                week=week
-            )
-            db.session.add(game_record)
+    # maps
+    by_id = {}
+    for g in games:
+        if getattr(g, "game_id", None):
+            by_id[str(g.game_id)] = g
 
-    db.session.commit()  # Commit all changes to the database
+    by_key = { _tkey(g.home_team, g.away_team): g for g in games }
+    # sometimes feeds flip home/away — include reverse key too
+    for g in games:
+        by_key.setdefault(_tkey(g.away_team, g.home_team), g)
+
+    updated, skipped = 0, []
+
+    for item in scores:
+        # pull fields with fallbacks
+        api_id = str(
+            item.get("id")
+            or item.get("gameId")
+            or item.get("game_id")
+            or item.get("fixture_id")
+            or item.get("event_id")
+            or ""
+        )
+        home = item.get("home_team") or item.get("homeTeam") or item.get("home")
+        away = item.get("away_team") or item.get("awayTeam") or item.get("away")
+        hs   = item.get("home_score") or item.get("homeTeamScore") or item.get("home_score_total")
+        as_  = item.get("away_score") or item.get("awayTeamScore") or item.get("away_score_total")
+        st   = _map_status(item.get("status") or item.get("state") or item.get("match_status"))
+
+        g = None
+        if api_id and api_id in by_id:
+            g = by_id[api_id]
+        elif home and away:
+            g = by_key.get(_tkey(home, away))
+
+        if not g:
+            skipped.append({"home": home, "away": away, "api_id": api_id})
+            continue
+
+        # write scores/status
+        if hs is not None and as_ is not None:
+            try:
+                g.home_team_score = int(hs)
+                g.away_team_score = int(as_)
+            except Exception:
+                # leave as-is if parse error
+                pass
+        g.status = st
+        updated += 1
+
+    db.session.commit()
+    return f"updated={updated} skipped={len(skipped)}"
     
 
     # Utility function to determine the highest available confidence points
