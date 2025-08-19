@@ -25,10 +25,10 @@
         <label class="block text-sm font-medium text-gray-700 mb-1">Filter</label>
         <select name="filter"
                 class="w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:border-blue-300">
-          <option value="any"      {% if filter_mode=='any' %}selected{% endif %}>Missing any picks</option>
-          <option value="none"     {% if filter_mode=='none' %}selected{% endif %}>No picks</option>
-          <option value="complete" {% if filter_mode=='complete' %}selected{% endif %}>Complete</option>
-          <option value="all"      {% if filter_mode=='all' %}selected{% endif %}>All users</option>
+          <option value="any"      {% if filter=='any' %}selected{% endif %}>Missing any picks</option>
+          <option value="zero"     {% if filter=='zero' %}selected{% endif %}>No picks</option>
+          <option value="complete" {% if filter=='complete' %}selected{% endif %}>Complete</option>
+          <option value="all"      {% if filter=='all' %}selected{% endif %}>All users</option>
         </select>
       </div>
       <div class="flex items-end">
@@ -41,20 +41,20 @@
 
   <!-- Stats -->
   <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-    <a href="{{ url_for('admin.missing_picks', week=week, filter='none') }}"
+    <a href="{{ url_for('admin.missing_picks', week=week, filter='zero') }}"
        class="p-4 bg-white border rounded-lg hover:shadow">
       <div class="text-sm text-gray-500">Users with 0 picks</div>
-      <div class="text-3xl font-bold">{{ counts.none if counts else 0 }}</div>
+      <div class="text-3xl font-bold">{{ zero_count }}</div>
     </a>
     <a href="{{ url_for('admin.missing_picks', week=week, filter='any') }}"
        class="p-4 bg-white border rounded-lg hover:shadow">
       <div class="text-sm text-gray-500">Users missing any</div>
-      <div class="text-3xl font-bold">{{ counts.any if counts else 0 }}</div>
+      <div class="text-3xl font-bold">{{ any_count }}</div>
     </a>
     <a href="{{ url_for('admin.missing_picks', week=week, filter='complete') }}"
        class="p-4 bg-white border rounded-lg hover:shadow">
       <div class="text-sm text-gray-500">Users complete</div>
-      <div class="text-3xl font-bold">{{ counts.complete if counts else 0 }}</div>
+      <div class="text-3xl font-bold">{{ complete_count }}</div>
     </a>
     <div class="p-4 bg-white border rounded-lg">
       <div class="text-sm text-gray-500">Total games this week</div>

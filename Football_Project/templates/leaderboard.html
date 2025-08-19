@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Leaderboard{% endblock %}
+
+{% block content %}
+<div class="container mx-auto py-8">
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-3xl font-bold">Leaderboard</h1>
+
+    <!-- Tabs -->
+    <div style="display: inline-flex; border: 1px solid #ccc; border-radius: 6px; padding: 4px;">
+    <a href="{{ url_for('main.leaderboard', tab='season') }}"
+        style="padding: 6px 12px; margin-right: 8px; border-radius: 4px; background: {{ 'lightgray' if tab=='season' else 'white' }};">
+        Season
+    </a>
+    <a href="{{ url_for('main.leaderboard', tab='weekly', week=current_week) }}"
+        style="padding: 6px 12px; border-radius: 4px; background: {{ 'lightgray' if tab=='weekly' else 'white' }};">
+        Weekly
+    </a>
+    </div>
+
+  {% if tab == 'season' %}
+    <!-- Header stats -->
+    <div class="mb-4 text-sm text-gray-700">
+      <span class="font-semibold">Through Week {{ season_header.through_week }}</span> •
+      Participants: {{ season_header.participants }} •
+      Avg Points: {{ season_header.avg_points }}
+    </div>
+
+    <div class="overflow-x-auto rounded-xl border">
+      <table class="min-w-full text-sm">
+        <thead class="bg-gray-50 sticky top-0">
+          <tr>
+            <th class="px-3 py-2 text-left">Rank</th>
+            <th class="px-3 py-2 text-left">User</th>
+            <th class="px-3 py-2 text-right">Total Points</th>
+            <th class="px-3 py-2 text-right">Correct</th>
+            <th class="px-3 py-2 text-right">Forfeits</th>
+            <th class="px-3 py-2 text-right">Accuracy %</th>
+            <th class="px-3 py-2 text-right">Best Week</th>
+            <th class="px-3 py-2 text-right">Last Week</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y">
+          {% for r in season_rows %}
+          <tr class="{{ 'bg-yellow-50' if current_user.id == r.user_id else '' }}">
+            <td class="px-3 py-2">{{ r.rank }}</td>
+            <td class="px-3 py-2 font-medium">
+              {{ r.username }}
+              <!-- badges spot (later) -->
+            </td>
+            <td class="px-3 py-2 text-right">{{ r.total_points }}</td>
+            <td class="px-3 py-2 text-right">{{ r.total_correct }}</td>
+            <td class="px-3 py-2 text-right">{{ r.total_forfeits }}</td>
+            <td class="px-3 py-2 text-right">{{ r.accuracy }} %</td>
+            <td class="px-3 py-2 text-right">{{ r.best_week_points }}</td>
+            <td class="px-3 py-2 text-right">{{ r.last_week_points }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  {% else %}
+    <!-- Week selector -->
+    <form method="get" action="{{ url_for('main.leaderboard') }}" class="mb-4">
+      <input type="hidden" name="tab" value="weekly">
+      <label class="mr-2 text-sm font-medium">Week:</label>
+      <select name="week" class="border rounded px-2 py-1 text-sm" onchange="this.form.submit()">
+        {% for w in range(1, current_week + 1) %}
+          <option value="{{ w }}" {% if w == selected_week %}selected{% endif %}>{{ w }}</option>
+        {% endfor %}
+      </select>
+    </form>
+
+    <!-- Weekly table -->
+    <div class="overflow-x-auto rounded-xl border">
+      <table class="min-w-full text-sm">
+        <thead class="bg-gray-50 sticky top-0">
+          <tr>
+            <th class="px-3 py-2 text-left">Rank</th>
+            <th class="px-3 py-2 text-left">User</th>
+            <th class="px-3 py-2 text-right">Points</th>
+            <th class="px-3 py-2 text-right">Correct</th>
+            <th class="px-3 py-2 text-right">Forfeits</th>
+            <th class="px-3 py-2 text-right">Accuracy %</th>
+            <th class="px-3 py-2 text-left">Tie-break</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y">
+          {% for r in weekly_rows %}
+          <tr class="{{ 'bg-yellow-50' if current_user.id == r.user_id else '' }}">
+            <td class="px-3 py-2">
+              {% if r.rank == 1 and r.user_id in weekly_header.champion_user_ids %}
+                <span title="Weekly Champion">👑</span>
+              {% endif %}
+              {{ r.rank }}
+            </td>
+            <td class="px-3 py-2 font-medium">{{ r.username }}</td>
+            <td class="px-3 py-2 text-right">{{ r.points }}</td>
+            <td class="px-3 py-2 text-right">{{ r.correct }}</td>
+            <td class="px-3 py-2 text-right">{{ r.forfeits }}</td>
+            <td class="px-3 py-2 text-right">{{ r.accuracy }} %</td>
+            <td class="px-3 py-2">{{ r.tiebreak_note or '' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

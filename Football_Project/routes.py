@@ -26,6 +26,7 @@ from pytz import timezone  # Add this
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 #from flask_mail import Message  # if you use Flask-Mail
 from .utils import generate_token, verify_token
+from .services.leaderboard import get_season_leaderboard, get_weekly_leaderboard
 
 
 
@@ -787,6 +788,36 @@ def reset_password(token):
         return redirect(url_for('auth.login'))
 
     return render_template('reset_password.html')
+
+@main_bp.route("/leaderboard", methods=["GET"])
+@login_required
+def leaderboard():
+    tab = request.args.get("tab", "season")  # 'season' | 'weekly'
+    current_week = get_current_week()
+
+    if tab == "weekly":
+        try:
+            week = int(request.args.get("week", current_week))
+        except Exception:
+            week = current_week
+        w_header, w_rows = get_weekly_leaderboard(week)
+        return render_template(
+            "leaderboard.html",
+            tab="weekly",
+            current_week=current_week,
+            selected_week=week,
+            weekly_header=w_header,
+            weekly_rows=w_rows,
+        )
+    else:
+        s_header, s_rows = get_season_leaderboard(current_week)
+        return render_template(
+            "leaderboard.html",
+            tab="season",
+            current_week=current_week,
+            season_header=s_header,
+            season_rows=s_rows,
+        )
 
 
 

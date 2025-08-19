@@ -1,162 +1,182 @@
 {% extends "base.html" %}
-
 {% block title %}Admin Dashboard{% endblock %}
-
 {% block content %}
-<div class="container mx-auto mt-4">
-  <div class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow-lg">
-    <h2 class="text-3xl font-extrabold mb-4 text-center text-gray-900 tracking-tight">Admin Dashboard</h2>
 
-    <!-- Tailwind (optional if already in base.html) -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css">
+<style>
+  .cards { display:flex; gap:12px; flex-wrap:wrap; margin: 0 0 16px; }
+  .card { border:1px solid #ddd; border-radius:8px; padding:12px 14px; min-width:200px; background:#fff; }
+  .card .label { color:#666; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+  .card .value { font-size:22px; font-weight:700; margin-top:4px; }
+  .muted { color:#666; font-size:12px; }
 
-    <!-- Flash Messages -->
-    <div class="mb-4">
-      {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          {% for category, message in messages %}
-            <div class="p-3 mb-3 text-sm {{ 'text-red-800 bg-red-100 border border-red-300' if category == 'danger' else 'text-green-800 bg-green-100 border border-green-300' }} rounded-lg" role="alert">
-              {{ message }}
-            </div>
-          {% endfor %}
-        {% endif %}
-      {% endwith %}
-    </div>
+  .buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 8px 0 24px;
+    justify-content: center;  /* ← center the buttons */
+    align-items: center;       /* optional, for vertical centering on wrap */
+  }
+  .btn { display:inline-block; padding:8px 12px; border-radius:6px; border:1px solid #ccc; background:#f8f8f8; color:#222; text-decoration:none; }
+  .btn:hover { background:#eee; }
+  .btn-primary { background:#3b82f6; border-color:#2f6fe0; color:#fff; }
+  .btn-primary:hover { background:#2f6fe0; }
+  .btn-danger { background:#fee2e2; border-color:#fca5a5; color:#991b1b; }
+  .btn-danger:hover { background:#fecaca; }
 
-    {# ===== Missing Picks Banner (admin-only hint) ===== #}
-    {% if counts and counts.any and counts.any > 0 %}
-    <div class="mb-5 rounded border border-yellow-300 bg-yellow-50 p-4">
-      <div class="font-semibold">⚠ {{ counts.any }} users have not finished picks for Week {{ week or current_week }}.</div>
-      <div class="mt-2 space-x-3">
-        <a class="underline text-blue-600" href="{{ url_for('admin.missing_picks', week=(week or current_week), filter='none') }}">
-          Users with 0 picks ({{ counts.none }})
-        </a>
-        <a class="underline text-blue-600" href="{{ url_for('admin.missing_picks', week=(week or current_week), filter='any') }}">
-          Users missing any picks ({{ counts.any }})
-        </a>
-        <a class="underline text-blue-600" href="{{ url_for('admin.missing_picks', week=(week or current_week), filter='complete') }}">
-          Complete ({{ counts.complete }})
-        </a>
-      </div>
-    </div>
-    {% endif %}
+  details { border:1px solid #ddd; border-radius:8px; padding:10px 12px; background:#fff; }
+  details > summary { cursor:pointer; font-weight:600; margin:-10px -12px 10px; padding:10px 12px; }
 
-    <!-- Dashboard Grid Layout -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  table { width:100%; border-collapse:collapse; background:#fff; }
+  th, td { border:1px solid #e5e5e5; padding:8px 10px; text-align:left; }
+  th { background:#fafafa; }
 
-      <!-- Missing Picks Quick Actions (NEW) -->
-      <div class="card flex flex-col border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
-        <h3 class="text-xl font-semibold mb-3 text-gray-800">Missing Picks</h3>
-        <p class="text-gray-700">See who has 0 picks, partial picks, or is complete for Week {{ week or current_week }}.</p>
+  /* Missing Picks card */
+  .mp-card { margin-top: 10px; background:#fff; border:1px solid #e5e5e5; border-radius:10px; }
+  .mp-head { padding:16px 18px 0; text-align:center; }
+  .mp-sub  { text-align:center; color:#666; font-size:12px; margin-bottom:6px; }
+  .mp-table { width:100%; border-collapse:collapse; }
+  .mp-table th, .mp-table td { border-top:1px solid #f0f0f0; padding:10px 12px; }
+  .mp-table thead th { background:#fafafa; text-align:left; }
+  .mp-row.missing { background:#fff7ed; }   /* soft highlight */
+  .mp-name a { text-decoration:none; }
+  .mp-name a:hover { text-decoration:underline; }
+  .mp-controls { display:flex; gap:8px; justify-content:flex-end; padding:10px 18px; }
+  .mp-btn { display:inline-block; padding:6px 10px; border:1px solid #ccc; border-radius:6px; background:#f8f8f8; color:#222; text-decoration:none; }
+  .mp-btn:hover { background:#eee; }
+</style>
 
-        <div class="grid grid-cols-2 gap-3 my-4">
-          <a href="{{ url_for('admin.missing_picks', week=(week or current_week), filter='none') }}"
-             class="border rounded p-3 text-center hover:bg-gray-50">
-            <div class="text-sm text-gray-500">Users with 0 picks</div>
-            <div class="text-2xl font-bold">{{ counts.none if counts else '—' }}</div>
-          </a>
-          <a href="{{ url_for('admin.missing_picks', week=(week or current_week), filter='any') }}"
-             class="border rounded p-3 text-center hover:bg-gray-50">
-            <div class="text-sm text-gray-500">Users missing any</div>
-            <div class="text-2xl font-bold">{{ counts.any if counts else '—' }}</div>
-          </a>
-          <a href="{{ url_for('admin.missing_picks', week=(week or current_week), filter='complete') }}"
-             class="border rounded p-3 text-center hover:bg-gray-50">
-            <div class="text-sm text-gray-500">Users complete</div>
-            <div class="text-2xl font-bold">{{ counts.complete if counts else '—' }}</div>
-          </a>
-          <div class="border rounded p-3 text-center">
-            <div class="text-sm text-gray-500">Total users</div>
-            <div class="text-2xl font-bold">{{ counts.total_users if counts else '—' }}</div>
-          </div>
-        </div>
+<h1>Admin Dashboard</h1>
 
-        <a href="{{ url_for('admin.missing_picks', week=(week or current_week), filter='any') }}"
-           class="bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded-lg w-full font-semibold text-center">
-          Open Missing Picks Dashboard
-        </a>
-      </div>
-
-      <!-- Fetch Odds Section -->
-      <div class="card flex flex-col border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
-        <h3 class="text-xl font-semibold mb-3 text-gray-800">Fetch Odds</h3>
-        <p class="text-gray-700 flex-grow">
-          Automatically fetches odds for the current week
-          {% if current_week %}(Week {{ current_week }}){% endif %}.
-        </p>
-        <form action="{{ url_for('admin.fetch_odds') }}" method="post" class="mt-auto">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <!-- Optional override controls:
-          <input type="hidden" name="week_option" value="override">
-          <input type="number" name="week_number" value="{{ current_week or '' }}" class="w-full p-2 border rounded mt-2" placeholder="Week #">
-          -->
-          <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-3 rounded-lg w-full font-semibold">
-            Fetch Odds
-          </button>
-        </form>
-      </div>
-
-      <!-- Fetch Scores Section -->
-      <div class="card flex flex-col border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
-        <h3 class="text-xl font-semibold mb-3 text-gray-800">Get Scores (Manual)</h3>
-        <p class="text-gray-600 flex-grow">Scores are fetched automatically, but you can manually fetch them if needed.</p>
-
-        <form action="{{ url_for('admin.fetch_scores') }}" method="post" class="mt-auto">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="year" value="{{ current_year }}">
-
-          <label for="seasontype" class="block text-gray-600 font-medium mt-2">Season Type:</label>
-          <select name="seasontype" id="seasontype" class="w-full p-2 border border-gray-300 rounded mt-1">
-            <option value="1">Preseason</option>
-            <option value="2" selected>Regular Season</option>
-            <option value="3">Postseason</option>
-          </select>
-
-          <label for="weeknum" class="block text-gray-600 font-medium mt-2">Week Number:</label>
-          <input type="number" name="weeknum" id="weeknum" class="w-full p-2 border border-gray-300 rounded mt-1" value="{{ current_week or '' }}" required>
-
-          <div class="mt-4 flex justify-between">
-            <button type="submit" name="action" value="save_to_db" class="bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg font-semibold">
-              Save to DB
-            </button>
-            <button type="submit" name="action" value="download_csv" class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg font-semibold">
-              Download CSV
-            </button>
-          </div>
-        </form>
-      </div>
-
-      <!-- View User Score Summary Section -->
-      <div class="card flex flex-col border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
-        <h3 class="text-xl font-semibold mb-3 text-gray-800 text-center">View User Score Summary</h3>
-        <p class="text-gray-700 flex-grow text-center">View the summary of user scores for the current week.</p>
-        <a href="{{ url_for('admin.admin_scores') }}" class="bg-indigo-500 hover:bg-indigo-600 text-white py-2 px-3 rounded-lg w-full font-semibold mt-auto text-center">
-          View User Score Summary
-        </a>
-      </div>
-
-      <!-- Manage Users Section -->
-      <div class="lg:col-span-1 border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
-        <h3 class="text-xl font-semibold mb-3 text-gray-800 text-center">Manage Users</h3>
-        <div class="text-center">
-          <a href="{{ url_for('admin.manage_users') }}" class="bg-yellow-500 hover:bg-yellow-600 text-white py-2 px-3 rounded-lg w-full font-semibold transition-colors duration-200">
-            Manage Users
-          </a>
-        </div>
-      </div>
-
-      <!-- Process User Scores Section -->
-      <div class="lg:col-span-3 border border-gray-300 rounded-lg p-4 hover:shadow-xl transition-shadow">
-        <h3 class="text-xl font-semibold mb-3 text-center text-gray-800">Process User Scores</h3>
-        <form action="{{ url_for('admin.process_user_scores') }}" method="post" class="text-center">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="bg-purple-500 hover:bg-purple-600 text-white py-2 px-4 rounded-lg w-full font-semibold transition-colors duration-200">
-            Process All User Scores
-          </button>
-        </form>
-      </div>
-
-    </div>
+<!-- Status cards -->
+<div class="cards">
+  <div class="card">
+    <div class="label">Current Week</div>
+    <div class="value">{{ stats.current_week }}</div>
+    <div class="muted">Year {{ current_year }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Games (Locked / Total)</div>
+    <div class="value">{{ stats.locked_games }} / {{ stats.total_games }}</div>
+    <div class="muted">Remaining: {{ stats.remaining_games }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Last Grading Run</div>
+    <div class="value">{{ stats.last_grading or '—' }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Last Odds Fetch</div>
+    <div class="value">{{ stats.last_odds_fetch or '—' }}</div>
   </div>
 </div>
+
+<!-- Everyday actions -->
+<h2>Quick Actions</h2>
+<div class="buttons">
+  <a class="btn btn-primary" href="{{ url_for('admin.admin_scores', week=stats.current_week) }}">Game Results / Scores</a>
+  <a class="btn" href="{{ url_for('main.leaderboard', tab='season') }}">Open Leaderboard</a>
+  <a class="btn" href="{{ url_for('admin.admin_scores') }}">Audit All Weeks</a>
+  <a class="btn" href="{{ url_for('admin.manage_users') }}">Manage Users</a>
+</div>
+
+{# --- Missing picks panel (clickable & tidy) --- #}
+{% if counts %}
+  {% set rows = counts.get('rows', []) %}
+  {% set only_missing = request.args.get('only_missing') %}
+  <div class="mp-card">
+    <div class="mp-head">
+      <h2>Missing Picks (Week {{ counts['week'] }})</h2>
+      <div class="mp-sub">Unlocked games: {{ counts['unlocked_games'] }} / {{ counts['total_games'] }}</div>
+    </div>
+
+    <div class="mp-controls" style="justify-content:space-between;">
+  <!-- LEFT: go to the “missing picks” view -->
+  <div>
+    <!-- If you have a dedicated page/route, replace with:
+         href="{{ url_for('admin.missing_picks', week=stats.current_week) }}" -->
+    <a class="mp-btn" href="{{ url_for('admin.missing_picks', only_missing=1) }}">
+      Missing Picks Dashboard
+    </a>
+  </div>
+
+  <!-- RIGHT: toggle filter -->
+  <div>
+    {% if only_missing %}
+      <a class="mp-btn" href="{{ url_for('admin.admin_dashboard') }}">Show all users</a>
+    {% else %}
+      <a class="mp-btn" href="{{ url_for('admin.admin_dashboard', only_missing=1) }}">Show only missing</a>
+    {% endif %}
+  </div>
+</div>
+
+    <table class="mp-table">
+      <thead>
+        <tr>
+          <th>User</th>
+          <th style="width:120px">Missing</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if rows %}
+          {% for r in rows %}
+            {% if not only_missing or r.missing > 0 %}
+              <tr class="mp-row {{ 'missing' if r.missing > 0 else '' }}">
+                <td class="mp-name">
+                  {% if r.missing > 0 %}
+                    <a href="{{ url_for('admin.admin_scores', week=stats.current_week, user=r.user_id) }}">{{ r.username }}</a>
+                  {% else %}
+                    {{ r.username }}
+                  {% endif %}
+                </td>
+                <td>{{ r.missing }}</td>
+              </tr>
+            {% endif %}
+          {% endfor %}
+        {% else %}
+          {# Fallback if rows isn't provided: render simple by_user map (non-clickable) #}
+          {% for username, n in counts.get('by_user', {})|dictsort(by='value', reverse=True) %}
+            {% if not only_missing or n > 0 %}
+              <tr class="mp-row {{ 'missing' if n > 0 else '' }}">
+                <td class="mp-name">{{ username }}</td>
+                <td>{{ n }}</td>
+              </tr>
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <th>Total</th>
+          <th>{{ counts['missing_total'] }}</th>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+{% endif %}
+
+<!-- Rare or manual actions live here -->
+<details style="margin-top:22px;">
+  <summary>Manual Actions</summary>
+  <div class="buttons" style="margin-top:6px;">
+
+    <form action="{{ url_for('admin.process_user_scores') }}" method="post"
+          onsubmit="return confirm('Emergency only. Recalculate scores manually?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-danger" type="submit">Process User Scores (Emergency)</button>
+    </form>
+
+    <form action="{{ url_for('admin.admin_calculate_scores') }}" method="post"
+          onsubmit="return confirm('Re-run aggregates and refresh standings now?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn" type="submit">Recalculate Standings</button>
+    </form>
+
+    <form action="{{ url_for('admin.fetch_odds') }}" method="post"
+          onsubmit="return confirm('Manual odds fetch (normally automated). Run now?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn" type="submit">Fetch Odds (Manual)</button>
+    </form>
+
+  </div>
+</details>
 {% endblock %}
