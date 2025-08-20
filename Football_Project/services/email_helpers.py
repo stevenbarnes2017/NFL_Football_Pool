@@ -10,7 +10,10 @@ def send_admin_email(subject: str, html: str, attachment_bytes: bytes | None = N
     }
     payload = {
         "sender": {"name": "NFL Football Pool", "email": "lines31@hotmail.com"},
-        "to": [{"email": os.getenv("mcdonaldfam_57@yahoo.com", "stevenbarnes50@gmail.com")}],
+        "to": [
+            {"email": "mcdonaldfam_57@yahoo.com"},
+            {"email": "stevenbarnes50@gmail.com"}
+        ],
         "subject": subject,
         "htmlContent": html
     }
