@@ -186,12 +186,44 @@
   }
 }
 
-@media (max-width: 500px) {
+/* Phones & small tablets: neutralize the parent grid's negative margin */
+@media (max-width: 1024px) {
+  .scoreboard-grid {
+    margin-left: 0 !important;
+    width: 100% !important;
+    padding: 10px !important;
+    box-sizing: border-box;
+  }
+
+  /* Center the cards inside each scoreboard */
   #live-scoreboard,
   #last-week-scoreboard {
-    justify-content: center;
-    margin-left: 75px !important;
-    padding: 10px;
-    width: 100%; /* ensure full width */
+    justify-content: center !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
   }
+}
+
+/* Landscape phones: same fix even if width > 768px */
+@media (max-height: 500px) and (orientation: landscape) {
+  .scoreboard-grid {
+    margin-left: 0 !important;
+    width: 100% !important;
+    padding: 8px !important;
+  }
+
+  #live-scoreboard,
+  #last-week-scoreboard {
+    justify-content: center !important;
+  }
+}
+
+/* Ensure cards are fluid */
+.game-card {
+  flex: 1 1 300px;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0;
+  box-sizing: border-box;
 }
