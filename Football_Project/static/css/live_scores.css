@@ -147,4 +147,14 @@
     right: 20px !important;
   }
 
+  @media (max-width: 768px) {
+  #user-score-box.floating-box {
+    position: static !important;   /* leave normal flow */
+    top: auto;                     /* neutralize any inline top */
+    right: auto;
+    width: 100%;
+    margin-top: 20px;
+    max-height: none;
+  }
+}
 
