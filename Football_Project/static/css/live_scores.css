@@ -158,3 +158,20 @@
   }
 }
 
+@media (max-width: 768px) {
+    .scoreboard-grid {
+        padding: 10px;
+        margin-left: 0;
+        justify-content: center;
+    }
+}
+
+@media (max-width: 768px) {
+  #live-scoreboard,
+  #last-week-scoreboard {
+    justify-content: center;
+    margin-left: 0 !important;
+    padding: 10px;
+    width: 100%; /* ensure full width */
+  }
+}
