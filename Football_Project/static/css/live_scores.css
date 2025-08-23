@@ -1,201 +1,126 @@
 /* ===========================
    Floating box (user summary)
+   Desktop default: fixed on right
    =========================== */
 #user-score-box.floating-box {
-    position: fixed;
-    top: 120px;              /* clears the navbar */
-    right: 20px;
-    width: 20px;
-    max-width: 520px;
-    max-height: 90vh;
-    overflow-y: auto;
-    overflow-x: auto;
-    background-color: #f8f9fa;
-    border: 1px solid #ddd;
-    padding: 15px;
-    border-radius: 8px;
-    box-shadow: 0 0 10px rgba(0,0,0,0.1);
-    z-index: 200;            /* below nav (1000), above cards */
+  position: fixed;
+  top: 120px;                /* clears navbar */
+  right: 20px;
+  width: clamp(320px, 28vw, 520px);
+  max-height: 90vh;
+  overflow-y: auto;
+  overflow-x: auto;
+  background-color: #f8f9fa;
+  border: 1px solid #ddd;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 0 10px rgba(0,0,0,0.1);
+  z-index: 200;              /* below nav (1000), above cards */
 }
 
 /* ===============
-   Table in the box
+   Table inside box
    =============== */
 #user-picks-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.9em;
-    table-layout: fixed;     /* prevent horizontal growth */
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+  table-layout: fixed;
 }
-
 #user-picks-table th,
 #user-picks-table td {
-    padding: 5px;
-    text-align: left;
-    border-bottom: 1px solid #ddd;
-    word-wrap: break-word;
-    white-space: normal;
+  padding: 5px;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+  word-wrap: break-word;
+  white-space: normal;
 }
-
 #user-picks-table th {
-    background-color: #f2f2f2;
-    color: #000;
-    font-weight: bold;
+  background-color: #f2f2f2;
+  color: #000;
+  font-weight: bold;
 }
 
 /* =================
    Scoreboard layout
    ================= */
 
-/* Reset base.css tweaks so we control width here */
-/* Scoreboard Grid: Flexbox for Horizontal Alignment */
+/* Neutralize any negative margins from global styles on this page */
 .scoreboard-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 20px;
-    justify-content: flex-start;
-    align-items: flex-start;
-    width: calc(100% - 50px);
-    padding: 20px;
-    margin-left: -75px;
-    box-sizing: border-box;
+  margin-left: 0 !important;
+  width: 100% !important;
+  padding: 20px;
+  box-sizing: border-box;
 }
 
-/* Card styles */
+/* Lay out game cards in a responsive grid */
+#live-scoreboard,
+#last-week-scoreboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 24px;
+  align-items: stretch;
+}
+
+/* Make cards fluid (override any fixed width from global CSS) */
 .game-card {
-    display: flex;
-    flex-direction: column;
-    padding: 15px;
-    border: 1px solid #ddd;
-    margin-bottom: 12px;
-    border-radius: 8px;
-    background-color: #fff;
-    text-align: left;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    transition: transform 0.3s ease;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  padding: 15px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background-color: #fff;
+  text-align: left;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  transition: transform 0.3s ease;
 }
-
 .game-card:hover {
-    transform: scale(1.02);
-    background-color: #f9f9f9;
+  transform: translateY(-2px);
 }
 
-.game-card a {
-    color: inherit;
-    text-decoration: none;
+/* Reserve space for the fixed user box on wide screens so cards don't go underneath */
+@media (min-width: 1200px) {
+  .scoreboard-grid { margin-right: 560px; } /* box width (~520) + gutter */
 }
 
-.team-logos {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-}
-
-.team-logo img {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    border: 1px solid #ddd;
-    transition: box-shadow 0.3s ease;
-}
-
-.team-logo img:hover {
-    box-shadow: 0 0 8px rgba(0, 0, 0, 0.2);
-}
-
-.score {
-    display: flex;
-    justify-content: center;
-    font-size: 1.3em;
-    font-weight: bold;
-    color: #333;
-    margin: 8px 0;
-}
-
-.team-score { flex: 1; text-align: center; }
-.vs-divider { font-weight: normal; color: #888; }
-
-.game-details {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    margin-top: 10px;
-    padding-top: 10px;
-    border-top: 1px solid #ddd;
-    color: #555;
-    font-size: 0.9em;
-}
-
-.game-details div { display: flex; justify-content: space-between; }
-.game-details span { font-weight: bold; }
-
-.winning { color: green; }
-.losing  { color: red; }
-.pending { color: gray; }
-
-.no-games {
-    opacity: 0.8;
-    font-style: italic;
-    padding: 8px 0;
-}
-
-
-
-  #user-score-box.floating-box {
-    width: 520px !important;            /* stretch the box a bit */
-    right: 20px !important;
-  }
-
-/* --- MOBILE PORTRAIT: stack the user box below and center cards --- */
-@media (max-width: 768px) and (orientation: portrait) {
-  #user-score-box.floating-box {
-    position: static;
-    top: auto;
-    right: auto;
-    width: 100%;
-    margin-top: 20px;
-    max-height: none;
-  }
-
-  .scoreboard-grid {            /* parent wrapper */
-    margin-left: 0;
-    padding: 10px;
-  }
-
+/* Tablet tuning: increase columns progressively */
+@media (min-width: 700px) and (max-width: 1199px) {
   #live-scoreboard,
-  #last-week-scoreboard {
-    justify-content: center;
-    margin: 0;
-    padding: 0;
-    width: 100%;
-  }
+  #last-week-scoreboard { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 1000px) and (max-width: 1199px) {
+  #live-scoreboard,
+  #last-week-scoreboard { grid-template-columns: repeat(3, 1fr); }
 }
 
-/* --- MOBILE LANDSCAPE: turn the user box into a bottom drawer --- */
-@media (max-height: 500px) and (max-width: 900px) and (orientation: landscape) {
+/* =========================
+   Small screens (any orientation)
+   Always stack user box below
+   ========================= */
+@media (max-width: 900px), (max-height: 500px) {
   #user-score-box.floating-box {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    top: auto;
-    width: 100%;
-    max-height: 45vh;
-    overflow: auto;
-    border-radius: 10px 10px 0 0;
-    z-index: 1000;
-  }
-
-  /* Make sure cards aren’t hidden behind the drawer */
-  #live-scoreboard,
-  #last-week-scoreboard {
-    padding-bottom: 50vh;
-    justify-content: center;
+    position: static !important;  /* leave normal flow */
+    top: auto !important;         /* neutralize JS-set top */
+    right: auto !important;
+    width: 100% !important;
+    margin-top: 16px;
+    max-height: none !important;
+    z-index: auto !important;
   }
 
   .scoreboard-grid {
-    margin-left: 0;
-    padding: 8px;
+    margin-right: 0 !important;
+    margin-left: 0 !important;
+    padding: 10px !important;
+  }
+
+  #live-scoreboard,
+  #last-week-scoreboard {
+    grid-template-columns: 1fr;   /* single column on narrow/short screens */
+    gap: 12px;
   }
 }
