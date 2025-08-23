@@ -147,83 +147,55 @@
     right: 20px !important;
   }
 
-  @media (max-width: 768px) {
+/* --- MOBILE PORTRAIT: stack the user box below and center cards --- */
+@media (max-width: 768px) and (orientation: portrait) {
   #user-score-box.floating-box {
-    position: static !important;   /* leave normal flow */
-    top: auto;                     /* neutralize any inline top */
+    position: static;
+    top: auto;
     right: auto;
     width: 100%;
     margin-top: 20px;
     max-height: none;
   }
-}
 
-/* Short viewports: treat like mobile and stack */
-@media (max-height: 500px) {
-  #user-score-box.floating-box {
-    position: static !important;
-    width: 100%;
-    margin-top: 20px;
-    max-height: none;
+  .scoreboard-grid {            /* parent wrapper */
+    margin-left: 0;
+    padding: 10px;
   }
-}
 
-@media (max-width: 768px) {
-    .scoreboard-grid {
-        padding: 10px;
-        margin-left: 0;
-        justify-content: center;
-    }
-}
-
-@media (max-width: 768px) {
   #live-scoreboard,
   #last-week-scoreboard {
     justify-content: center;
-    margin-left: 0 !important;
-    padding: 10px;
-    width: 100%; /* ensure full width */
+    margin: 0;
+    padding: 0;
+    width: 100%;
   }
 }
 
-/* Phones & small tablets: neutralize the parent grid's negative margin */
-@media (max-width: 1024px) {
-  .scoreboard-grid {
-    margin-left: 0 !important;
-    width: 100% !important;
-    padding: 10px !important;
-    box-sizing: border-box;
+/* --- MOBILE LANDSCAPE: turn the user box into a bottom drawer --- */
+@media (max-height: 500px) and (max-width: 900px) and (orientation: landscape) {
+  #user-score-box.floating-box {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    width: 100%;
+    max-height: 45vh;
+    overflow: auto;
+    border-radius: 10px 10px 0 0;
+    z-index: 1000;
   }
 
-  /* Center the cards inside each scoreboard */
+  /* Make sure cards aren’t hidden behind the drawer */
   #live-scoreboard,
   #last-week-scoreboard {
-    justify-content: center !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    width: 100% !important;
+    padding-bottom: 50vh;
+    justify-content: center;
   }
-}
 
-/* Landscape phones: same fix even if width > 768px */
-@media (max-height: 500px) and (orientation: landscape) {
   .scoreboard-grid {
-    margin-left: 0 !important;
-    width: 100% !important;
-    padding: 8px !important;
+    margin-left: 0;
+    padding: 8px;
   }
-
-  #live-scoreboard,
-  #last-week-scoreboard {
-    justify-content: center !important;
-  }
-}
-
-/* Ensure cards are fluid */
-.game-card {
-  flex: 1 1 300px;
-  width: 100% !important;
-  max-width: none !important;
-  margin: 0;
-  box-sizing: border-box;
 }
