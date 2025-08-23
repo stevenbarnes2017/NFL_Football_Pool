@@ -185,3 +185,13 @@
     width: 100%; /* ensure full width */
   }
 }
+
+@media (max-width: 500px) {
+  #live-scoreboard,
+  #last-week-scoreboard {
+    justify-content: center;
+    margin-left: 0 !important;
+    padding: 10px;
+    width: 100%; /* ensure full width */
+  }
+}
