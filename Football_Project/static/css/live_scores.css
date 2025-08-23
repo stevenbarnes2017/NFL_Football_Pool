@@ -190,7 +190,7 @@
   #live-scoreboard,
   #last-week-scoreboard {
     justify-content: center;
-    margin-left: 0 !important;
+    margin-left: 25px !important;
     padding: 10px;
     width: 100%; /* ensure full width */
   }
