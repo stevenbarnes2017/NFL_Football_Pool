@@ -158,6 +158,16 @@
   }
 }
 
+/* Short viewports: treat like mobile and stack */
+@media (max-height: 500px) {
+  #user-score-box.floating-box {
+    position: static !important;
+    width: 100%;
+    margin-top: 20px;
+    max-height: none;
+  }
+}
+
 @media (max-width: 768px) {
     .scoreboard-grid {
         padding: 10px;
