@@ -1,27 +1,31 @@
-/* Floating box for user summary */
-#user-score-box.floating-box {
+/* ===========================
+   Floating box (user summary)
+   =========================== */
+#user-score-box, .live-floating-box {
     position: fixed;
-    top: 120px; /* move it down so it clears the user menu */
+    top: 120px;              /* clears the navbar */
     right: 20px;
     width: 450px;
-    max-width: 100vw;          /* Prevent it from expanding off screen */
+    max-width: 100vw;
     max-height: 90vh;
     overflow-y: auto;
-    overflow-x: auto;          /* Allow horizontal scroll if needed */
+    overflow-x: auto;
     background-color: #f8f9fa;
     border: 1px solid #ddd;
     padding: 15px;
     border-radius: 8px;
     box-shadow: 0 0 10px rgba(0,0,0,0.1);
-    z-index: 40; /* keep below menus; raise if needed */
+    z-index: 200;            /* below nav (1000), above cards */
 }
 
-/* Table inside the floating box */
+/* ===============
+   Table in the box
+   =============== */
 #user-picks-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.9em;
-    table-layout: fixed; /* Prevents table from expanding horizontally */
+    table-layout: fixed;     /* prevent horizontal growth */
 }
 
 #user-picks-table th,
@@ -29,8 +33,8 @@
     padding: 5px;
     text-align: left;
     border-bottom: 1px solid #ddd;
-    word-wrap: break-word;  /* Break long words */
-    white-space: normal;    /* Allow wrapping of text */
+    word-wrap: break-word;
+    white-space: normal;
 }
 
 #user-picks-table th {
@@ -39,7 +43,18 @@
     font-weight: bold;
 }
 
-/* Game card styles */
+/* =================
+   Scoreboard layout
+   ================= */
+
+/* Reset base.css tweaks so we control width here */
+.scoreboard-grid,
+#live-scoreboard.scoreboard-grid {
+    width: 100%;
+    margin-left: 0;
+}
+
+/* Card styles */
 .game-card {
     display: flex;
     flex-direction: column;
@@ -53,95 +68,119 @@
     transition: transform 0.3s ease;
 }
 
-.game-card:hover { 
-    transform: scale(1.02); 
-    background-color: #f9f9f9; 
+.game-card:hover {
+    transform: scale(1.02);
+    background-color: #f9f9f9;
 }
 
-.game-card a { 
-    color: inherit; 
-    text-decoration: none; 
+.game-card a {
+    color: inherit;
+    text-decoration: none;
 }
 
-.team-logos { 
-    display: flex; 
-    justify-content: space-between; 
-    align-items: center; 
-    margin-bottom: 12px; 
+.team-logos {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
 }
 
-.team-logo img { 
-    width: 60px; 
-    height: 60px; 
-    border-radius: 50%; 
-    border: 1px solid #ddd; 
-    transition: box-shadow 0.3s ease; 
+.team-logo img {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    border: 1px solid #ddd;
+    transition: box-shadow 0.3s ease;
 }
 
-.team-logo img:hover { 
-    box-shadow: 0 0 8px rgba(0, 0, 0, 0.2); 
+.team-logo img:hover {
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.2);
 }
 
-.score { 
-    display: flex; 
-    justify-content: center; 
-    font-size: 1.3em; 
-    font-weight: bold; 
-    color: #333; 
-    margin: 8px 0; 
+.score {
+    display: flex;
+    justify-content: center;
+    font-size: 1.3em;
+    font-weight: bold;
+    color: #333;
+    margin: 8px 0;
 }
 
-.team-score { 
-    flex: 1; 
-    text-align: center; 
+.team-score { flex: 1; text-align: center; }
+.vs-divider { font-weight: normal; color: #888; }
+
+.game-details {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #ddd;
+    color: #555;
+    font-size: 0.9em;
 }
 
-.vs-divider { 
-    font-weight: normal; 
-    color: #888; 
+.game-details div { display: flex; justify-content: space-between; }
+.game-details span { font-weight: bold; }
+
+.winning { color: green; }
+.losing  { color: red; }
+.pending { color: gray; }
+
+.no-games {
+    opacity: 0.8;
+    font-style: italic;
+    padding: 8px 0;
 }
 
-.game-details { 
-    display: flex; 
-    flex-direction: column; 
-    gap: 5px; 
-    margin-top: 10px; 
-    padding-top: 10px; 
-    border-top: 1px solid #ddd; 
-    color: #555; 
-    font-size: 0.9em; 
+/* ===============================
+   Responsive: reserve space at R
+   =============================== */
+
+/* Desktop / wide screens */
+@media (min-width: 1100px) {
+  .scoreboard-grid,
+  #live-scoreboard.scoreboard-grid {
+    width: 100% !important;
+    margin-left: 0 !important;
+    padding-right: 520px !important;  /* 450 box + 20 gutter + buffer */
+  }
+
+  #user-score-box.floating-box {
+    width: 450px !important;
+    right: 20px !important;
+  }
 }
 
-.game-details div { 
-    display: flex; 
-    justify-content: space-between; 
+/* Tablet range */
+@media (min-width: 769px) and (max-width: 1099px) {
+  .scoreboard-grid,
+  #live-scoreboard.scoreboard-grid {
+    width: 100% !important;
+    margin-left: 0 !important;
+    padding-right: 420px !important;  /* narrower reserve */
+  }
+
+  #user-score-box.floating-box {
+    width: 360px !important;
+    right: 20px !important;
+  }
 }
 
-.game-details span { 
-    font-weight: bold; 
-}
-
-.winning { 
-    color: green; 
-}
-
-.losing { 
-    color: red; 
-}
-
-.pending { 
-    color: gray; 
-}
-
-/* Mobile tweak: dock the box at the bottom */
+/* Phones: dock the box at the bottom */
 @media (max-width: 768px) {
-    #user-score-box.floating-box {
-        top: auto;
-        right: 16px;
-        left: 16px;
-        bottom: 16px;
-        width: auto;
-        max-width: none;
-        max-height: 55vh;
-    }
+  #user-score-box.floating-box {
+    top: auto;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    width: auto;
+    max-width: none;
+    max-height: 55vh;
+  }
+
+  .scoreboard-grid,
+  #live-scoreboard.scoreboard-grid {
+    padding-right: 0 !important;
+  }
 }
