@@ -9,7 +9,7 @@ from Football_Project.extensions import db
 from Football_Project.models import Game
 
 SEASON_YEAR = 2025
-SEASON_TYPE = 1  # 1 = preseason, 2 = regular, 3 = postseason
+SEASON_TYPE = 2  # 1 = preseason, 2 = regular, 3 = postseason
 WEEK_START = 1
 WEEK_END = 18
 

@@ -12,7 +12,7 @@ from Football_Project.models import db, Game
 API_KEY = os.getenv("ODDS_API_KEY", "8b42837961f5ba838a1e1fc381e7600c")
 BASE_URL = (
     "https://api.the-odds-api.com/v4/"
-    "sports/americanfootball_nfl_preseason/odds/"
+    "sports/americanfootball_nfl/odds/"
     f"?apiKey={API_KEY}&regions=us&markets=h2h,spreads&oddsFormat=american"
 )
 BOOKMAKER_MATCH = "draftkings"  # lowercase compare

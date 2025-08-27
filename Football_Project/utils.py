@@ -17,7 +17,7 @@ from collections import defaultdict
 import re
 
 
-season_type = 1  # 1 = preseason, 2 = regular, 3 = postseason
+season_type = 2  # 1 = preseason, 2 = regular, 3 = postseason
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -982,7 +982,7 @@ def get_odds_data():
     Fetch odds for all games from The Odds API and print the raw response for debugging.
     """
     API_KEY = "8b42837961f5ba838a1e1fc381e7600c"  # Replace with your actual API key
-    URL = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl_preseason/odds"
+    URL = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds"
     
     params = {
         "apiKey": API_KEY,
@@ -1036,7 +1036,7 @@ def resolve_selected_week(default_week_provider):
         if val is not None:
             try:
                 wk = int(val)
-                if 1 <= wk <= 22:  # regular season + playoffs if you use them
+                if 1 <= wk <= 18:  # regular season + playoffs if you use them
                     return wk
             except ValueError:
                 pass
