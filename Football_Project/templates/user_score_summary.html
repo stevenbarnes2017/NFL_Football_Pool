@@ -63,26 +63,42 @@
                 <th>Away Team</th>
                 <th>Spread</th>
                 <th>Favorite Team</th>
+                <th>Your Pick</th>
                 <th>Home Team Score</th>
                 <th>Away Team Score</th>
                 <th>Status</th>
                 <th>Confidence</th>
                 <th>Points Earned</th>
+                <th>Outcome</th>
             </tr>
         </thead>
         <tbody>
             {% for game in game_picks %}
-            <tr>
+            <tr class="
+                {% if game.pick %}
+                    {% if game.pick.points_earned > 0 %}bg-green-50
+                    {% elif game.pick.points_earned == 0 and game.status == 'STATUS_FINAL' %}bg-red-50
+                    {% endif %}
+                {% endif %}
+            ">
                 <td>{{ game.game_id }}</td>
                 <td>{{ game.home_team }}</td>
                 <td>{{ game.away_team }}</td>
                 <td>{{ game.spread }}</td>
                 <td>{{ game.favorite_team }}</td>
+                <td>{{ game.pick.team_picked if game.pick else 'N/A' }}</td>
                 <td>{{ game.home_team_score }}</td>
                 <td>{{ game.away_team_score }}</td>
                 <td>{{ game.status }}</td>
                 <td>{{ game.pick.confidence if game.pick else 'N/A' }}</td>
                 <td>{{ game.pick.points_earned if game.pick else 'N/A' }}</td>
+                <td>
+                    {% if not game.pick %}N/A
+                    {% elif game.status != 'STATUS_FINAL' %}In Progress
+                    {% elif game.pick.points_earned > 0 %}Win
+                    {% elif game.pick.points_earned == 0 %}Loss
+                    {% else %}Push{% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>
