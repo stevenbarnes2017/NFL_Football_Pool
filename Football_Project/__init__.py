@@ -18,13 +18,29 @@ from .utils import get_current_week
 # helper modules you’ll add below
 from .services import attempt_import_odds, is_week_odds_complete
 from .services import send_admin_email
-
+from .services.sms_helpers import send_sms
+from .models import User  # make sure your User model has a phone field
 load_dotenv()
 
 # Global scheduler (Mountain time)
 scheduler = BackgroundScheduler(timezone=timezone('US/Mountain'))
 migrate = Migrate()
 csrf = CSRFProtect()
+
+def sms_reminders_job_with_context(app):
+    with app.app_context():
+        week = get_current_week()
+        # Replace with actual DB query: users who have picks left
+        targets = []  # e.g., User.query.filter(...).all()
+        for user in targets:
+            try:
+                send_sms(
+                    user.phone,
+                    f"Reminder: Set your picks for Week {week} before kickoff!",
+                    tag=f"wk{week}_reminder",
+                )
+            except Exception as e:
+                app.logger.exception(f"SMS send failed for {user.id}: {e}")
 
 def auto_fetch_scores_with_context(app):
     with app.app_context():
@@ -159,6 +175,16 @@ def create_app():
                 args=[app], day_of_week='thu', hour=7, minute=0,
                 id="odds_escalation", replace_existing=True
             )
+
+            # Scheduler to remind users of the picks
+            scheduler.add_job(
+            func=lambda: sms_reminders_job_with_context(app),
+            trigger="cron",
+            day_of_week="thu,sun,mon",
+            hour=16,   # 4 PM Mountain
+            minute=0,
+            id="sms_reminders_cron",
+        )
 
             scheduler.start()
 

@@ -1,3 +1,6 @@
+/* framework-free helper for tab panes */
+.hidden { display: none !important; }
+
 /* General Reset for consistency */
 * {
     margin: 0;
@@ -511,3 +514,124 @@ footer {
     background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='white'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z'%3E%3C/path%3E%3C/svg%3E") no-repeat center;
     background-size: contain;
 }
+
+/* ===== Season Snapshot (framework-free) ===== */
+
+/* Title */
+.ss-title{
+  font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+  font-weight: 800;
+  text-align: center;
+  margin: 0 0 .75rem 0;
+}
+
+/* Centered responsive grid */
+.snapshot-grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  max-width: 1000px;
+  margin: 0 auto; /* keep centered */
+}
+
+.stat-card{
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 14px;
+  text-align: center;
+  box-shadow: 0 1px 2px rgba(17,24,39,.04);
+}
+
+.stat-label{
+  font-size: 12px;
+  color: #6b7280;          /* gray-500 */
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  margin-bottom: 2px;
+}
+
+.stat-value{
+  font-size: 24px;
+  font-weight: 800;
+  color: #111827;          /* gray-900 */
+  line-height: 1.1;
+}
+
+.stat-sub{
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 2px;
+}
+
+/* Coach Tips block */
+.tips-card{
+  max-width: 1000px;
+  margin: 12px auto 0;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 2px rgba(17,24,39,.04);
+}
+
+.tips-title{
+  text-align: center;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.tips-list{
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 14px;
+}
+
+.muted{ color:#9ca3af; }
+
+/* keep the whole snapshot pane centered */
+#tab-snapshot{ max-width: 1100px; margin: 0 auto; }
+
+/* ===== Trends & Visuals ===== */
+.tr-title{
+  font-size: clamp(1.25rem, 2.4vw, 1.75rem);
+  font-weight: 800;
+  text-align: center;
+  margin: 0 0 .75rem 0;
+}
+
+.tr-row{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* each chart */
+.chart-card{
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 1px 2px rgba(17,24,39,.04);
+}
+
+.chart-title{
+  font-weight: 600;
+  text-align: center;
+  font-size: 14px;
+  margin-bottom: 8px;
+  color: #111827;
+}
+
+/* fixed-height canvas container so charts don’t squash */
+.chart-box{
+  height: 280px;           /* tweak if you want taller */
+  position: relative;
+}
+.chart-box canvas{
+  width: 100% !important;
+  height: 100% !important;
+}
+

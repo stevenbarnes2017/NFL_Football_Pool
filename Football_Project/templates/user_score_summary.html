@@ -1,86 +1,205 @@
 {% extends "base.html" %}
 
-{% block title %}My Scores and Standings{% endblock %}
+{% block title %}My Scores and User Standings{% endblock %}
 
 {% block content %}
-<div class="main-content">
-    <h1>Your Scores and User Standings</h1>
+<div class="main-content max-w-5xl mx-auto px-4 space-y-6">
 
-    <!-- Form for selecting week -->
-    <form action="{{ url_for('main.user_score_summary') }}" method="get">
-        <!-- Week Selection -->
-        <div>
-            <label for="week">Select Week:</label>
-            <select name="week" id="week">
-                <option value="all" {% if selected_week == 'all' %}selected{% endif %}>All Weeks</option>
-                {% for week in weeks %}
-                    <option value="{{ week }}" {% if week == selected_week %}selected{% endif %}>Week {{ week }}</option>
-                {% endfor %}
-            </select>
+  <h1 class="text-3xl font-bold text-center">Your Scores and User Standings</h1>
+
+  <!-- Week selector -->
+  <form action="{{ url_for('main.user_score_summary') }}" method="get" class="flex items-end gap-3 justify-center flex-wrap">
+    <div>
+      <label for="week" class="block text-sm font-semibold text-gray-700 text-center">Select Week</label>
+      <select name="week" id="week" class="border rounded px-3 py-2">
+        <option value="all" {% if selected_week == 'all' %}selected{% endif %}>All Weeks</option>
+        {% for week in weeks %}
+          <option value="{{ week }}" {% if week == selected_week %}selected{% endif %}>Week {{ week }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2 rounded">
+      View Scores
+    </button>
+  </form>
+
+  <!-- Tabs (centered, larger, pill-style) -->
+  <div class="sticky top-16 z-10">
+    <div class="flex justify-center gap-2 border-b pb-2 overflow-x-auto">
+      <button class="tab-btn active" data-tab="snapshot">Snapshot</button>
+      <button class="tab-btn" data-tab="trends">Trends</button>
+      <button class="tab-btn" data-tab="teams">Teams</button>
+      <button class="tab-btn" data-tab="details">Details</button>
+    </div>
+  </div>
+
+  <!-- SNAPSHOT -->
+<section id="tab-snapshot" class="tab-pane pt-2">
+  <h2 class="ss-title">Season Snapshot</h2>
+
+  <div class="snapshot-grid">
+    <div class="stat-card">
+      <div class="stat-label">Total Points</div>
+      <div class="stat-value">{{ season_stats.season_total }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Avg / Week</div>
+      <div class="stat-value">{{ season_stats.avg_points }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Best Week</div>
+      {% if season_stats.best_week %}
+        <div class="stat-value">W{{ season_stats.best_week.week }}</div>
+        <div class="stat-sub">({{ season_stats.best_week.points }})</div>
+      {% else %}
+        <div class="stat-value">—</div>
+      {% endif %}
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Worst Week</div>
+      {% if season_stats.worst_week %}
+        <div class="stat-value">W{{ season_stats.worst_week.week }}</div>
+        <div class="stat-sub">({{ season_stats.worst_week.points }})</div>
+      {% else %}
+        <div class="stat-value">—</div>
+      {% endif %}
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Win Rate</div>
+      <div class="stat-value">{{ season_stats.win_rate }}%</div>
+      <div class="stat-sub">Streak ≥ avg: {{ season_stats.streak_at_or_above_avg }} wk</div>
+    </div>
+  </div>
+
+  <div class="tips-card">
+    <div class="tips-title">Coach Tips</div>
+    <ul class="tips-list">
+      {% for tip in coach_tips %}
+        <li>{{ tip }}</li>
+      {% else %}
+        <li class="muted">Tips will appear once you’ve made a few picks.</li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+
+
+    <!-- TRENDS -->
+<section id="tab-trends" class="tab-pane pt-2 hidden">
+  <h2 class="tr-title">Trends & Visuals</h2>
+
+  <div class="tr-row">
+    <div class="chart-card">
+      <div class="chart-title">Wins by Confidence (1–16)</div>
+      <div class="chart-box"><canvas id="confBar"></canvas></div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-title">Weekly Points</div>
+      <div class="chart-box"><canvas id="weeklyLine"></canvas></div>
+    </div>
+  </div>
+</section>
+
+  <!-- TEAMS (Top 5 + optional full table) -->
+  <section id="tab-teams" class="tab-pane pt-2 hidden">
+    <h2 class="text-xl md:text-2xl font-bold text-center mb-3">Team Bias Insights</h2>
+    <div class="p-4 rounded-xl border bg-white shadow-sm">
+      <div class="font-semibold mb-2 text-sm text-center">Top 5 Most Picked Teams</div>
+      <ul class="space-y-1 text-sm">
+        {% for row in team_bias.favorites[:5] %}
+          <li class="flex justify-between">
+            <span class="font-medium">{{ row.team }}</span>
+            <span>{{ row.picked_count }} picks • {{ row.win_pct }}%</span>
+          </li>
+        {% else %}
+          <li class="text-gray-500">No data yet</li>
+        {% endfor %}
+      </ul>
+
+      <details class="mt-3">
+        <summary class="cursor-pointer text-sm text-blue-700 font-medium text-center">Show full team record table</summary>
+        <div class="mt-3 overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead>
+              <tr class="text-left">
+                <th class="py-1 pr-4">Team</th>
+                <th class="py-1 pr-4">Picked</th>
+                <th class="py-1 pr-4">W–L</th>
+                <th class="py-1 pr-4">Win %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in team_bias.by_team %}
+                <tr class="border-t">
+                  <td class="py-1 pr-4">{{ row.team }}</td>
+                  <td class="py-1 pr-4">{{ row.picked_count }}</td>
+                  <td class="py-1 pr-4">{{ row.wins }}–{{ row.losses }}</td>
+                  <td class="py-1 pr-4">{{ row.win_pct }}%</td>
+                </tr>
+              {% else %}
+                <tr><td colspan="4" class="py-2 text-gray-500">No team picks yet.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
+      </details>
+    </div>
+  </section>
 
-        <!-- View Scores Button -->
-        <div class="mt-4">
-            <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
-                View Scores
-            </button>
-        </div>
-    </form>
-
-    <!-- Display user standings -->
-    <h2 class="mt-6">User Standings {% if selected_week != 'all' %} for Week {{ selected_week }}{% else %} (All Weeks){% endif %}</h2>
-    <table class="min-w-full bg-white">
-        <thead>
-            <tr>
-                <th>Rank</th>
-                <th>Username</th>
-                <th>Total Points</th>
-            </tr>
-        </thead>
-        <tbody>
+  <!-- DETAILS (standings + game table) -->
+  <section id="tab-details" class="tab-pane pt-2 hidden">
+    <h2 class="text-xl md:text-2xl font-bold text-center mb-3">Details</h2>
+    <div class="space-y-4">
+      <div class="p-4 rounded-xl border bg-white shadow-sm">
+        <h3 class="text-lg font-semibold mb-2 text-center">
+          Standings {% if selected_week != 'all' %}— Week {{ selected_week }}{% else %}(All Weeks){% endif %}
+        </h3>
+        <div class="overflow-x-auto">
+          <table class="min-w-full bg-white text-sm">
+            <thead><tr><th>Rank</th><th>Username</th><th>Total Points</th></tr></thead>
+            <tbody>
             {% for user in user_scores %}
-            <tr class="{% if user.id == current_user.id %}highlight{% endif %}">
+              <tr class="{% if user.id == current_user.id %}highlight{% endif %}">
                 <td>{{ loop.index }}</td>
                 <td>{{ user.username }}</td>
                 <td>{{ user.total_score|int }}</td>
-            </tr>
+              </tr>
             {% endfor %}
-        </tbody>
-    </table>
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-    <!-- Display total points for the current user -->
-    <h2 class="mt-6">Your Total Points {% if selected_week != 'all' %} for Week {{ selected_week }}{% else %} (All Weeks){% endif %}</h2>
-    <p>Total Points: {{ user_total_score|int }}</p>
+      <div class="p-4 rounded-xl border bg-white shadow-sm">
+        <h3 class="text-lg font-semibold mb-2 text-center">
+          Your Total Points {% if selected_week != 'all' %}— Week {{ selected_week }}{% else %}(All Weeks){% endif %}
+        </h3>
+        <p class="text-center text-base font-medium">Total Points: {{ user_total_score|int }}</p>
+      </div>
 
-    <!-- Display detailed game results for the current user -->
-    {% if game_picks %}
-    <h2 class="mt-6">Your Game Results {% if selected_week != 'all' %} for Week {{ selected_week }}{% endif %}</h2>
-    <table class="min-w-full bg-white">
-        <thead>
-            <tr>
-                <th>Game ID</th>
-                <th>Home Team</th>
-                <th>Away Team</th>
-                <th>Spread</th>
-                <th>Favorite Team</th>
-                <th>Your Pick</th>
-                <th>Home Team Score</th>
-                <th>Away Team Score</th>
-                <th>Status</th>
-                <th>Confidence</th>
-                <th>Points Earned</th>
-                <th>Outcome</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for game in game_picks %}
-            <tr class="
+      {% if game_picks %}
+      <div class="p-4 rounded-xl border bg-white shadow-sm">
+        <h3 class="text-lg font-semibold mb-3 text-center">
+          Your Game Results {% if selected_week != 'all' %}— Week {{ selected_week }}{% endif %}
+        </h3>
+        <div class="overflow-x-auto">
+          <table class="min-w-full bg-white text-sm">
+            <thead>
+              <tr>
+                <th>Game ID</th><th>Home</th><th>Away</th><th>Spread</th><th>Fav</th>
+                <th>Your Pick</th><th>H</th><th>A</th><th>Status</th><th>Conf</th><th>Points</th><th>Outcome</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for game in game_picks %}
+              <tr class="
                 {% if game.pick %}
-                    {% if game.pick.points_earned > 0 %}bg-green-50
-                    {% elif game.pick.points_earned == 0 and game.status == 'STATUS_FINAL' %}bg-red-50
-                    {% endif %}
+                  {% if game.pick.points_earned > 0 %}bg-green-50
+                  {% elif game.pick.points_earned == 0 and game.status == 'STATUS_FINAL' %}bg-red-50
+                  {% endif %}
                 {% endif %}
-            ">
+              ">
                 <td>{{ game.game_id }}</td>
                 <td>{{ game.home_team }}</td>
                 <td>{{ game.away_team }}</td>
@@ -93,16 +212,140 @@
                 <td>{{ game.pick.confidence if game.pick else 'N/A' }}</td>
                 <td>{{ game.pick.points_earned if game.pick else 'N/A' }}</td>
                 <td>
-                    {% if not game.pick %}N/A
-                    {% elif game.status != 'STATUS_FINAL' %}In Progress
-                    {% elif game.pick.points_earned > 0 %}Win
-                    {% elif game.pick.points_earned == 0 %}Loss
-                    {% else %}Push{% endif %}
+                  {% if not game.pick %}N/A
+                  {% elif game.status != 'STATUS_FINAL' %}In Progress
+                  {% elif game.pick.points_earned > 0 %}Win
+                  {% elif game.pick.points_earned == 0 %}Loss
+                  {% else %}Push{% endif %}
                 </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% endif %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </section>
 </div>
+
+<!-- Chart.js + Tabs Script -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  // Tabs
+  const panes = {
+    snapshot: document.getElementById('tab-snapshot'),
+    trends: document.getElementById('tab-trends'),
+    teams: document.getElementById('tab-teams'),
+    details: document.getElementById('tab-details'),
+  };
+  const btns = Array.from(document.querySelectorAll('.tab-btn'));
+  let chartsMade = false;
+
+  function showTab(name) {
+    Object.entries(panes).forEach(([k, el]) => el.classList.toggle('hidden', k !== name));
+    btns.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+    if (name === 'trends' && !chartsMade) {
+      buildCharts();
+      chartsMade = true;
+    }
+  }
+  btns.forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+  showTab('snapshot');
+
+  // Charts
+  function buildCharts() {
+    // === NEW: using counts from backend ===
+    const winsByConfidence       = {{ trend_data.wins_by_confidence|tojson }};
+    const attemptsByConfidence   = {{ trend_data.attempts_by_confidence|tojson }};
+    const winRateByConfidence    = {{ trend_data.win_rate_by_confidence|tojson }};
+    const weeklyPoints           = {{ trend_data.weekly_points|tojson }};
+
+    // Bar: Wins by Confidence
+    const confCtx = document.getElementById('confBar').getContext('2d');
+    new Chart(confCtx, {
+      type: 'bar',
+      data: {
+        labels: Array.from({ length: winsByConfidence.length }, (_, i) => i + 1),
+        datasets: [{ label: 'Wins', data: winsByConfidence }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              afterBody: (items) => {
+                const i = items[0].dataIndex;
+                const attempts = attemptsByConfidence[i] || 0;
+                const rate = winRateByConfidence[i] ?? 0;
+                return [`Attempts: ${attempts}`, `Win rate: ${rate}%`];
+              }
+            }
+          }
+        },
+        scales: {
+          x: { title: { display: true, text: 'Confidence' } },
+          y: { beginAtZero: true, title: { display: true, text: 'Wins' } }
+        }
+      }
+    });
+
+    // Line: Weekly points (unchanged)
+    const weeklyCtx = document.getElementById('weeklyLine').getContext('2d');
+    new Chart(weeklyCtx, {
+      type: 'line',
+      data: {
+        labels: weeklyPoints.map(r => 'W' + r.week),
+        datasets: [{ label: 'Points', data: weeklyPoints.map(r => r.points), tension: 0.3 }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { title: { display: true, text: 'Week' } }, y: { beginAtZero: true } }
+      }
+    });
+  }
+</script>
+
+
+<!-- Tab & layout styles -->
+<style>
+  /* Bigger, pill-style tabs */
+  .tab-btn {
+    padding: .6rem 1rem;
+    font-size: 1rem;            /* bigger text */
+    font-weight: 600;
+    border: 1px solid #e5e7eb;
+    border-bottom-width: 2px;
+    border-radius: 9999px;      /* pill */
+    background: white;
+    color: #374151;
+    transition: all .15s ease;
+    white-space: nowrap;
+  }
+  .tab-btn:hover { background: #f9fafb; }
+  .tab-btn.active {
+    border-color: #93c5fd;
+    background: #eff6ff;
+    color: #1d4ed8;
+    box-shadow: 0 1px 0 #93c5fd inset;
+  }
+
+  /* Table header weight & alignment tweaks */
+  table th {
+    font-weight: 700;
+    text-align: left;
+    padding: .5rem .75rem;
+    border-bottom: 1px solid #e5e7eb;
+    white-space: nowrap;
+  }
+  table td { padding: .5rem .75rem; }
+
+  /* Make highlight row a bit clearer on light red/green */
+  tr.bg-green-50 td { border-top: 1px solid #d1fae5; }
+  tr.bg-red-50 td   { border-top: 1px solid #fee2e2; }
+</style>
 {% endblock %}

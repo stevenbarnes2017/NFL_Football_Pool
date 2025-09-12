@@ -2,48 +2,88 @@
 
 {% block content %}
 <div class="container">
-    <div class="profile-container">
-        <h1>Your Profile</h1>
-        <p class="subtitle">Manage your account information</p>
+  <div class="profile-container">
+    <h1>Your Profile</h1>
+    <p class="subtitle">Manage your account information</p>
 
-        <div class="profile-info">
-            <div class="profile-field">
-                <label>Username:</label>
-                <span class="profile-value">{{ user.username }}</span>
-            </div>
+    <!-- Read-only profile info (unchanged) -->
+    <div class="profile-info">
+      <div class="profile-field">
+        <label>Username:</label>
+        <span class="profile-value">{{ user.username }}</span>
+      </div>
 
-            <div class="profile-field">
-                <label>Full Name:</label>
-                <span class="profile-value">{{ user.full_name or 'Not set' }}</span>
-            </div>
+      <div class="profile-field">
+        <label>Full Name:</label>
+        <span class="profile-value">{{ user.full_name or 'Not set' }}</span>
+      </div>
 
-            <div class="profile-field">
-                <label>Email:</label>
-                <span class="profile-value">{{ user.email }}</span>
-            </div>
+      <div class="profile-field">
+        <label>Email:</label>
+        <span class="profile-value">{{ user.email }}</span>
+      </div>
 
-            <div class="profile-field">
-                <label>Phone:</label>
-                <span class="profile-value">{{ user.phone or 'Not set' }}</span>
-            </div>
+      <div class="profile-field">
+        <label>Phone:</label>
+        <span class="profile-value">{{ user.phone or 'Not set' }}</span>
+      </div>
 
-            <div class="profile-field">
-                <label>Favorite Team:</label>
-                <span class="profile-value">{{ user.favorite_team or 'Not set' }}</span>
-            </div>
+      <div class="profile-field">
+        <label>Favorite Team:</label>
+        <span class="profile-value">{{ user.favorite_team or 'Not set' }}</span>
+      </div>
 
-            <div class="profile-field">
-                <label>Account Type:</label>
-                <span class="profile-value">{{ 'Admin' if user.is_admin else 'User' }}</span>
-            </div>
+      <div class="profile-field">
+        <label>Account Type:</label>
+        <span class="profile-value">{{ 'Admin' if user.is_admin else 'User' }}</span>
+      </div>
+    </div>
+
+    <div class="profile-actions">
+      <a href="{{ url_for('main.edit_profile') }}" class="edit-button">
+        <i class="edit-icon"></i>
+        Edit Profile
+      </a>
+    </div>
+
+    <!-- NEW: SMS Reminders card -->
+    <div class="profile-card">
+      <h2>SMS Reminders</h2>
+      <p class="subtitle">Get a text 2 hours before the first game each week.</p>
+
+      <form method="post" action="{{ url_for('main.update_sms_settings') }}" class="sms-form">
+        
+
+        <div class="profile-field">
+          <label for="phone_input">Mobile Numbe</label>
+          <input id="phone_input"
+                 type="tel"
+                 name="phone"
+                 value="{{ user.phone or '' }}"
+                 placeholder="+17205551234"
+                 class="input">
         </div>
+
+        <div class="profile-field">
+          <label class="checkbox">
+            <input type="checkbox" name="sms_opt_in" value="1"
+                   {% if user.sms_opt_in %}checked{% endif %}>
+            <span>Text me week-start reminders</span>
+          </label>
+        </div>
+
+        <p class="fineprint">
+          By enabling SMS, you agree to receive transactional reminders about pick deadlines.
+          Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help. Frequency: 1–4 msgs/week.
+          See our <a href="/terms">Terms</a> &amp; <a href="/privacy">Privacy</a>.
+        </p>
 
         <div class="profile-actions">
-            <a href="{{ url_for('main.edit_profile') }}" class="edit-button">
-                <i class="edit-icon"></i>
-                Edit Profile
-            </a>
+          <button type="submit" class="save-button">Save SMS Settings</button>
         </div>
+      </form>
     </div>
+    <!-- /SMS Reminders card -->
+  </div>
 </div>
 {% endblock %}
