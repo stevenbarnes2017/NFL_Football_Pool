@@ -13,6 +13,18 @@ from football_scores import get_football_scores, save_scores_to_csv  # NOTE: don
 from Football_Project.models import db, Game, Settings, User, UserScore, Pick
 from Football_Project.utils import calculate_user_scores, save_game_scores_to_db  # keep the utils version
 from werkzeug.security import generate_password_hash
+from Football_Project.services.sms_helpers import sms_week_reminder_job
+
+@admin_bp.route("/test_sms/<int:week>")
+def test_sms_week(week):
+    """Manually trigger the SMS reminder job for a given week."""
+    try:
+        sms_week_reminder_job(current_app, week)
+        flash(f"Test SMS job executed for Week {week}", "success")
+    except Exception as e:
+        current_app.logger.exception(e)
+        flash(f"SMS job failed: {e}", "danger")
+    return redirect(url_for("main.dashboard"))
 
 # -------------------------
 # Guards

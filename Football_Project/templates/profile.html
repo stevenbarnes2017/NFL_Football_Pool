@@ -52,6 +52,7 @@
       <p class="subtitle">Get a text 2 hours before the first game each week.</p>
 
       <form method="post" action="{{ url_for('main.update_sms_settings') }}" class="sms-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         
 
         <div class="profile-field">

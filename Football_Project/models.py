@@ -17,7 +17,7 @@ class User(db.Model, UserMixin):
     favorite_team = db.Column(db.String(50))
     password = db.Column(db.String(255), nullable=False)  # 255 is safe for hashes
     is_admin = db.Column(db.Boolean, default=False)
-    sms_opt_in = db.Column(db.Boolean, default=False)
+    sms_opt_in = db.Column(db.Boolean, nullable=False, default=False)
 
 
     # Remove the duplicated relationship; you had 'scores' twice
