@@ -18,7 +18,7 @@ depends_on = None
 
 def upgrade():
     # Backfill existing NULLs to false
-    op.execute('UPDATE "user" SET sms_opt_in = 0 WHERE sms_opt_in IS NULL')
+    op.execute('UPDATE "user" SET sms_opt_in = FALSE WHERE sms_opt_in IS NULL')
 
     # Enforce NOT NULL + server default
     with op.batch_alter_table('user') as batch_op:
