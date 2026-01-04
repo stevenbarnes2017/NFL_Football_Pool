@@ -288,6 +288,13 @@ def calculate_user_scores(week: int, write_final_only: bool = True):
     # If someone needs live totals instead:
     return dict(live_total_by_user)
 
+def get_current_season_year():
+    """
+    Returns the NFL season year (not calendar year).
+    Jan–Feb belong to the prior season.
+    """
+    now = datetime.now(timezone("US/Mountain"))
+    return now.year - 1 if now.month in (1, 2) else now.year
 
 def auto_fetch_scores():
     """Fetch and process scores automatically."""
@@ -298,7 +305,7 @@ def auto_fetch_scores():
         with current_app.app_context():
             from datetime import datetime
             
-            year = datetime.utcnow().year
+            year = year = get_current_season_year()
 
             current_week = get_current_week()
             print(f"Year: {year}, Season Type: {season_type}, Fetching scores for Week: {current_week}")
