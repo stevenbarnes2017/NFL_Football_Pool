@@ -27,16 +27,25 @@ MT = pytz.timezone("US/Mountain")
 # Week calc
 # =============================
 def get_current_week():
-    # 1) Prefer the schedule: earliest upcoming game decides the week
     now_mt = datetime.now(MT).replace(tzinfo=None)  # DB stores naive MT
+
+    # 1) Prefer schedule: most recent started game decides the week
+    last_started = (Game.query
+        .filter(Game.commence_time_mt <= now_mt)
+        .order_by(Game.commence_time_mt.desc())
+        .first())
+    if last_started:
+        return last_started.week
+
+    # 2) If nothing has started yet (preseason/week 1 before kickoff), use earliest upcoming
     upcoming = (Game.query
-                    .filter(Game.commence_time_mt > now_mt)
-                    .order_by(Game.commence_time_mt.asc())
-                    .first())
+        .filter(Game.commence_time_mt > now_mt)
+        .order_by(Game.commence_time_mt.asc())
+        .first())
     if upcoming:
         return upcoming.week
 
-    # 2) Fallback to calendar math if no schedule is loaded
+    # 3) Fallback (calendar math)
     preseason_start = datetime(2025, 7, 31)
     regular_start = datetime(2025, 9, 4)
     now = datetime.utcnow()
@@ -50,6 +59,7 @@ def get_current_week():
         if now.weekday() == 0 or (now.weekday() == 1 and now.hour < 6):
             week -= 1
         week = max(1, min(week, 18))
+
     return week
 
 
