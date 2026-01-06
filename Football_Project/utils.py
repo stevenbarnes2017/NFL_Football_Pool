@@ -21,7 +21,7 @@ season_type = 2  # 1 = preseason, 2 = regular, 3 = postseason
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def get_settings() -> Settings:
+def get_settings() ->"Settings":
     s = Settings.query.first()
     if not s:
         s = Settings(current_week=18, season_year=2025, season_type="REG", season_locked=True)
