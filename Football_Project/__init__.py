@@ -9,6 +9,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from pytz import timezone
 from dotenv import load_dotenv
 
+from sqlalchemy.exc import OperationalError  # ✅ NEW
+
 from .extensions import db
 from .models import User
 from .utils import auto_fetch_scores, fetch_and_cache_scores, get_current_week
@@ -26,52 +28,83 @@ csrf = CSRFProtect()
 
 def auto_fetch_scores_with_context(app):
     with app.app_context():
-        auto_fetch_scores()
+        try:
+            auto_fetch_scores()
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
+        finally:
+            db.session.remove()  # ✅ NEW: prevents stale/broken sessions
 
 
 def fetch_and_cache_scores_with_context(app):
     with app.app_context():
-        fetch_and_cache_scores()
+        try:
+            fetch_and_cache_scores()
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
+        finally:
+            db.session.remove()  # ✅ NEW
 
 
 def odds_window_job_with_context(app, label: str):
     from flask import current_app
     with app.app_context():
-        week = get_current_week()
-        if is_week_odds_complete(week):
-            current_app.logger.info(f"[odds] Week {week} already complete; skipping {label}")
-            return
-        status, csv_bytes, details = attempt_import_odds(week)
-        current_app.logger.info(f"[odds] {label} week={week} status={status} details={details}")
-        if status == "success":
-            send_admin_email(
-                subject=f"[Odds] Week {week} SUCCESS ({label})",
-                html=f"<p>Imported spreads for week {week}.</p><pre>{details}</pre>",
-                attachment_bytes=csv_bytes,
-                filename=f"odds_week_{week}.csv"
-            )
-        elif status == "not_ready":
-            send_admin_email(
-                subject=f"[Odds] Week {week} NOT READY ({label})",
-                html=f"<pre>{details}</pre>"
-            )
-        else:
-            send_admin_email(
-                subject=f"[Odds] Week {week} ERROR ({label})",
-                html=f"<pre>{details}</pre>"
-            )
+        try:
+            week = get_current_week()
+            if is_week_odds_complete(week):
+                current_app.logger.info(f"[odds] Week {week} already complete; skipping {label}")
+                return
+
+            status, csv_bytes, details = attempt_import_odds(week)
+            current_app.logger.info(f"[odds] {label} week={week} status={status} details={details}")
+
+            if status == "success":
+                send_admin_email(
+                    subject=f"[Odds] Week {week} SUCCESS ({label})",
+                    html=f"<p>Imported spreads for week {week}.</p><pre>{details}</pre>",
+                    attachment_bytes=csv_bytes,
+                    filename=f"odds_week_{week}.csv"
+                )
+            elif status == "not_ready":
+                send_admin_email(
+                    subject=f"[Odds] Week {week} NOT READY ({label})",
+                    html=f"<pre>{details}</pre>"
+                )
+            else:
+                send_admin_email(
+                    subject=f"[Odds] Week {week} ERROR ({label})",
+                    html=f"<pre>{details}</pre>"
+                )
+
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
+        finally:
+            db.session.remove()  # ✅ NEW
 
 
 def odds_escalation_job_with_context(app):
     from flask import current_app
     with app.app_context():
-        week = get_current_week()
-        if not is_week_odds_complete(week):
-            current_app.logger.warning(f"[odds] Week {week} still not ready; escalating")
-            send_admin_email(
-                subject=f"[Odds] Week {week} STILL NOT READY",
-                html="<p>Multiple attempts failed. Please investigate.</p>"
-            )
+        try:
+            week = get_current_week()
+            if not is_week_odds_complete(week):
+                current_app.logger.warning(f"[odds] Week {week} still not ready; escalating")
+                send_admin_email(
+                    subject=f"[Odds] Week {week} STILL NOT READY",
+                    html="<p>Multiple attempts failed. Please investigate.</p>"
+                )
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
+        finally:
+            db.session.remove()  # ✅ NEW
 
 
 def create_app():
@@ -83,9 +116,19 @@ def create_app():
 
     # Config
     app.config["SQLALCHEMY_DATABASE_URI"] = db_url
-    #app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///picks.db")
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "password")
     app.config["WTF_CSRF_SECRET_KEY"] = os.getenv("WTF_CSRF_SECRET_KEY", "csrf-key-value")
+
+    # ✅ NEW: make Postgres on Render resilient to dropped SSL connections
+    # Only apply when using Postgres; SQLite doesn't accept these engine options.
+    if db_url.startswith("postgresql://"):
+        app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+            "pool_pre_ping": True,
+            "pool_recycle": 300,  # seconds
+            "pool_size": 5,
+            "max_overflow": 10,
+            "connect_args": {"sslmode": "require"},
+        }
 
     # Init extensions
     db.init_app(app)
@@ -104,7 +147,15 @@ def create_app():
 
     @login_manager.user_loader
     def load_user(user_id):
-        return User.query.get(int(user_id))
+        # ✅ NEW: avoid taking down "/" on transient DB disconnects
+        try:
+            return User.query.get(int(user_id))
+        except OperationalError:
+            db.session.rollback()
+            return None
+        finally:
+            # Don't keep a bad connection around if load_user trips an error
+            db.session.remove()
 
     # Blueprints
     from .admin import admin_bp
@@ -170,19 +221,24 @@ def create_app():
             def reschedule_current_week_sms(app):
                 """Schedules (or reschedules) the first-kickoff reminder for the current week."""
                 with app.app_context():
-                    week = get_current_week()  # needs app context for DB session
-                    schedule_first_kick_sms_for_week(app, week, scheduler)
-            from pytz import timezone as pytz_timezone
+                    try:
+                        week = get_current_week()  # needs app context for DB session
+                        schedule_first_kick_sms_for_week(app, week, scheduler)
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+                        raise
+                    finally:
+                        db.session.remove()
+
             # Run once at startup
             reschedule_current_week_sms(app)
-            
-            from datetime import datetime, timedelta
-            
+
             # Safety: re-evaluate each morning in case week/kickoff changes
             scheduler.add_job(
-                func=lambda: reschedule_current_week_sms(app),   # pass app; wrap in lambda
+                func=lambda: reschedule_current_week_sms(app),
                 trigger="cron",
-                hour=3, minute=5,                                 # Mountain time
+                hour=3, minute=5,  # Mountain time
                 id="sms_rescheduler_daily",
                 replace_existing=True,
             )
