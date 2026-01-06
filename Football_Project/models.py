@@ -73,31 +73,45 @@ class Pick(db.Model):
 # ----------------------------
 class Settings(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    current_week = db.Column(db.Integer, nullable=False, default=1)
+    current_week = db.Column(db.Integer, nullable=False)
+
+    season_year = db.Column(db.Integer, nullable=False, default=2025)
+    season_type = db.Column(db.String(10), nullable=False, default="REG")  # REG / POST
+    season_locked = db.Column(db.Boolean, nullable=False, default=True)
+
 
 # ----------------------------
 # Game Model (now linked to Schedule)
 # ----------------------------
 class Game(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+
+    # ESPN event id (global unique)
     game_id = db.Column(db.String(50), unique=True, nullable=False)
+
+    # Season context
+    season_year = db.Column(db.Integer, nullable=False)
+    season_type = db.Column(db.String(20), nullable=False)  
+    # preseason | regular | postseason
+
+    week = db.Column(db.Integer, nullable=True)
+    week_label = db.Column(db.String(10), nullable=True)
+
     home_team = db.Column(db.String(50), nullable=False)
     away_team = db.Column(db.String(50), nullable=False)
+
     spread = db.Column(db.Float, nullable=True)
     favorite_team = db.Column(db.String(50), nullable=True)
-    commence_time_mt = db.Column(DateTime(timezone=True), nullable=True)  # store MT tz-aware
+
+    commence_time_mt = db.Column(DateTime(timezone=True), nullable=True)
+
     home_team_score = db.Column(db.Integer, nullable=True)
     away_team_score = db.Column(db.Integer, nullable=True)
-    saved_at = db.Column(db.DateTime, default=datetime.utcnow)
     status = db.Column(db.String(50), nullable=True)
-    week = db.Column(db.Integer, nullable=False)
 
-    # Relationship to picks
+    saved_at = db.Column(db.DateTime, default=datetime.utcnow)
+
     picks = db.relationship('Pick', backref='game', lazy=True)
-
-    
-    def __repr__(self):
-        return f'<Game {self.id} - {self.home_team} vs {self.away_team}>'
 
 # ----------------------------
 # UserScore Model
