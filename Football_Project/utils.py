@@ -313,7 +313,7 @@ def auto_fetch_scores():
         with current_app.app_context():
             from datetime import datetime
             
-            year = year = get_current_season_year()
+            year = get_current_season_year()
 
             current_week = get_current_week()
             print(f"Year: {year}, Season Type: {season_type}, Fetching scores for Week: {current_week}")
@@ -332,17 +332,19 @@ def auto_fetch_scores():
 
 
 
-def get_unpicked_games_for_week(user_picks, week):
-    # Get the IDs of the games the user has already picked
-    picked_game_ids = [pick.game_id for pick in user_picks]
+def get_unpicked_games_for_week(user_picks, week, season_year, season_type):
+    picked_game_ids = {pick.game_id for pick in user_picks}
 
-    # Fetch all games for the selected week
-    all_games_for_week = Game.query.filter_by(week=week).all()
+    query = Game.query.filter(
+        Game.season_year == season_year,
+        Game.season_type == season_type,
+        Game.week == week
+    )
 
-    # Return only the games that the user has not picked
-    unpicked_games = [game for game in all_games_for_week if game.id not in picked_game_ids]
+    if picked_game_ids:
+        query = query.filter(~Game.id.in_(picked_game_ids))
 
-    return unpicked_games
+    return query.order_by(Game.commence_time_mt.asc()).all()
 
 def save_user_scores_to_db(user_scores, week):
     """

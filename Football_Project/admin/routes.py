@@ -1,5 +1,5 @@
 # Football_Project/admin/routes.py
-from flask import render_template, request, redirect, url_for, flash, send_file, current_app, abort, Blueprint
+from flask import render_template, request, redirect, url_for, flash, send_file, current_app, abort, Blueprint, session
 from flask_login import login_required, current_user
 from datetime import datetime, timezone
 import os
@@ -14,6 +14,41 @@ from Football_Project.models import db, Game, Settings, User, UserScore, Pick
 from Football_Project.utils import calculate_user_scores, save_game_scores_to_db  # keep the utils version
 from werkzeug.security import generate_password_hash
 from Football_Project.services.sms_helpers import sms_week_reminder_job
+from Football_Project.services.season import get_current_season_context, get_current_week
+
+
+
+#--------------------------
+# Admin User Views
+#--------------------------
+@admin_bp.route("/view_as_user", methods=["POST"])
+@login_required
+def view_as_user():
+    if not current_user.is_admin:
+        flash("Not authorized.", "danger")
+        return redirect(url_for("admin.manage_users"))
+
+    user_id = request.form.get("user_id", type=int)
+    if not user_id:
+        flash("Please select a user.", "warning")
+        return redirect(url_for("admin.manage_users"))
+
+    session["admin_view_as_user_id"] = user_id
+    flash("View-as user enabled.", "success")
+    return redirect(url_for("main.user_dashboard"))  # <-- change this to your user dashboard endpoint
+
+
+@admin_bp.route("/exit_view_as_user", methods=["POST"])
+@login_required
+def exit_view_as_user():
+    if not current_user.is_admin:
+        flash("Not authorized.", "danger")
+        return redirect(url_for("admin.manage_users"))
+
+    session.pop("admin_view_as_user_id", None)
+    flash("View-as user disabled.", "info")
+    return redirect(url_for("admin.manage_users"))
+
 
 @admin_bp.route("/test_sms/<int:week>")
 def test_sms_week(week):
@@ -153,13 +188,33 @@ def _last_odds_fetch_for_week(week: int):
         ts = ts.replace(tzinfo=timezone.utc)
     return ts.astimezone(ZoneInfo("US/Mountain")).strftime("%Y-%m-%d %I:%M %p %Z")
 
+def _settings_to_espn_seasontype(settings) -> int:
+    if not settings or not settings.season_type:
+        return 2
+
+    st = settings.season_type.upper()
+    if st in ("PRE", "PRESEASON"):
+        return 1
+    if st in ("REG", "REGULAR"):
+        return 2
+    if st in ("POST", "POSTSEASON", "PLAYOFFS"):
+        return 3
+
+    return 2
+
 @admin_bp.route('/admin_dashboard')
 @login_required
 def admin_dashboard():
-    current_year = datetime.utcnow().year
-    default_season_type = 2  # regular season default
-    current_week = get_current_week()                      # ← define first
-    last_odds_fetch = _last_odds_fetch_for_week(current_week)  # ← now safe
+    settings = Settings.query.first()
+
+    # Fallbacks if settings row somehow missing (shouldn't happen now)
+    current_year = settings.season_year if settings else datetime.utcnow().year
+    default_season_type = _settings_to_espn_seasontype(settings)
+
+    # Use settings.current_week if present; else your existing logic
+    current_week = settings.current_week if settings else get_current_week()
+
+    last_odds_fetch = _last_odds_fetch_for_week(current_week)
 
     weeks = list(range(1, current_week + 1))
     users = User.query.order_by(User.username).all()
@@ -189,6 +244,7 @@ def admin_dashboard():
 
     return render_template(
         'admin_dashboard.html',
+        settings=settings,                 # 👈 ADD THIS
         current_year=current_year,
         default_season_type=default_season_type,
         weeks=weeks,
@@ -198,6 +254,7 @@ def admin_dashboard():
         counts=counts,
         stats=stats,
     )
+
 @admin_bp.route('/fetch_odds', methods=['POST'])
 @login_required
 def fetch_odds():
@@ -275,9 +332,10 @@ def display_odds():
 @login_required
 def fetch_scores():
     # year, season type, week from form
-    year = request.form.get('year')
-    seasontype = request.form.get('seasontype')
-    weeknum = request.form.get('weeknum')
+    settings = Settings.query.first()
+    year = int(request.form.get("year") or settings.season_year)
+    seasontype = int(request.form.get("seasontype") or _settings_to_espn_seasontype(settings))
+    weeknum = int(request.form.get("weeknum") or settings.current_week)
     action = request.form.get('action')
 
     try:

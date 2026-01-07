@@ -158,26 +158,40 @@
   {% set default_week = stats.current_week - 1 if stats.current_week > 1 else stats.current_week %}
 
   <form action="{{ url_for('admin.fetch_scores') }}" method="post"
-        style="margin-top:10px; display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="year" value="{{ current_year }}">
-    <input type="hidden" name="seasontype" value="2">
+      style="margin-top:10px; display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-    <label style="display:block;">
-      <span style="display:block; font-size:12px; color:#666; margin-bottom:4px;">Week</span>
-      <input type="number" name="weeknum" value="{{ default_week }}" min="1"
-             style="padding:8px; border:1px solid #ccc; border-radius:6px; width:90px;">
-    </label>
+  <label style="display:block;">
+    <span style="display:block; font-size:12px; color:#666; margin-bottom:4px;">Year</span>
+    <input type="number" name="year" value="{{ settings.season_year }}" min="2000" max="2100"
+           style="padding:8px; border:1px solid #ccc; border-radius:6px; width:110px;">
+  </label>
 
-    <button class="btn" name="action" value="download_csv" type="submit">
-      Download Scores CSV
-    </button>
+  <label style="display:block;">
+    <span style="display:block; font-size:12px; color:#666; margin-bottom:4px;">Season Type</span>
+    <select name="seasontype"
+            style="padding:8px; border:1px solid #ccc; border-radius:6px;">
+      <option value="2" {% if settings.season_type == 'REG' %}selected{% endif %}>Regular (2)</option>
+      <option value="3" {% if settings.season_type == 'POST' %}selected{% endif %}>Postseason (3)</option>
+      <option value="1" {% if settings.season_type == 'PRE' %}selected{% endif %}>Preseason (1)</option>
+    </select>
+  </label>
 
-    <button class="btn" name="action" value="save_to_db" type="submit"
-            onclick="return confirm('Manually save scores to the DB for this week?');">
-      Save Scores to DB (Manual)
-    </button>
-  </form>
+  <label style="display:block;">
+    <span style="display:block; font-size:12px; color:#666; margin-bottom:4px;">Week</span>
+    <input type="number" name="weeknum" value="{{ settings.current_week }}" min="1"
+           style="padding:8px; border:1px solid #ccc; border-radius:6px; width:90px;">
+  </label>
+
+  <button class="btn" name="action" value="download_csv" type="submit">
+    Download Scores CSV
+  </button>
+
+  <button class="btn" name="action" value="save_to_db" type="submit"
+          onclick="return confirm('Manually save scores to the DB for this week?');">
+    Save Scores to DB (Manual)
+  </button>
+</form>
 
   <div class="buttons" style="margin-top:10px;">
     <form action="{{ url_for('admin.process_user_scores') }}" method="post"
@@ -196,7 +210,7 @@
           onsubmit="return confirm('Manual odds fetch (normally automated). Run now?');">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn" type="submit">Fetch Odds (Manual)</button>
-    </form>
+    </form>    
   </div>
 </details>
 

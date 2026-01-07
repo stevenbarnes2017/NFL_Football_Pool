@@ -8,7 +8,10 @@
   <h1 class="text-3xl font-bold text-center">Your Scores and User Standings</h1>
 
   <!-- Week selector -->
-  <form action="{{ url_for('main.user_score_summary') }}" method="get" class="flex items-end gap-3 justify-center flex-wrap">
+  <form action="{{ url_for('main.user_score_summary') }}" method="get" class="week-selector-form">
+    <!-- preserve active tab/view -->
+    <input type="hidden" name="view" value="{{ view or 'snapshot' }}">
+
     <div>
       <label for="week" class="block text-sm font-semibold text-gray-700 text-center">Select Week</label>
       <select name="week" id="week" class="border rounded px-3 py-2">
@@ -18,90 +21,107 @@
         {% endfor %}
       </select>
     </div>
+
     <button class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2 rounded">
       View Scores
     </button>
   </form>
 
-  <!-- Tabs (centered, larger, pill-style) -->
-  <div class="sticky top-16 z-10">
-    <div class="flex justify-center gap-2 border-b pb-2 overflow-x-auto">
-      <button class="tab-btn active" data-tab="snapshot">Snapshot</button>
-      <button class="tab-btn" data-tab="trends">Trends</button>
-      <button class="tab-btn" data-tab="teams">Teams</button>
-      <button class="tab-btn" data-tab="details">Details</button>
+  <!-- Tabs (links so view persists) -->
+  <div class="tabs-sticky-wrap">
+    <div class="tabs-row">
+
+      <a class="tab-btn {% if (view or 'snapshot') == 'snapshot' %}active{% endif %}"
+         href="{{ url_for('main.user_score_summary', week=selected_week, view='snapshot') }}">
+        Snapshot
+      </a>
+
+      <a class="tab-btn {% if view == 'trends' %}active{% endif %}"
+         href="{{ url_for('main.user_score_summary', week=selected_week, view='trends') }}">
+        Trends
+      </a>
+
+      <a class="tab-btn {% if view == 'teams' %}active{% endif %}"
+         href="{{ url_for('main.user_score_summary', week=selected_week, view='teams') }}">
+        Teams
+      </a>
+
+      <a class="tab-btn {% if view == 'details' %}active{% endif %}"
+         href="{{ url_for('main.user_score_summary', week=selected_week, view='details') }}">
+        Details
+      </a>
+
     </div>
   </div>
 
   <!-- SNAPSHOT -->
-<section id="tab-snapshot" class="tab-pane pt-2">
-  <h2 class="ss-title">Season Snapshot</h2>
+  <section id="tab-snapshot" class="tab-pane pt-2">
+    <h2 class="ss-title">Season Snapshot</h2>
 
-  <div class="snapshot-grid">
-    <div class="stat-card">
-      <div class="stat-label">Total Points</div>
-      <div class="stat-value">{{ season_stats.season_total }}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Avg / Week</div>
-      <div class="stat-value">{{ season_stats.avg_points }}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Best Week</div>
-      {% if season_stats.best_week %}
-        <div class="stat-value">W{{ season_stats.best_week.week }}</div>
-        <div class="stat-sub">({{ season_stats.best_week.points }})</div>
-      {% else %}
-        <div class="stat-value">—</div>
-      {% endif %}
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Worst Week</div>
-      {% if season_stats.worst_week %}
-        <div class="stat-value">W{{ season_stats.worst_week.week }}</div>
-        <div class="stat-sub">({{ season_stats.worst_week.points }})</div>
-      {% else %}
-        <div class="stat-value">—</div>
-      {% endif %}
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Win Rate</div>
-      <div class="stat-value">{{ season_stats.win_rate }}%</div>
-      <div class="stat-sub">Streak ≥ avg: {{ season_stats.streak_at_or_above_avg }} wk</div>
-    </div>
-  </div>
-
-  <div class="tips-card">
-    <div class="tips-title">Coach Tips</div>
-    <ul class="tips-list">
-      {% for tip in coach_tips %}
-        <li>{{ tip }}</li>
-      {% else %}
-        <li class="muted">Tips will appear once you’ve made a few picks.</li>
-      {% endfor %}
-    </ul>
-  </div>
-</section>
-
-
-    <!-- TRENDS -->
-<section id="tab-trends" class="tab-pane pt-2 hidden">
-  <h2 class="tr-title">Trends & Visuals</h2>
-
-  <div class="tr-row">
-    <div class="chart-card">
-      <div class="chart-title">Wins by Confidence (1–16)</div>
-      <div class="chart-box"><canvas id="confBar"></canvas></div>
+    <div class="snapshot-grid">
+      <div class="stat-card">
+        <div class="stat-label">Total Points</div>
+        <div class="stat-value">{{ season_stats.season_total }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg / Week</div>
+        <div class="stat-value">{{ season_stats.avg_points }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Best Week</div>
+        {% if season_stats.best_week %}
+          <div class="stat-value">W{{ season_stats.best_week.week }}</div>
+          <div class="stat-sub">({{ season_stats.best_week.points }})</div>
+        {% else %}
+          <div class="stat-value">—</div>
+        {% endif %}
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Worst Week</div>
+        {% if season_stats.worst_week %}
+          <div class="stat-value">W{{ season_stats.worst_week.week }}</div>
+          <div class="stat-sub">({{ season_stats.worst_week.points }})</div>
+        {% else %}
+          <div class="stat-value">—</div>
+        {% endif %}
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Win Rate</div>
+        <div class="stat-value">{{ season_stats.win_rate }}%</div>
+        <div class="stat-sub">Streak ≥ avg: {{ season_stats.streak_at_or_above_avg }} wk</div>
+      </div>
     </div>
 
-    <div class="chart-card">
-      <div class="chart-title">Weekly Points</div>
-      <div class="chart-box"><canvas id="weeklyLine"></canvas></div>
+    <div class="tips-card">
+      <div class="tips-title">Coach Tips</div>
+      <ul class="tips-list">
+        {% for tip in coach_tips %}
+          <li>{{ tip }}</li>
+        {% else %}
+          <li class="muted">Tips will appear once you’ve made a few picks.</li>
+        {% endfor %}
+      </ul>
     </div>
-  </div>
-</section>
+  </section>
 
-  <!-- TEAMS (Top 5 + optional full table) -->
+  <!-- TRENDS -->
+  <section id="tab-trends" class="tab-pane pt-2 hidden">
+    <h2 class="tr-title">Trends & Visuals</h2>
+
+    <div class="tr-row">
+      <div class="chart-card">
+        <div class="chart-title">Wins by Confidence (1–16)</div>
+        <div class="chart-box"><canvas id="confBar"></canvas></div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-title">Weekly Points</div>
+        <div class="chart-box"><canvas id="weeklyLine"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TEAMS -->
   <section id="tab-teams" class="tab-pane pt-2 hidden">
     <h2 class="text-xl md:text-2xl font-bold text-center mb-3">Team Bias Insights</h2>
     <div class="p-4 rounded-xl border bg-white shadow-sm">
@@ -147,7 +167,7 @@
     </div>
   </section>
 
-  <!-- DETAILS (standings + game table) -->
+  <!-- DETAILS -->
   <section id="tab-details" class="tab-pane pt-2 hidden">
     <h2 class="text-xl md:text-2xl font-bold text-center mb-3">Details</h2>
     <div class="space-y-4">
@@ -160,7 +180,7 @@
             <thead><tr><th>Rank</th><th>Username</th><th>Total Points</th></tr></thead>
             <tbody>
             {% for user in user_scores %}
-              <tr class="{% if user.id == current_user.id %}highlight{% endif %}">
+              <tr class="{% if user.id == effective_user_id %}highlight{% endif %}">
                 <td>{{ loop.index }}</td>
                 <td>{{ user.username }}</td>
                 <td>{{ user.total_score|int }}</td>
@@ -227,41 +247,38 @@
       {% endif %}
     </div>
   </section>
+
 </div>
 
 <!-- Chart.js + Tabs Script -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-  // Tabs
   const panes = {
     snapshot: document.getElementById('tab-snapshot'),
     trends: document.getElementById('tab-trends'),
     teams: document.getElementById('tab-teams'),
     details: document.getElementById('tab-details'),
   };
-  const btns = Array.from(document.querySelectorAll('.tab-btn'));
+
   let chartsMade = false;
 
   function showTab(name) {
     Object.entries(panes).forEach(([k, el]) => el.classList.toggle('hidden', k !== name));
-    btns.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
     if (name === 'trends' && !chartsMade) {
       buildCharts();
       chartsMade = true;
     }
   }
-  btns.forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
-  showTab('snapshot');
 
-  // Charts
+  const initialView = {{ (view or 'snapshot')|tojson }};
+  showTab(initialView);
+
   function buildCharts() {
-    // === NEW: using counts from backend ===
-    const winsByConfidence       = {{ trend_data.wins_by_confidence|tojson }};
-    const attemptsByConfidence   = {{ trend_data.attempts_by_confidence|tojson }};
-    const winRateByConfidence    = {{ trend_data.win_rate_by_confidence|tojson }};
-    const weeklyPoints           = {{ trend_data.weekly_points|tojson }};
+    const winsByConfidence     = {{ trend_data.wins_by_confidence|tojson }};
+    const attemptsByConfidence = {{ trend_data.attempts_by_confidence|tojson }};
+    const winRateByConfidence  = {{ trend_data.win_rate_by_confidence|tojson }};
+    const weeklyPoints         = {{ trend_data.weekly_points|tojson }};
 
-    // Bar: Wins by Confidence
     const confCtx = document.getElementById('confBar').getContext('2d');
     new Chart(confCtx, {
       type: 'bar',
@@ -292,7 +309,6 @@
       }
     });
 
-    // Line: Weekly points (unchanged)
     const weeklyCtx = document.getElementById('weeklyLine').getContext('2d');
     new Chart(weeklyCtx, {
       type: 'line',
@@ -310,21 +326,48 @@
   }
 </script>
 
-
-<!-- Tab & layout styles -->
 <style>
-  /* Bigger, pill-style tabs */
+  /* REAL layout fixes (Tailwind classes won't apply unless Tailwind is loaded) */
+  .week-selector-form{
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;     /* pushes tabs down */
+    position: relative;
+    z-index: 2;              /* keep button above tabs if close */
+  }
+
+  .tabs-sticky-wrap{
+    margin-top: 6px;
+    position: sticky;
+    top: 72px;               /* adjust if your navbar height differs */
+    z-index: 1;
+    background: transparent;
+  }
+
+  .tabs-row{
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 8px;
+    overflow-x: auto;
+  }
+
   .tab-btn {
     padding: .6rem 1rem;
-    font-size: 1rem;            /* bigger text */
+    font-size: 1rem;
     font-weight: 600;
     border: 1px solid #e5e7eb;
     border-bottom-width: 2px;
-    border-radius: 9999px;      /* pill */
+    border-radius: 9999px;
     background: white;
     color: #374151;
     transition: all .15s ease;
     white-space: nowrap;
+    text-decoration: none;
   }
   .tab-btn:hover { background: #f9fafb; }
   .tab-btn.active {
@@ -334,7 +377,6 @@
     box-shadow: 0 1px 0 #93c5fd inset;
   }
 
-  /* Table header weight & alignment tweaks */
   table th {
     font-weight: 700;
     text-align: left;
@@ -344,7 +386,6 @@
   }
   table td { padding: .5rem .75rem; }
 
-  /* Make highlight row a bit clearer on light red/green */
   tr.bg-green-50 td { border-top: 1px solid #d1fae5; }
   tr.bg-red-50 td   { border-top: 1px solid #fee2e2; }
 </style>

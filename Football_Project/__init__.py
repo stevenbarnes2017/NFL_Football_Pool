@@ -1,7 +1,7 @@
 # Football_Project/__init__.py
 import os
 import atexit
-from flask import Flask
+from flask import Flask, session
 from flask_login import LoginManager
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
@@ -52,31 +52,65 @@ def fetch_and_cache_scores_with_context(app):
 
 def odds_window_job_with_context(app, label: str):
     from flask import current_app
+    from .extensions import db
+    from .models import Settings
+    from .services.odds_care import (
+        games_count_for_week,
+        is_week_odds_complete,
+        attempt_import_odds,
+    )
+    from .services import send_admin_email
+
     with app.app_context():
         try:
-            week = get_current_week()
-            if is_week_odds_complete(week):
-                current_app.logger.info(f"[odds] Week {week} already complete; skipping {label}")
+            settings = Settings.query.first()
+            if not settings:
+                current_app.logger.warning(f"[odds] {label} no Settings row found; skipping")
                 return
 
-            status, csv_bytes, details = attempt_import_odds(week)
-            current_app.logger.info(f"[odds] {label} week={week} status={status} details={details}")
+            week = settings.current_week
+            season_year = settings.season_year
+            season_type = settings.season_type
+
+            if games_count_for_week(week, season_year, season_type) == 0:
+                current_app.logger.info(
+                    f"[odds] {label} no games for {season_type} {season_year} week={week}; skipping"
+                )
+                return
+
+            if is_week_odds_complete(week, season_year, season_type):
+                current_app.logger.info(
+                    f"[odds] {label} {season_type} {season_year} week={week} already complete; skipping"
+                )
+                return
+
+            status, csv_bytes, details = attempt_import_odds(
+                week=week,
+                season_year=season_year,
+                season_type=season_type
+            )
+
+            current_app.logger.info(
+                f"[odds] {label} {season_type} {season_year} week={week} status={status} details={details}"
+            )
+
+            subject_prefix = f"[Odds] {season_type} {season_year} Week {week}"
 
             if status == "success":
                 send_admin_email(
-                    subject=f"[Odds] Week {week} SUCCESS ({label})",
-                    html=f"<p>Imported spreads for week {week}.</p><pre>{details}</pre>",
+                    subject=f"{subject_prefix} SUCCESS ({label})",
+                    html=f"<p>Imported spreads for {season_type} {season_year} week {week}.</p><pre>{details}</pre>",
                     attachment_bytes=csv_bytes,
-                    filename=f"odds_week_{week}.csv"
+                    filename=f"odds_{season_type.lower()}_{season_year}_week_{week}.csv"
                 )
             elif status == "not_ready":
                 send_admin_email(
-                    subject=f"[Odds] Week {week} NOT READY ({label})",
+                    subject=f"{subject_prefix} NOT READY ({label})",
                     html=f"<pre>{details}</pre>"
                 )
             else:
                 send_admin_email(
-                    subject=f"[Odds] Week {week} ERROR ({label})",
+                    subject=f"{subject_prefix} ERROR ({label})",
                     html=f"<pre>{details}</pre>"
                 )
 
@@ -85,26 +119,40 @@ def odds_window_job_with_context(app, label: str):
             db.session.rollback()
             raise
         finally:
-            db.session.remove()  # ✅ NEW
+            db.session.remove()
 
 
 def odds_escalation_job_with_context(app):
     from flask import current_app
     with app.app_context():
         try:
-            week = get_current_week()
-            if not is_week_odds_complete(week):
-                current_app.logger.warning(f"[odds] Week {week} still not ready; escalating")
+            settings = Settings.query.first()
+            week = settings.current_week
+            season_year = settings.season_year
+            season_type = settings.season_type
+
+            # ✅ Prevent false escalation if schedule isn't loaded yet
+            if games_count_for_week(week, season_year, season_type) == 0:
+                current_app.logger.info(
+                    f"[odds] No games found for {season_type} {season_year} week {week}; skipping escalation"
+                )
+                return
+
+            if not is_week_odds_complete(week, season_year, season_type):
+                current_app.logger.warning(
+                    f"[odds] {season_type} {season_year} Week {week} still not ready; escalating"
+                )
                 send_admin_email(
-                    subject=f"[Odds] Week {week} STILL NOT READY",
+                    subject=f"[Odds] {season_type} {season_year} Week {week} STILL NOT READY",
                     html="<p>Multiple attempts failed. Please investigate.</p>"
                 )
+
             db.session.commit()
         except Exception:
             db.session.rollback()
             raise
         finally:
-            db.session.remove()  # ✅ NEW
+            db.session.remove()
 
 
 def create_app():
@@ -155,6 +203,21 @@ def create_app():
             return None
         finally:
             # Don't keep a bad connection around if load_user trips an error
+            db.session.remove()
+    
+    @app.context_processor
+    def inject_view_as_user():
+        user_id = session.get("admin_view_as_user_id")
+        if not user_id:
+            return {"view_as_user": None}
+
+        try:
+            user = User.query.get(int(user_id))
+            return {"view_as_user": user}
+        except OperationalError:
+            db.session.rollback()
+            return {"view_as_user": None}
+        finally:
             db.session.remove()
 
     # Blueprints

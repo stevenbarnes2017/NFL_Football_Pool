@@ -13,13 +13,13 @@ from datetime import datetime, timedelta
 from .extensions import db
 from Football_Project.get_the_odds import get_nfl_spreads, save_to_csv
 from Football_Project.utils import fetch_detailed_game_stats, group_games_by_day, get_saved_games, get_unpicked_games_for_week, live_scores_cache, lock_picks_for_commenced_games, get_highest_available_confidence, save_pick_to_db, convert_to_utc, fetch_live_scores, get_picks, send_picks_email, get_nfl_playoff_picture, map_bracket_data, get_odds_data, generate_token, verify_token, get_serializer, send_password_reset_email, resolve_selected_week
-from Football_Project.get_the_odds import get_current_week
+from .services.season import get_current_season_context, get_current_week
 from sqlalchemy import func
 from dateutil import parser
 import time
 import pytz
 from threading import Thread
-from flask import request, flash, redirect, url_for, render_template
+from flask import request, flash, redirect, url_for, render_template, session
 from flask_login import current_user, login_required
 from datetime import datetime
 from pytz import timezone  # Add this
@@ -27,6 +27,7 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 #from flask_mail import Message  # if you use Flask-Mail
 from .utils import generate_token, verify_token
 from .services.leaderboard import get_season_leaderboard, get_weekly_leaderboard
+from .services.auth_context import get_effective_user_id
 
 
 
@@ -209,10 +210,16 @@ def legacy_logout():
 @main_bp.route('/dashboard')
 @login_required
 def dashboard():
-        if current_user.is_admin:
-            return redirect(url_for('admin.admin_dashboard'))
-        else:
-            return render_template('user_dashboard.html', name=current_user.username, now=datetime.now())
+    # If admin is NOT viewing as a user, go to admin dashboard
+    if current_user.is_admin and not session.get("admin_view_as_user_id"):
+        return redirect(url_for('admin.admin_dashboard'))
+
+    # Otherwise, render user dashboard (normal user OR admin view-as)
+    return render_template(
+        'user_dashboard.html',
+        name=current_user.username,
+        now=datetime.now()
+    )
     
 
 @main_bp.route('/download')
@@ -475,32 +482,68 @@ def user_scores(week):
 @main_bp.route('/see_picks', methods=['GET', 'POST'])
 @login_required
 def see_picks():
-    # Dynamically get the current week based on the NFL season start date
-    current_week = get_current_week()
+    # ✅ DB-driven season context (source of truth)
+    settings = Settings.query.first()
+    season_year = settings.season_year
+    season_type = settings.season_type
+    current_week = settings.current_week
 
-    # Get the selected week from the form or default to the current week
+    # ✅ Weeks available for THIS season/year/type (prevents Week 18 leakage)
+    all_weeks = [
+        wk for (wk,) in (
+            db.session.query(Game.week)
+            .filter(
+                Game.season_year == season_year,
+                Game.season_type == season_type
+            )
+            .distinct()
+            .order_by(Game.week.asc())
+            .all()
+        )
+    ]
+
+    # Week selection (POST from dropdown or default)
     if request.method == 'POST':
-        selected_week = int(request.form.get('week', current_week))
+        selected_week = request.form.get('week', type=int) or current_week
     else:
-        selected_week = current_week
+        selected_week = request.args.get('week', type=int) or current_week
 
-    # Get all available weeks
-    all_weeks = list(range(1, current_week + 1))  # All weeks up to current week
+    # Safety: force selected_week to valid list
+    if all_weeks and selected_week not in all_weeks:
+        selected_week = all_weeks[0]
 
+    # ✅ User picks for ONLY games in this season/week/type
+    user_picks = (
+        Pick.query
+        .join(Game, Pick.game_id == Game.id)
+        .filter(
+            Pick.user_id == current_user.id,
+            Game.season_year == season_year,
+            Game.season_type == season_type,
+            Game.week == selected_week
+        )
+        .order_by(Pick.confidence.desc().nullslast())
+        .all()
+    )
 
-    # Get the user's picks for the selected week
-    user_picks = Pick.query.filter_by(user_id=current_user.id, week=selected_week).all()
-    
-
-    # Get unpicked games for the selected week
-    unpicked_games = get_unpicked_games_for_week(user_picks, selected_week)
+    # ✅ Unpicked games should also be season filtered.
+    # Best fix: update helper to accept season filters.
+    unpicked_games = get_unpicked_games_for_week(
+        user_picks=user_picks,
+        week=selected_week,
+        season_year=season_year,
+        season_type=season_type
+    )
 
     return render_template(
-        'see_picks.html', 
-        selected_week=selected_week,   # Pass the selected week
-        all_weeks=all_weeks,           # Pass the list of all available weeks
-        user_picks=user_picks, 
-        unpicked_games=unpicked_games
+        'see_picks.html',
+        selected_week=selected_week,
+        all_weeks=all_weeks,
+        user_picks=user_picks,
+        unpicked_games=unpicked_games,
+        # Optional for debugging/header display
+        season_year=season_year,
+        season_type=season_type
     )
 
 
@@ -510,39 +553,58 @@ from flask import jsonify, request
 @login_required
 def user_score_summary():
     from collections import defaultdict
+
+    # Season context
+    season_year, season_type = get_current_season_context()
+
+    # View mode persistence (snapshot/details)
+    view = request.args.get("view", "snapshot")
+
+    # Week parsing
     selected_week = request.args.get('week', 'all')
 
     if selected_week == 'current':
-        selected_week = get_current_week() - 1
-        print(f"nfl start date = {datetime(2024, 9,5).date()}")
-        print(f"current date = {datetime.now().date()}")
+        selected_week = (get_current_week(season_year, season_type) or 1) - 1
 
     try:
         if selected_week != 'all':
             selected_week = int(selected_week)
     except ValueError:
         flash("Invalid week selected.", "danger")
-        return redirect(url_for('main.user_dashboard'))
+        return redirect(url_for('main.dashboard'))
 
-    current_user_id = current_user.id
+    # Effective user (admin view-as aware)
+    user_id = get_effective_user_id()
 
-    # ---------- standings block (existing) ----------
+    # ==========================================================
+    # Standings + totals (FIX: derive from Pick+Game, season-safe)
+    # ==========================================================
     if selected_week == 'all':
         user_scores = (
             db.session.query(
                 User.id,
                 User.username,
-                func.coalesce(func.sum(UserScore.score), 0).label('total_score')
+                func.coalesce(func.sum(Pick.points_earned), 0).label('total_score')
             )
-            .outerjoin(UserScore, User.id == UserScore.user_id)
+            .outerjoin(Pick, User.id == Pick.user_id)
+            .outerjoin(Game, Game.id == Pick.game_id)
+            .filter(
+                Game.season_year == season_year,
+                Game.season_type == season_type
+            )
             .group_by(User.id)
-            .order_by(func.coalesce(func.sum(UserScore.score), 0).desc())
+            .order_by(func.coalesce(func.sum(Pick.points_earned), 0).desc())
             .all()
         )
 
         user_total_score = (
-            db.session.query(func.coalesce(func.sum(UserScore.score), 0))
-            .filter_by(user_id=current_user_id)
+            db.session.query(func.coalesce(func.sum(Pick.points_earned), 0))
+            .join(Game, Game.id == Pick.game_id)
+            .filter(
+                Pick.user_id == user_id,
+                Game.season_year == season_year,
+                Game.season_type == season_type
+            )
             .scalar() or 0
         )
     else:
@@ -550,26 +612,63 @@ def user_score_summary():
             db.session.query(
                 User.id,
                 User.username,
-                func.coalesce(UserScore.score, 0).label('total_score')
+                func.coalesce(func.sum(Pick.points_earned), 0).label('total_score')
             )
-            .outerjoin(UserScore, (User.id == UserScore.user_id) & (UserScore.week == selected_week))
+            .outerjoin(Pick, (User.id == Pick.user_id) & (Pick.week == selected_week))
+            .outerjoin(Game, Game.id == Pick.game_id)
+            .filter(
+                Game.season_year == season_year,
+                Game.season_type == season_type,
+                Game.week == selected_week
+            )
             .group_by(User.id)
-            .order_by(func.coalesce(UserScore.score, 0).desc())
+            .order_by(func.coalesce(func.sum(Pick.points_earned), 0).desc())
             .all()
         )
 
         user_total_score = (
-            db.session.query(func.coalesce(UserScore.score, 0))
-            .filter_by(user_id=current_user_id, week=selected_week)
+            db.session.query(func.coalesce(func.sum(Pick.points_earned), 0))
+            .join(Game, Game.id == Pick.game_id)
+            .filter(
+                Pick.user_id == user_id,
+                Game.season_year == season_year,
+                Game.season_type == season_type,
+                Game.week == selected_week
+            )
             .scalar() or 0
         )
 
-    # ---------- game picks for table (existing) ----------
-    games = Game.query.filter_by(week=selected_week).all() if selected_week != 'all' else []
-    user_picks = Pick.query.filter_by(user_id=current_user_id, week=selected_week).all() if selected_week != 'all' else []
-
+    # ==========================================================
+    # Games + Picks table (season-safe)
+    # ==========================================================
+    games = []
+    user_picks = []
     game_picks = []
+
     if selected_week != 'all':
+        games = (
+            Game.query
+            .filter(
+                Game.week == selected_week,
+                Game.season_year == season_year,
+                Game.season_type == season_type
+            )
+            .all()
+        )
+
+        # Don't assume Pick has season fields; enforce via Game join
+        user_picks = (
+            db.session.query(Pick)
+            .join(Game, Game.id == Pick.game_id)
+            .filter(
+                Pick.user_id == user_id,
+                Pick.week == selected_week,
+                Game.season_year == season_year,
+                Game.season_type == season_type
+            )
+            .all()
+        )
+
         pick_by_game = {p.game_id: p for p in user_picks}
         for g in games:
             p = pick_by_game.get(g.id)
@@ -589,32 +688,52 @@ def user_score_summary():
                 } if p else None
             })
 
-    # ---------- weeks for dropdown (existing) ----------
-    weeks = [w[0] for w in db.session.query(Game.week).distinct().order_by(Game.week).all()]
+    # ==========================================================
+    # Weeks dropdown (season-safe)
+    # ==========================================================
+    weeks = [
+        w[0] for w in (
+            db.session.query(Game.week)
+            .filter(Game.season_year == season_year, Game.season_type == season_type)
+            .distinct()
+            .order_by(Game.week)
+            .all()
+        )
+    ]
 
-    # =====================================================================
-    # NEW: Season-wide stats & insights (computed for all weeks)
-    # =====================================================================
-    # 1) Weekly totals for this user (for all weeks present in UserScore)
+    # ==========================================================
+    # Season-wide stats (FIX: weekly totals from Pick+Game)
+    # ==========================================================
     weekly_rows = (
-        db.session.query(UserScore.week, func.coalesce(UserScore.score, 0))
-        .filter(UserScore.user_id == current_user_id)
-        .order_by(UserScore.week)
+        db.session.query(Game.week, func.coalesce(func.sum(Pick.points_earned), 0))
+        .join(Game, Game.id == Pick.game_id)
+        .filter(
+            Pick.user_id == user_id,
+            Game.season_year == season_year,
+            Game.season_type == season_type
+        )
+        .group_by(Game.week)
+        .order_by(Game.week)
         .all()
     )
-    weekly_points = [{'week': w, 'points': int(s or 0)} for (w, s) in weekly_rows]
+    weekly_points = [{'week': int(w), 'points': int(s or 0)} for (w, s) in weekly_rows]
+
     season_total = sum(r['points'] for r in weekly_points)
     week_count = len(weekly_points) if weekly_points else 0
     avg_points = round(season_total / week_count, 2) if week_count else 0.0
     best_week = max(weekly_points, key=lambda r: r['points']) if weekly_points else None
     worst_week = min(weekly_points, key=lambda r: r['points']) if weekly_points else None
 
-    # 2) Pick-level performance (wins/losses) — only FINAL games
-    # A win is points_earned > 0; a loss is points_earned == 0; you can adapt pushes if needed
+    # Pick-level performance — FINAL only, season-safe
     final_picks = (
         db.session.query(Pick, Game)
         .join(Game, Game.id == Pick.game_id)
-        .filter(Pick.user_id == current_user_id, Game.status == 'STATUS_FINAL')
+        .filter(
+            Pick.user_id == user_id,
+            Game.season_year == season_year,
+            Game.season_type == season_type,
+            Game.status == 'STATUS_FINAL'
+        )
         .all()
     )
     total_final = len(final_picks)
@@ -622,18 +741,17 @@ def user_score_summary():
     losses = sum(1 for (p, g) in final_picks if (p.points_earned or 0) == 0)
     win_rate = round((wins / total_final) * 100, 1) if total_final else 0.0
 
-    # 3) Current streak of weeks at/above season average
     def streak_at_or_above_avg(weekly_points_list, avg):
         if not weekly_points_list:
             return 0
         streak = 0
-        # iterate from latest to earliest
         for row in reversed(weekly_points_list):
             if row['points'] >= avg:
                 streak += 1
             else:
                 break
         return streak
+
     streak_weeks = streak_at_or_above_avg(weekly_points, avg_points)
 
     season_stats = {
@@ -645,22 +763,24 @@ def user_score_summary():
         'streak_at_or_above_avg': streak_weeks
     }
 
-    # 4) Trend data (counts instead of point sums)
-    from collections import defaultdict
-
+    # Confidence trends (FINAL only + season filtered)
     conf_wins = defaultdict(int)
     conf_attempts = defaultdict(int)
 
     final_conf_rows = (
-        db.session.query(Pick.confidence, Pick.points_earned, Game.status)
+        db.session.query(Pick.confidence, Pick.points_earned)
         .join(Game, Game.id == Pick.game_id)
-        .filter(Pick.user_id == current_user_id,
-                Pick.confidence.isnot(None),
-                Game.status == 'STATUS_FINAL')
+        .filter(
+            Pick.user_id == user_id,
+            Pick.confidence.isnot(None),
+            Game.season_year == season_year,
+            Game.season_type == season_type,
+            Game.status == 'STATUS_FINAL'
+        )
         .all()
     )
 
-    for conf, pts, _status in final_conf_rows:
+    for conf, pts in final_conf_rows:
         c = int(conf)
         conf_attempts[c] += 1
         if (pts or 0) > 0:
@@ -675,20 +795,22 @@ def user_score_summary():
     ]
 
     trend_data = {
-        'wins_by_confidence': wins_by_confidence,          # <- NEW (used by bar)
-        'attempts_by_confidence': attempts_by_confidence,  # <- for tooltip context
-        'win_rate_by_confidence': win_rate_by_confidence,  # <- for tooltip context
+        'wins_by_confidence': wins_by_confidence,
+        'attempts_by_confidence': attempts_by_confidence,
+        'win_rate_by_confidence': win_rate_by_confidence,
         'weekly_points': weekly_points
     }
 
-
-    # 5) Team Bias Insights
-    # For each pick, determine if it was a win/loss when FINAL, tally by team_picked
+    # Team bias (season filtered by joining Game)
     team_stats = defaultdict(lambda: {'picked_count': 0, 'wins': 0, 'losses': 0})
     team_rows = (
         db.session.query(Pick.team_picked, Pick.points_earned, Game.status)
         .join(Game, Game.id == Pick.game_id)
-        .filter(Pick.user_id == current_user_id)
+        .filter(
+            Pick.user_id == user_id,
+            Game.season_year == season_year,
+            Game.season_type == season_type
+        )
         .all()
     )
     for team, pts, status in team_rows:
@@ -714,31 +836,27 @@ def user_score_summary():
             'win_pct': win_pct
         })
 
-    # Sorts for display
     favorites_sorted = sorted(team_bias_rows, key=lambda r: r['picked_count'], reverse=True)[:5]
     best_teams_sorted = sorted(
-        [r for r in team_bias_rows if r['picked_count'] >= 3],  # small sample-size guardrail
+        [r for r in team_bias_rows if r['picked_count'] >= 3],
         key=lambda r: r['win_pct'],
         reverse=True
     )[:5]
 
     team_bias = {
-        'by_team': team_bias_rows,         # raw table
-        'favorites': favorites_sorted,     # top picked
-        'best_teams': best_teams_sorted    # highest win% (>=3 picks)
+        'by_team': team_bias_rows,
+        'favorites': favorites_sorted,
+        'best_teams': best_teams_sorted
     }
 
-    # 6) Coach Tips (friendly notes)
     tips = []
     if favorites_sorted:
         f0 = favorites_sorted[0]
         tips.append(f"Most picked: {f0['team']} ({f0['picked_count']} picks, {f0['win_pct']}% win rate).")
-    # Confidence performance: compare high (11–16) vs low (1–5)
-    hi_conf = sum(wins_by_confidence[10:16])  # 11..16 indexes
-    lo_conf = sum(wins_by_confidence[0:5])    # 1..5
+    hi_conf = sum(wins_by_confidence[10:16])  # 11–16
+    lo_conf = sum(wins_by_confidence[0:5])    # 1–5
     if hi_conf < lo_conf:
         tips.append("High confidence picks (11–16) have underperformed compared to your low confidence picks.")
-    # Last 3 weeks
     if len(weekly_points) >= 3:
         last3 = [wp['points'] for wp in weekly_points[-3:]]
         tips.append(f"Last 3 weeks: {last3[0]}, {last3[1]}, {last3[2]} points.")
@@ -747,24 +865,25 @@ def user_score_summary():
     elif win_rate <= 40 and week_count >= 4:
         tips.append("Consider dialing back confidence on toss-up games — recent results suggest volatility.")
 
-    coach_tips = tips[:3]  # keep it short
+    coach_tips = tips[:3]
 
-    # ---------- JSON (extended) ----------
+    # JSON response
     if request.headers.get('Accept') == 'application/json' or request.args.get('format') == 'json':
-        response_data = {
-            'user_scores': [{'id': u.id, 'username': u.username, 'total_score': u.total_score} for u in user_scores],
+        return jsonify({
+            'user_scores': [{'id': u.id, 'username': u.username, 'total_score': int(u.total_score or 0)} for u in user_scores],
             'game_picks': game_picks,
-            'user_total_score': user_total_score,
+            'user_total_score': int(user_total_score or 0),
             'selected_week': selected_week,
             'weeks': weeks,
             'season_stats': season_stats,
             'trend_data': trend_data,
             'team_bias': team_bias,
-            'coach_tips': coach_tips
-        }
-        return jsonify(response_data)
+            'coach_tips': coach_tips,
+            'view': view,
+            'effective_user_id': user_id,
+        })
 
-    # ---------- HTML render (pass new data) ----------
+    # HTML render
     return render_template(
         'user_score_summary.html',
         user_scores=user_scores,
@@ -775,7 +894,11 @@ def user_score_summary():
         season_stats=season_stats,
         trend_data=trend_data,
         team_bias=team_bias,
-        coach_tips=coach_tips
+        coach_tips=coach_tips,
+        view=view,
+        season_year=season_year,
+        season_type=season_type,
+        effective_user_id=user_id,
     )
 
 
@@ -821,30 +944,68 @@ def nfl_picks():
     from datetime import datetime
     import pytz
 
-    # Week selection
-    selected_week = request.form.get('week', type=int) or request.args.get('week', type=int)
-    current_week = get_current_week()
-    if not selected_week:
-        selected_week = current_week
-
     utc = pytz.utc
     mt = pytz.timezone("America/Denver")
     now_utc = datetime.now(utc)
 
-    # Games for the week
-    games = Game.query.filter_by(week=selected_week).order_by(Game.commence_time_mt).all()
+    # ✅ DB is source of truth
+    settings = Settings.query.first()
+    season_year = settings.season_year
+    season_type = settings.season_type
+    current_week = settings.current_week
+
+    # ✅ Only weeks that exist for THIS season_year + season_type
+    all_weeks = [
+        wk for (wk,) in (
+            db.session.query(Game.week)
+            .filter(
+                Game.season_year == season_year,
+                Game.season_type == season_type
+            )
+            .distinct()
+            .order_by(Game.week.asc())
+            .all()
+        )
+    ]
+
+    # Week selection (GET param or POST dropdown)
+    selected_week = request.form.get('week', type=int) or request.args.get('week', type=int)
+    if not selected_week:
+        selected_week = current_week
+
+    # Safety: prevent selecting a week that isn't in this season_type
+    if all_weeks and selected_week not in all_weeks:
+        selected_week = all_weeks[0]
+
+    # ✅ Games for the week — filtered to season/year/type
+    games = (
+        Game.query
+        .filter(
+            Game.season_year == season_year,
+            Game.season_type == season_type,
+            Game.week == selected_week
+        )
+        .order_by(Game.commence_time_mt)
+        .all()
+    )
     num_of_games = len(games)
 
-    # JOIN Pick -> Game so we can key by NATURAL ID for the template
+    # For pick lookup, use the DB game PK ids
+    game_db_ids = [g.id for g in games]
+
+    # ✅ Picks for ONLY these games (prevents old season bleed)
     rows = (
         db.session.query(Pick, Game)
         .join(Game, Pick.game_id == Game.id)
-        .filter(Pick.user_id == current_user.id, Pick.week == selected_week)
+        .filter(
+            Pick.user_id == current_user.id,
+            Game.id.in_(game_db_ids)
+        )
         .all()
     )
+
     # user_picks: { natural_game_id: (team_picked, confidence_or_None) }
     user_picks = {g.game_id: (p.team_picked, p.confidence) for p, g in rows}
-    # only numbers for the sidebar; exclude None
     used_confidence_points = [p.confidence for p, _ in rows if p.confidence is not None]
 
     # Which games are locked (kickoff passed)?
@@ -860,25 +1021,19 @@ def nfl_picks():
         day = dt_mt.strftime("%A") if dt_mt else "Unknown"
         grouped_games.setdefault(day, []).append(g)
 
-    # OPTIONAL: if you auto-assign confidence for already-started, no-pick games,
-    # do it here and also append to used_confidence_points so the sidebar reflects it.
-    # If you don't want auto-assignment, delete this block.
+    # OPTIONAL auto-assign confidence for locked/no-pick
     total_conf_points = list(range(1, num_of_games + 1))
+
     def highest_available(all_pts, used_pts):
         avail = sorted(set(all_pts) - set(used_pts), reverse=True)
         return avail[0] if avail else None
+
     for g in games:
         if g.game_id in locked_ids and g.game_id not in user_picks:
             hi = highest_available(total_conf_points, used_confidence_points)
             if hi:
                 user_picks[g.game_id] = ('No pick made', hi)
                 used_confidence_points.append(hi)
-
-    # (Optional) debug so you can verify values will render:
-    print("user_picks ->", user_picks)
-    print("used_confidence_points ->", used_confidence_points)
-
-    all_weeks = list(range(1, current_week + 1))
 
     return render_template(
         'nfl_picks.html',
@@ -887,10 +1042,14 @@ def nfl_picks():
         now_utc=now_utc,
         selected_week=selected_week,
         all_weeks=all_weeks,
-        user_picks=user_picks,                # <-- drives the input value
+        user_picks=user_picks,
         used_confidence_points=used_confidence_points,
-        locked_ids=locked_ids
+        locked_ids=locked_ids,
+        # Optional: helpful for header display/debug
+        season_year=season_year,
+        season_type=season_type
     )
+
 
 
 
@@ -1010,31 +1169,61 @@ def reset_password(token):
 @login_required
 def leaderboard():
     tab = request.args.get("tab", "season")  # 'season' | 'weekly'
-    current_week = get_current_week()
+
+    settings = Settings.query.first()
+    season_year = settings.season_year
+    season_type = settings.season_type
+    current_week = settings.current_week
+
+    # Weeks available for THIS season/type
+    all_weeks = [
+        wk for (wk,) in (
+            db.session.query(Game.week)
+            .filter(
+                Game.season_year == season_year,
+                Game.season_type == season_type
+            )
+            .distinct()
+            .order_by(Game.week.asc())
+            .all()
+        )
+    ]
 
     if tab == "weekly":
-        try:
-            week = int(request.args.get("week", current_week))
-        except Exception:
-            week = current_week
-        w_header, w_rows = get_weekly_leaderboard(week)
+        week = request.args.get("week", type=int) or current_week
+        if all_weeks and week not in all_weeks:
+            week = all_weeks[0]
+
+        # ✅ New signature
+        w_header, w_rows = get_weekly_leaderboard(week, season_year, season_type)
+
         return render_template(
             "leaderboard.html",
             tab="weekly",
             current_week=current_week,
             selected_week=week,
+            all_weeks=all_weeks,
             weekly_header=w_header,
             weekly_rows=w_rows,
+            season_year=season_year,
+            season_type=season_type,
         )
-    else:
-        s_header, s_rows = get_season_leaderboard(current_week)
-        return render_template(
-            "leaderboard.html",
-            tab="season",
-            current_week=current_week,
-            season_header=s_header,
-            season_rows=s_rows,
-        )
+
+    # ✅ Season tab (new signature)
+    s_header, s_rows = get_season_leaderboard(current_week, season_year, season_type)
+
+    return render_template(
+        "leaderboard.html",
+        tab="season",
+        current_week=current_week,
+        all_weeks=all_weeks,
+        season_header=s_header,
+        season_rows=s_rows,
+        season_year=season_year,
+        season_type=season_type,
+    )
+
+
 
 
 
