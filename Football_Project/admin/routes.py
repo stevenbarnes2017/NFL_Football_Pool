@@ -10,12 +10,116 @@ from zoneinfo import ZoneInfo
 # Data / services
 from Football_Project.get_the_odds import get_nfl_spreads, save_spreads_to_db, get_current_week, save_to_csv
 from football_scores import get_football_scores, save_scores_to_csv  # NOTE: don't import save_scores_to_db here
-from Football_Project.models import db, Game, Settings, User, UserScore, Pick, JobRun
+from Football_Project.models import db, Game, Settings, User, UserScore, Pick, JobRun, Announcement
 from Football_Project.utils import calculate_user_scores, save_game_scores_to_db  # keep the utils version
 from werkzeug.security import generate_password_hash
 from Football_Project.services.sms_helpers import sms_week_reminder_job
 from Football_Project.services.season import get_current_season_context, get_current_week
 from Football_Project.services.schedule_service import update_schedule
+
+#--------------------------
+# Admin Announcements
+#--------------------------
+
+@admin_bp.route("/board", methods=["GET"])
+@login_required
+def admin_board():
+    # placeholder for later moderation UI
+    return render_template("admin_board.html")
+
+
+@admin_bp.route("/announcements", methods=["GET"])
+@login_required
+def admin_announcements():
+    # optional: prefill season context defaults
+    season_year, season_type = get_current_season_context()
+
+    announcements = (
+        Announcement.query
+        .filter(Announcement.is_active.is_(True))
+        .order_by(Announcement.pinned.desc(), Announcement.created_at.desc())
+        .all()
+    )
+
+    return render_template(
+        "admin_announcements.html",
+        announcements=announcements,
+        season_year=season_year,
+        season_type=season_type,
+    )
+
+
+@admin_bp.route("/announcements/new", methods=["POST"])
+@login_required
+def admin_announcement_new():
+    title = (request.form.get("title") or "").strip()
+    body = (request.form.get("body") or "").strip()
+
+    # optional context fields
+    season_year = request.form.get("season_year", type=int)
+    season_type = (request.form.get("season_type") or "").strip().upper() or None
+    week = request.form.get("week", type=int)
+
+    pinned = True if request.form.get("pinned") in ("1", "on", "true", "True") else False
+
+    if not title or not body:
+        flash("Title and message are required.", "danger")
+        return redirect(url_for("admin.admin_announcements"))
+
+    try:
+        ann = Announcement(
+            title=title,
+            body=body,
+            created_by_user_id=current_user.id,
+            season_year=season_year,
+            season_type=season_type,
+            week=week,
+            pinned=pinned,
+            is_active=True,
+        )
+        db.session.add(ann)
+        db.session.commit()
+        flash("Announcement posted.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Failed to post announcement: {e}", "danger")
+
+    return redirect(url_for("admin.admin_announcements"))
+
+
+@admin_bp.route("/announcements/<int:ann_id>/toggle_pin", methods=["POST"])
+@login_required
+def admin_toggle_announcement_pin(ann_id):
+    ann = Announcement.query.get_or_404(ann_id)
+
+    try:
+        ann.pinned = not bool(ann.pinned)
+        db.session.commit()
+        flash(f"Announcement {'pinned' if ann.pinned else 'unpinned'}.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Failed to update: {e}", "danger")
+
+    return redirect(url_for("admin.admin_announcements"))
+
+
+@admin_bp.route("/announcements/<int:ann_id>/delete", methods=["POST"])
+@login_required
+def admin_delete_announcement(ann_id):
+    ann = Announcement.query.get_or_404(ann_id)
+
+    try:
+        ann.is_active = False
+        db.session.commit()
+        flash("Announcement removed.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Failed to remove: {e}", "danger")
+
+    return redirect(url_for("admin.admin_announcements"))
+
+   
+
 
 
 #--------------------------

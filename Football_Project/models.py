@@ -23,7 +23,7 @@ class JobRun(db.Model):
 
     message = db.Column(db.String(255), nullable=True)
 
-    
+
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), nullable=False, unique=True)
@@ -142,3 +142,65 @@ class UserScore(db.Model):
      # 🔽 Add this relationship
     #user = db.relationship('User', backref='picks')
 
+#------------------------------
+# Announcements and Message Board
+#------------------------------
+
+class Announcement(db.Model):
+    __tablename__ = "announcement"
+    id = db.Column(db.Integer, primary_key=True)
+
+    title = db.Column(db.String(140), nullable=False)
+    body = db.Column(db.Text, nullable=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+
+    # Optional season context (recommended so you can show “Postseason Week 1”)
+    season_year = db.Column(db.Integer, nullable=True)
+    season_type = db.Column(db.String(20), nullable=True)  # "PRE"/"REG"/"POST"
+    week = db.Column(db.Integer, nullable=True)
+
+    pinned = db.Column(db.Boolean, default=False, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    created_by = db.relationship("User", backref=db.backref("announcements", lazy=True))
+
+class BoardThread(db.Model):
+    __tablename__ = "board_thread"
+    id = db.Column(db.Integer, primary_key=True)
+
+    title = db.Column(db.String(180), nullable=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+
+    # optional context (handy for “Week 1 trash talk”, etc.)
+    season_year = db.Column(db.Integer, nullable=True)
+    season_type = db.Column(db.String(20), nullable=True)
+    week = db.Column(db.Integer, nullable=True)
+
+    pinned = db.Column(db.Boolean, default=False, nullable=False)
+    locked = db.Column(db.Boolean, default=False, nullable=False)   # admin can lock a thread
+    is_active = db.Column(db.Boolean, default=True, nullable=False) # soft delete
+
+    last_activity_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    created_by = db.relationship("User", backref=db.backref("board_threads", lazy=True))
+
+
+class BoardPost(db.Model):
+    __tablename__ = "board_post"
+    id = db.Column(db.Integer, primary_key=True)
+
+    thread_id = db.Column(db.Integer, db.ForeignKey("board_thread.id"), nullable=False)
+    author_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+
+    body = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    is_active = db.Column(db.Boolean, default=True, nullable=False) # soft delete
+    edited_at = db.Column(db.DateTime, nullable=True)
+
+    thread = db.relationship("BoardThread", backref=db.backref("posts", lazy=True, order_by="BoardPost.created_at"))
+    author = db.relationship("User", backref=db.backref("board_posts", lazy=True))

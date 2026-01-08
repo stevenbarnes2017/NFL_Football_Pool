@@ -1,3 +1,167 @@
+/* ================================
+   NAVBAR (fixed / tabs inside bar)
+   Drop this near the END of styles.css
+   ================================ */
+
+nav.navbar,
+.navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  background: #333;
+  z-index: 1000;
+  height: auto;            /* let content define height */
+  padding: 0;              /* nav-inner handles padding */
+}
+
+/* New container inside the navbar */
+.nav-inner {
+  max-width: 1600px;       /* match your .container max */
+  margin: 0 auto;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* Brand */
+.navbar-brand {
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* Links row (tabs) */
+.navbar-links {
+  display: flex !important;     /* override old float system */
+  float: none !important;       /* kill float-right */
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;              /* wrap if screen gets tight */
+  justify-content: flex-end;
+}
+
+/* Make tabs look like tabs */
+.navbar-links a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  text-decoration: none;
+  font-size: 1rem;              /* slightly smaller so they fit */
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #2f2f2f;
+  border: 1px solid rgba(255,255,255,.08);
+  transition: background-color .2s ease, transform .05s ease;
+}
+
+.navbar-links a:hover {
+  background: #218838;
+}
+
+.navbar-links a:active {
+  transform: translateY(1px);
+}
+
+/* Dropdown kept inside tab row */
+.dropdown {
+  position: relative;
+  display: inline-flex;
+  margin-left: 0;               /* remove old spacing assumptions */
+}
+
+.dropbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #2f2f2f;
+  border: 1px solid rgba(255,255,255,.08);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.dropdown:hover .dropbtn {
+  background: #218838;
+}
+
+/* Dropdown menu */
+.dropdown-content {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  background: #fff;
+  min-width: 180px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0,0,0,.2);
+  z-index: 1001;
+}
+
+.dropdown-content a {
+  display: block;
+  padding: 10px 12px;
+  color: #222 !important;
+  background: transparent !important;
+  border: none !important;
+  margin: 0 !important;
+  text-align: left;
+  font-size: 0.95rem !important;
+}
+
+.dropdown-content a:hover {
+  background: #f3f3f3 !important;
+  color: #218838 !important;
+}
+
+.dropdown:hover .dropdown-content {
+  display: block;
+}
+
+/* REMOVE legacy clearfix behavior from nav */
+nav::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* Give the page content enough top padding to clear the fixed navbar */
+body {
+  padding-top: 88px; /* adjust if navbar becomes taller with wrapping */
+}
+
+/* Mobile: stack nicely */
+@media (max-width: 768px) {
+  .nav-inner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .navbar-links {
+    justify-content: flex-start;
+  }
+
+  .navbar-links a,
+  .dropbtn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .dropdown-content {
+    left: 0;
+    right: 0;
+    width: 100%;
+  }
+}
+
+
+
+
 /* framework-free helper for tab panes */
 .hidden { display: none !important; }
 
@@ -129,10 +293,6 @@ nav {
     z-index: 1000;
 }
 
-.navbar {
-    height: 65px;
-}
-
 nav .navbar-brand {
     color: white;
     font-size: 1.5rem;
@@ -140,31 +300,10 @@ nav .navbar-brand {
     display: inline-block;
 }
 
-nav .navbar-links {
-    float: right;
-    display: flex;
-    align-items: center;
-}
 
-nav .navbar-links a {
-    color: white;
-    text-decoration: none;
-    font-size: 1.2rem;
-    padding: 8px 16px;
-    margin-left: 10px;
-    background-color: #333;
-    border-radius: 4px;
-    transition: background-color 0.3s ease, color 0.3s ease;
-}
 
 nav .navbar-links a:hover {
     background-color: #218838;
-}
-
-nav::after {
-    content: "";
-    display: table;
-    clear: both;
 }
 
 /* Dropdown Styling */

@@ -6,11 +6,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 import requests
 from flask import Blueprint, render_template, redirect, url_for, request, flash, send_file, Response
 from dateutil import parser
-from .models import db, Game, Pick, User, Settings, UserScore
 from flask_login import login_required, current_user, login_user, logout_user, login_manager, LoginManager
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
-from .extensions import db
 from Football_Project.get_the_odds import get_nfl_spreads, save_to_csv
 from Football_Project.utils import fetch_detailed_game_stats, group_games_by_day, get_saved_games, get_unpicked_games_for_week, live_scores_cache, lock_picks_for_commenced_games, get_highest_available_confidence, save_pick_to_db, convert_to_utc, fetch_live_scores, get_picks, send_picks_email, get_nfl_playoff_picture, map_bracket_data, get_odds_data, generate_token, verify_token, get_serializer, send_password_reset_email, resolve_selected_week
 from .services.season import get_current_season_context, get_current_week
@@ -24,14 +22,41 @@ from flask_login import current_user, login_required
 from datetime import datetime
 from pytz import timezone  # Add this
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+from .extensions import db
+from .models import Game, Pick, User, Settings, UserScore, Announcement
 #from flask_mail import Message  # if you use Flask-Mail
 from .utils import generate_token, verify_token
 from .services.leaderboard import get_season_leaderboard, get_weekly_leaderboard
 from .services.auth_context import get_effective_user_id
-
+from Football_Project.services.season import get_current_season_context
 
 
 main_bp = Blueprint('main', __name__)
+
+@main_bp.route("/board", methods=["GET"])
+@login_required
+def board_threads():
+    # placeholder for now
+    return render_template("board_threads.html")
+
+@main_bp.route("/announcements", methods=["GET"])
+@login_required
+def announcements():
+    season_year, season_type = get_current_season_context()
+
+    items = (
+        Announcement.query
+        .filter(Announcement.is_active.is_(True))
+        .order_by(Announcement.pinned.desc(), Announcement.created_at.desc())
+        .all()
+    )
+
+    return render_template(
+        "announcements.html",
+        announcements=items,
+        season_year=season_year,
+        season_type=season_type,
+    )
 
 @main_bp.route('/playoff-picture')
 def playoff_picture():
