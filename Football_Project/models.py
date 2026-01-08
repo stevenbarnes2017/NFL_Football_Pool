@@ -8,6 +8,22 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # User Model
 # ----------------------------
 PREFERRED_PWHASH = "pbkdf2:sha256:50000"  # Standardize password hashing
+
+
+class JobRun(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    job_name = db.Column(db.String(50), nullable=False, index=True)
+    ran_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    ok = db.Column(db.Boolean, default=True, nullable=False)
+
+    inserted = db.Column(db.Integer, default=0)
+    updated = db.Column(db.Integer, default=0)
+    unchanged = db.Column(db.Integer, default=0)
+    failed_weeks = db.Column(db.Integer, default=0)
+
+    message = db.Column(db.String(255), nullable=True)
+
+    
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), nullable=False, unique=True)

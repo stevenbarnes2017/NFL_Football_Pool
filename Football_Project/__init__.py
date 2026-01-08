@@ -8,11 +8,11 @@ from flask_wtf.csrf import CSRFProtect
 from apscheduler.schedulers.background import BackgroundScheduler
 from pytz import timezone
 from dotenv import load_dotenv
-
+from Football_Project.time_utils import fmt_mt
 from sqlalchemy.exc import OperationalError  # ✅ NEW
 
 from .extensions import db
-from .models import User
+from .models import User, JobRun
 from .utils import auto_fetch_scores, fetch_and_cache_scores, get_current_week
 from .services import attempt_import_odds, is_week_odds_complete, send_admin_email
 from .services.sms_helpers import sms_week_reminder_job, schedule_first_kick_sms_for_week
@@ -24,6 +24,54 @@ load_dotenv()
 scheduler = BackgroundScheduler(timezone=timezone("US/Mountain"))
 migrate = Migrate()
 csrf = CSRFProtect()
+
+from Football_Project.services.season import get_current_season_context
+from Football_Project.services.schedule_service import update_schedule
+from Football_Project.models import JobRun
+from Football_Project.extensions import db
+
+def schedule_update_job_with_context(app):
+    with app.app_context():
+        try:
+            season_year, st = get_current_season_context()
+            st_upper = (st or "REG").upper()
+            st_int = {"PRE": 1, "REG": 2, "POST": 3}.get(st_upper, 2)
+
+            # sensible week ranges
+            week_end = 5 if st_upper == "POST" else (4 if st_upper == "PRE" else 18)
+
+            result = update_schedule(
+                season_year=season_year,
+                season_type=st_int,
+                week_start=1,
+                week_end=week_end
+            )
+
+            db.session.add(JobRun(
+                job_name="schedule_update",
+                ok=(result.get("failed_weeks", 0) == 0),
+                inserted=result.get("inserted", 0),
+                updated=result.get("updated", 0),
+                unchanged=result.get("unchanged", 0),
+                failed_weeks=result.get("failed_weeks", 0),
+                message=f"{season_year} {st_upper} W1-{week_end}"
+            ))
+            db.session.commit()
+
+            print(f"[SCHEDULE] Auto-run OK: {result}")
+
+        except Exception as e:
+            db.session.rollback()
+            db.session.add(JobRun(
+                job_name="schedule_update",
+                ok=False,
+                message=str(e)[:250]
+            ))
+            db.session.commit()
+            print(f"[SCHEDULE] Auto-run FAILED: {e}")
+
+        finally:
+            db.session.remove()
 
 
 def auto_fetch_scores_with_context(app):
@@ -167,6 +215,9 @@ def create_app():
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "password")
     app.config["WTF_CSRF_SECRET_KEY"] = os.getenv("WTF_CSRF_SECRET_KEY", "csrf-key-value")
 
+    #fix timezone
+    app.jinja_env.filters["fmt_mt"] = fmt_mt
+
     # ✅ NEW: make Postgres on Render resilient to dropped SSL connections
     # Only apply when using Postgres; SQLite doesn't accept these engine options.
     if db_url.startswith("postgresql://"):
@@ -303,6 +354,15 @@ def create_app():
                 trigger="cron",
                 hour=3, minute=5,  # Mountain time
                 id="sms_rescheduler_daily",
+                replace_existing=True,
+            )
+
+            scheduler.add_job(
+                func=lambda: schedule_update_job_with_context(app),
+                trigger="cron",
+                day_of_week="tue",
+                hour=6, minute=20,
+                id="schedule_update_tue_am",
                 replace_existing=True,
             )
 

@@ -76,7 +76,9 @@
                                         <td>{{ game.away_team }}</td>
                                         <td>{{ game.spread }}</td>
                                         <td class="favorite-team">{{ game.favorite_team }}</td>
-                                        <td>{{ game.commence_time_mt.strftime('%Y-%m-%d %H:%M:%S %Z') }}</td>
+
+                                        {# ✅ FIX: always display Mountain time via your filter #}
+                                        <td>{{ game.commence_time_mt | fmt_mt }}</td>
 
                                         {% if game.game_id in locked_ids %}
                                             <td>
@@ -227,6 +229,4 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 
-
 {% endblock %}
-
