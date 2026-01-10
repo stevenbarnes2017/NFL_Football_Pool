@@ -331,28 +331,65 @@ def get_current_season_year():
 def auto_fetch_scores():
     """Fetch and process scores automatically."""
     try:
-        logger.debug("Executing auto_fetch_scores job")
+        from flask import current_app
+        from .extensions import db
+        from .models import Settings, Game
+
         print("auto_fetch_scores triggered")
 
-        with current_app.app_context():
-            from datetime import datetime
-            
-            year = get_current_season_year()
+        # ✅ Always use Settings as source of truth
+        settings = Settings.query.first()
+        if not settings:
+            print("[SCORES] No Settings row found; skipping")
+            return
 
-            current_week = get_current_week()
-            print(f"Year: {year}, Season Type: {season_type}, Fetching scores for Week: {current_week}")
+        season_year = settings.season_year
+        season_type = settings.season_type   # "REG"/"POST"/"PRE"
+        current_week = settings.current_week
 
-            games = get_football_scores(year, season_type, current_week)
-            result = save_week_scores_to_db(year, season_type, current_week)
-            print(f"Result of save_week_scores_to_db: {result}")
+        # ✅ Always update current week
+        weeks_to_update = {current_week}
 
-            calculate_user_scores(current_week)
-            print(f"User scores calculated and updated for week {current_week}.")
+        # ✅ Also update previous week if any game is not FINAL
+        prev = (current_week or 0) - 1
+        if prev >= 1:
+            has_unfinal = (
+                Game.query.filter(
+                    Game.season_year == season_year,
+                    Game.season_type == season_type,
+                    Game.week == prev,
+                    Game.status.isnot(None),
+                    Game.status != "FINAL"
+                ).count() > 0
+            )
+
+            # If status can be NULL early, you might want this instead:
+            # has_unfinal = Game.query.filter(
+            #     Game.season_year == season_year,
+            #     Game.season_type == season_type,
+            #     Game.week == prev,
+            #     Game.status != "FINAL"
+            # ).count() > 0
+
+            if has_unfinal:
+                weeks_to_update.add(prev)
+
+        print(f"[SCORES] Updating weeks: {sorted(weeks_to_update)} for {season_type} {season_year}")
+
+        for wk in sorted(weeks_to_update):
+            result = save_week_scores_to_db(season_year, season_type, wk)
+            print(f"[SCORES] save_week_scores_to_db week={wk} -> {result}")
+
+            calculate_user_scores(wk)
+            print(f"[SCORES] calculated user scores for week={wk}")
 
     except Exception as e:
+        # Ideally: logger.exception(...)
         print(f"Error in auto_fetch_scores: {e}")
     finally:
         print("Finished running auto_fetch_scores")
+
+
 
 
 
