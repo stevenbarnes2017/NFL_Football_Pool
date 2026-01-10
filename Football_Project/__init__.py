@@ -2,7 +2,7 @@
 import os
 import atexit
 from flask import Flask, session
-from flask_login import LoginManager
+from flask_login import LoginManager, current_user
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -246,30 +246,22 @@ def create_app():
 
     @login_manager.user_loader
     def load_user(user_id):
-        # ✅ NEW: avoid taking down "/" on transient DB disconnects
         try:
-            return User.query.get(int(user_id))
+            return db.session.get(User, int(user_id))
         except OperationalError:
             db.session.rollback()
             return None
-        finally:
-            # Don't keep a bad connection around if load_user trips an error
-            db.session.remove()
-    
+
     @app.context_processor
     def inject_view_as_user():
-        user_id = session.get("admin_view_as_user_id")
-        if not user_id:
-            return {"view_as_user": None}
+        view_as_id = session.get("view_as_user_id") or session.get("admin_view_as_user_id")
+        view_as_user = None
 
-        try:
-            user = User.query.get(int(user_id))
-            return {"view_as_user": user}
-        except OperationalError:
-            db.session.rollback()
-            return {"view_as_user": None}
-        finally:
-            db.session.remove()
+        if current_user.is_authenticated and getattr(current_user, "is_admin", False) and view_as_id:
+            view_as_user = db.session.get(User, int(view_as_id))
+
+        return {"view_as_user": view_as_user, "view_as_id": view_as_id}
+    
 
     # Blueprints
     from .admin import admin_bp

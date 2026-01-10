@@ -5,7 +5,7 @@ from .models import db, Game, Pick, UserScore
 from Football_Project.get_the_odds import get_current_week
 from football_scores import save_scores_to_db, get_football_scores
 import requests
-from flask import render_template, current_app, request
+from flask import render_template, current_app, request, session
 from pytz import timezone  # Add this
 import logging  # Ensure logging is imported at the top
 import os
@@ -17,9 +17,20 @@ from collections import defaultdict
 import re
 
 
+
 season_type = 2  # 1 = preseason, 2 = regular, 3 = postseason
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def get_effective_user_id():
+    view_as_id = session.get("view_as_user_id") or session.get("admin_view_as_user_id")
+    if view_as_id and getattr(current_user, "is_admin", False):
+        try:
+            return int(view_as_id)
+        except (TypeError, ValueError):
+            return current_user.id
+    return current_user.id
 
 def get_settings() ->"Settings":
     s = Settings.query.first()
@@ -28,6 +39,19 @@ def get_settings() ->"Settings":
         db.session.add(s)
         db.session.commit()
     return s
+
+def get_effective_user():
+    """
+    Returns the user we should act as:
+    - If admin is in view-as mode: that user
+    - Otherwise: current_user
+    """
+    view_as_id = session.get("view_as_user_id")
+    if view_as_id and getattr(current_user, "is_admin", False):
+        u = User.query.get(view_as_id)
+        if u:
+            return u
+    return current_user
 
 def send_picks_email(recipient_email, user_picks):
     # Format the picks into an email-friendly string
@@ -450,10 +474,10 @@ def lock_picks_for_commenced_games(user_id):
     now_utc = datetime.now(timezone.utc)
     current_week = get_current_week()
 
-    commenced_games = Game.query.filter(Game.week == current_week).all()
+    week_games = Game.query.filter(Game.week == current_week).all()
 
     games_list = []
-    for game in commenced_games:
+    for game in week_games:
         # normalize to aware UTC
         if isinstance(game.commence_time_mt, str):
             game_commence_time_utc = convert_to_utc(game.commence_time_mt)
@@ -649,6 +673,8 @@ def assign_missed_pick_confidence(available_confidences):
 
 import requests
 import requests
+
+
 
 def fetch_live_scores():
     url = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"

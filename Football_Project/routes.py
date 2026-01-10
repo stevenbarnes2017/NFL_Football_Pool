@@ -316,9 +316,24 @@ def email_picks():
 def submit_picks():
     from datetime import datetime
     import pytz
+    from flask import session
 
     utc = pytz.utc
     now_utc = datetime.now(utc)
+
+    # ✅ DB-driven season context to match nfl_picks
+    settings = Settings.query.first()
+    season_year = settings.season_year
+    season_type = settings.season_type
+
+    # ✅ View-as support: use effective_user_id when admin is impersonating
+    view_as_id = session.get("view_as_user_id") or session.get("admin_view_as_user_id")
+    effective_user_id = current_user.id
+    if view_as_id and getattr(current_user, "is_admin", False):
+        try:
+            effective_user_id = int(view_as_id)
+        except (TypeError, ValueError):
+            effective_user_id = current_user.id
 
     # Week
     try:
@@ -327,13 +342,21 @@ def submit_picks():
         flash("Invalid week.", "danger")
         return redirect(url_for('main.nfl_picks'))
 
-    # Pull all games for the week (we’ll read inputs keyed by NATURAL id)
-    games = Game.query.filter_by(week=week).all()
+    # ✅ Pull games for the week WITH season filters (avoid cross-season bleed)
+    games = (
+        Game.query
+        .filter(
+            Game.week == week,
+            Game.season_year == season_year,
+            Game.season_type == season_type
+        )
+        .all()
+    )
 
     created = updated = locked = skipped = 0
 
     for game in games:
-        nat_id = game.game_id  # e.g. "2025-W2-IND-at-BAL"
+        nat_id = game.game_id
 
         pick_key = f"pick_{nat_id}"
         conf_key = f"confidence_{nat_id}"
@@ -341,20 +364,17 @@ def submit_picks():
         team_picked = (request.form.get(pick_key) or "").strip()
         conf_raw = (request.form.get(conf_key) or "").strip()
 
-        # If the user sent nothing for this game, skip it quietly
         if team_picked == "" and conf_raw == "":
             continue
 
-        # Lock check
         if game.commence_time_mt and now_utc >= game.commence_time_mt.astimezone(utc):
             locked += 1
             continue
 
-        # Parse confidence if present; empty string means "clear it"
         conf_val = None
         conf_set_to_null = False
         if conf_raw == "":
-            conf_set_to_null = True  # explicit clear
+            conf_set_to_null = True
         else:
             try:
                 conf_val = int(conf_raw)
@@ -363,11 +383,11 @@ def submit_picks():
                 skipped += 1
                 continue
 
-        # Upsert by (user_id, week, numeric FK)
+        # ✅ Upsert by (effective_user_id, week, numeric FK)
         existing = Pick.query.filter_by(
-            user_id=current_user.id,
+            user_id=effective_user_id,   # ✅ CHANGED
             week=week,
-            game_id=game.id  # IMPORTANT: numeric FK to Game.id
+            game_id=game.id
         ).first()
 
         if existing:
@@ -375,6 +395,7 @@ def submit_picks():
             if team_picked:
                 existing.team_picked = team_picked
                 changed = True
+
             if conf_set_to_null:
                 existing.confidence = None
                 changed = True
@@ -388,17 +409,14 @@ def submit_picks():
             else:
                 skipped += 1
         else:
-            # New pick: require at least team OR confidence (both allowed).
-            # If team missing but confidence provided, we can store a placeholder team or skip.
-            # Here we require team to be chosen for a new pick.
             if not team_picked:
                 skipped += 1
                 continue
-            # Confidence can be None (since column is now nullable).
+
             db.session.add(Pick(
-                user_id=current_user.id,
+                user_id=effective_user_id,  # ✅ CHANGED
                 week=week,
-                game_id=game.id,      # numeric FK
+                game_id=game.id,
                 team_picked=team_picked,
                 confidence=(None if conf_set_to_null else conf_val),
             ))
@@ -412,10 +430,11 @@ def submit_picks():
         return redirect(url_for('main.nfl_picks', week=week))
 
     flash(
-        f"Created: {created}, Updated: {updated}, Locked: {locked}, Skipped: {skipped}",
+        f"Saved for user {effective_user_id} — Created: {created}, Updated: {updated}, Locked: {locked}, Skipped: {skipped}",
         "success" if (created or updated) else "warning"
     )
     return redirect(url_for('main.nfl_picks', week=week))
+
 
 
 
@@ -507,11 +526,22 @@ def user_scores(week):
 @main_bp.route('/see_picks', methods=['GET', 'POST'])
 @login_required
 def see_picks():
+    from flask import session
+
     # ✅ DB-driven season context (source of truth)
     settings = Settings.query.first()
     season_year = settings.season_year
     season_type = settings.season_type
     current_week = settings.current_week
+
+    # ✅ View-as support: use effective_user_id for loading picks
+    view_as_id = session.get("view_as_user_id") or session.get("admin_view_as_user_id")
+    effective_user_id = current_user.id
+    if view_as_id and getattr(current_user, "is_admin", False):
+        try:
+            effective_user_id = int(view_as_id)
+        except (TypeError, ValueError):
+            effective_user_id = current_user.id
 
     # ✅ Weeks available for THIS season/year/type (prevents Week 18 leakage)
     all_weeks = [
@@ -537,12 +567,12 @@ def see_picks():
     if all_weeks and selected_week not in all_weeks:
         selected_week = all_weeks[0]
 
-    # ✅ User picks for ONLY games in this season/week/type
+    # ✅ User picks for ONLY games in this season/week/type (view-as aware)
     user_picks = (
         Pick.query
         .join(Game, Pick.game_id == Game.id)
         .filter(
-            Pick.user_id == current_user.id,
+            Pick.user_id == effective_user_id,   # ✅ CHANGED
             Game.season_year == season_year,
             Game.season_type == season_type,
             Game.week == selected_week
@@ -552,7 +582,6 @@ def see_picks():
     )
 
     # ✅ Unpicked games should also be season filtered.
-    # Best fix: update helper to accept season filters.
     unpicked_games = get_unpicked_games_for_week(
         user_picks=user_picks,
         week=selected_week,
@@ -566,10 +595,11 @@ def see_picks():
         all_weeks=all_weeks,
         user_picks=user_picks,
         unpicked_games=unpicked_games,
-        # Optional for debugging/header display
         season_year=season_year,
-        season_type=season_type
+        season_type=season_type,
+        effective_user_id=effective_user_id  # optional debug/header
     )
+
 
 
 from flask import jsonify, request
@@ -968,6 +998,8 @@ def convert_utc_to_mountain(utc_time):
 def nfl_picks():
     from datetime import datetime
     import pytz
+    from flask import request, render_template, session
+    from flask_login import current_user
 
     utc = pytz.utc
     mt = pytz.timezone("America/Denver")
@@ -978,6 +1010,15 @@ def nfl_picks():
     season_year = settings.season_year
     season_type = settings.season_type
     current_week = settings.current_week
+
+    # ✅ View-as support
+    view_as_id = session.get("view_as_user_id")
+    effective_user_id = current_user.id
+    if view_as_id and getattr(current_user, "is_admin", False):
+        try:
+            effective_user_id = int(view_as_id)
+        except (TypeError, ValueError):
+            effective_user_id = current_user.id
 
     # ✅ Only weeks that exist for THIS season_year + season_type
     all_weeks = [
@@ -1015,38 +1056,39 @@ def nfl_picks():
     )
     num_of_games = len(games)
 
-    # For pick lookup, use the DB game PK ids
-    game_db_ids = [g.id for g in games]
-
-    # ✅ Picks for ONLY these games (prevents old season bleed)
-    rows = (
-        db.session.query(Pick, Game)
-        .join(Game, Pick.game_id == Game.id)
-        .filter(
-            Pick.user_id == current_user.id,
-            Game.id.in_(game_db_ids)
-        )
-        .all()
-    )
-
-    # user_picks: { natural_game_id: (team_picked, confidence_or_None) }
-    user_picks = {g.game_id: (p.team_picked, p.confidence) for p, g in rows}
-    used_confidence_points = [p.confidence for p, _ in rows if p.confidence is not None]
-
-    # Which games are locked (kickoff passed)?
-    locked_ids = set()
-    for g in games:
-        if g.commence_time_mt and now_utc >= g.commence_time_mt.astimezone(utc):
-            locked_ids.add(g.game_id)
-
-    # Group games by Mountain weekday for display
+    # ✅ Group games by Mountain weekday for display (DEFINE THIS!)
     grouped_games = {}
     for g in games:
         dt_mt = g.commence_time_mt.astimezone(mt) if g.commence_time_mt else None
         day = dt_mt.strftime("%A") if dt_mt else "Unknown"
         grouped_games.setdefault(day, []).append(g)
 
-    # OPTIONAL auto-assign confidence for locked/no-pick
+    # DB PK ids for the week's games
+    game_db_ids = [g.id for g in games]
+
+    # ✅ Picks for ONLY these games, ONLY this week, and the effective user
+    rows = (
+        db.session.query(Pick, Game)
+        .join(Game, Pick.game_id == Game.id)
+        .filter(
+            Pick.user_id == effective_user_id,
+            Pick.week == selected_week,          # ✅ IMPORTANT
+            Game.id.in_(game_db_ids)
+        )
+        .all()
+    )
+
+    # ✅ Match the template: key by NATURAL game_id
+    user_picks = {g.game_id: (p.team_picked, p.confidence) for p, g in rows}
+    used_confidence_points = [p.confidence for p, _ in rows if p.confidence is not None]
+
+    # ✅ locked_ids must also use NATURAL game_id for template compatibility
+    locked_ids = set()
+    for g in games:
+        if g.commence_time_mt and now_utc >= g.commence_time_mt.astimezone(utc):
+            locked_ids.add(g.game_id)
+
+    # OPTIONAL auto-assign confidence for locked/no-pick (uses natural ids)
     total_conf_points = list(range(1, num_of_games + 1))
 
     def highest_available(all_pts, used_pts):
@@ -1060,6 +1102,8 @@ def nfl_picks():
                 user_picks[g.game_id] = ('No pick made', hi)
                 used_confidence_points.append(hi)
 
+    print("VIEW_AS:", session.get("view_as_user_id"), "CURRENT:", current_user.id, "EFFECTIVE:", effective_user_id, "USED:", used_confidence_points)
+
     return render_template(
         'nfl_picks.html',
         grouped_games=grouped_games,
@@ -1070,10 +1114,12 @@ def nfl_picks():
         user_picks=user_picks,
         used_confidence_points=used_confidence_points,
         locked_ids=locked_ids,
-        # Optional: helpful for header display/debug
         season_year=season_year,
-        season_type=season_type
+        season_type=season_type,
+        effective_user_id=effective_user_id
     )
+
+
 
 
 

@@ -34,27 +34,35 @@
 
 
     <!-- View-As Banner -->
-    {% if current_user.is_authenticated
-          and current_user.is_admin
-          and session.get('admin_view_as_user_id') %}
-    <div style="background:#fff3cd; border-bottom:1px solid #ffeeba; padding:10px 0;">
-        <div class="container" style="display:flex; justify-content:space-between; align-items:center;">
-            <div>
-                <strong>View-As Mode Active</strong>
-                (Viewing as: <strong>{{ view_as_user.username }}</strong>)
-            </div>
-            <form method="post" action="{{ url_for('admin.exit_view_as_user') }}" style="margin:0;">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit"
-                        style="background:#856404; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">
-                    Exit View-As
-                </button>
-            </form>
-        </div>
-    </div>
-    {% endif %}
+    {# View-As Banner (supports old + new keys) #}
+    {% set local_view_as_id = view_as_id or session.get('view_as_user_id') or session.get('admin_view_as_user_id') %}
 
-    <div class="container main-content">
+    {% if current_user.is_authenticated and current_user.is_admin and local_view_as_id %}
+      <div style="background:#fff3cd; border-bottom:1px solid #ffeeba; padding:10px 0;">
+        <div class="container" style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <strong>View-As Mode Active</strong>
+            (Viewing as:
+            <strong>
+              {% if view_as_user %}
+                {{ view_as_user.username or view_as_user.full_name or view_as_user.email }}
+              {% else %}
+                User {{ local_view_as_id }}
+              {% endif %}
+            </strong>)
+          </div>
+
+          <form method="post" action="{{ url_for('admin.exit_view_as_user') }}" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit"
+                    style="background:#856404; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">
+              Exit View-As
+            </button>
+          </form>
+        </div>
+      </div>
+    {% endif %}
+        <div class="container main-content">
         {% block content %}{% endblock %}
     </div>
 

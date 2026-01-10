@@ -17,6 +17,8 @@ from Football_Project.services.sms_helpers import sms_week_reminder_job
 from Football_Project.services.season import get_current_season_context, get_current_week
 from Football_Project.services.schedule_service import update_schedule
 
+
+
 #--------------------------
 # Admin Announcements
 #--------------------------
@@ -218,10 +220,12 @@ def view_as_user():
         flash("Please select a user.", "warning")
         return redirect(url_for("admin.manage_users"))
 
-    session["admin_view_as_user_id"] = user_id
-    flash("View-as user enabled.", "success")
-    return redirect(url_for("main.user_dashboard"))  # <-- change this to your user dashboard endpoint
+    # ✅ USE THE SAME KEY nfl_picks READS
+    session["view_as_user_id"] = user_id
+    session.modified = True
 
+    flash(f"Now viewing as user {user_id}.", "success")
+    return redirect(url_for("main.user_dashboard"))
 
 @admin_bp.route("/exit_view_as_user", methods=["POST"])
 @login_required
@@ -230,9 +234,30 @@ def exit_view_as_user():
         flash("Not authorized.", "danger")
         return redirect(url_for("admin.manage_users"))
 
-    session.pop("admin_view_as_user_id", None)
+    session.pop("view_as_user_id", None)
+    session.modified = True
+
     flash("View-as user disabled.", "info")
     return redirect(url_for("admin.manage_users"))
+
+@admin_bp.route("/force_exit_view_as", methods=["GET"])
+@login_required
+def force_exit_view_as():
+    if not current_user.is_admin:
+        return "Not authorized", 403
+
+    session.pop("view_as_user_id", None)
+    session.pop("admin_view_as_user_id", None)
+    session.modified = True
+    return "OK: view-as cleared"
+
+@admin_bp.route("/debug_session", methods=["GET"])
+@login_required
+def debug_session():
+    if not current_user.is_admin:
+        return "Not authorized", 403
+    return f"session={dict(session)}"
+
 
 
 @admin_bp.route("/test_sms/<int:week>")
@@ -387,9 +412,17 @@ def _settings_to_espn_seasontype(settings) -> int:
 
     return 2
 
+def in_view_as_mode():
+    return bool(session.get("view_as_user_id") or session.get("admin_view_as_user_id"))
+
 @admin_bp.route('/admin_dashboard')
 @login_required
 def admin_dashboard():
+    print("ADMIN_DASH session keys:", dict(session))  # TEMP DEBUG
+
+    if in_view_as_mode():
+        return redirect(url_for("main.user_dashboard"))
+
     settings = Settings.query.first()
 
     # Fallbacks if settings row somehow missing (shouldn't happen now)
