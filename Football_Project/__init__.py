@@ -327,17 +327,23 @@ def create_app():
 
             # --- SMS: schedule 2h before first kickoff of current week ---
             def reschedule_current_week_sms(app):
-                """Schedules (or reschedules) the first-kickoff reminder for the current week."""
-                with app.app_context():
-                    try:
-                        week = get_current_week()  # needs app context for DB session
-                        schedule_first_kick_sms_for_week(app, week, scheduler)
-                        db.session.commit()
-                    except Exception:
-                        db.session.rollback()
-                        raise
-                    finally:
-                        db.session.remove()
+            """Schedules (or reschedules) the first-kickoff reminder for the current week."""
+            with app.app_context():
+                try:
+                    settings = Settings.query.first()
+                    if not settings:
+                        app.logger.warning("[SMS] Settings missing; skipping SMS reschedule.")
+                        return
+
+                    week = get_current_week(settings.season_year, settings.season_type)
+                    schedule_first_kick_sms_for_week(app, week, scheduler)
+                    db.session.commit()
+
+                except Exception:
+                    db.session.rollback()
+                    raise
+                finally:
+                    db.session.remove()
 
             # Run once at startup
             reschedule_current_week_sms(app)
