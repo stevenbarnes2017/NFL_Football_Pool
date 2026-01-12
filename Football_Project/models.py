@@ -38,7 +38,12 @@ class User(db.Model, UserMixin):
 
     # Remove the duplicated relationship; you had 'scores' twice
     picks = db.relationship('Pick', backref='user', lazy=True, cascade='all, delete-orphan')
-    scores = db.relationship('UserScore', backref='user', lazy=True, cascade='all, delete-orphan')
+    scores = db.relationship(
+        "UserScore",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
 
     def set_password(self, plaintext: str) -> None:
         # Standardize what we write going forward (consistent format)
@@ -133,14 +138,21 @@ class Game(db.Model):
 # UserScore Model
 # ----------------------------
 class UserScore(db.Model):
-    __tablename__ = 'user_score'
+    __tablename__ = "user_score"
+
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+
     week = db.Column(db.Integer, nullable=False)
-    score = db.Column(db.Float, nullable=False, default=0)
+
+    season_year = db.Column(db.Integer, nullable=False)
+    season_type = db.Column(db.String(10), nullable=False)
+
+    score = db.Column(db.Integer, nullable=False, default=0)
     calculated_at = db.Column(db.DateTime, default=datetime.utcnow)
-     # 🔽 Add this relationship
-    #user = db.relationship('User', backref='picks')
+
+    user = db.relationship("User", back_populates="scores")
 
 #------------------------------
 # Announcements and Message Board

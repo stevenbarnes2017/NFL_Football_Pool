@@ -440,9 +440,21 @@ def submit_picks():
 
 @main_bp.route('/get_current_week')
 def current_week():
-    week = get_current_week()  # Call your existing function
-    return jsonify({"current_week": week})
+    settings = Settings.query.first()
 
+    if not settings:
+        return jsonify({"error": "Settings not configured"}), 500
+
+    week = get_current_week(
+        season_year=settings.season_year,
+        season_type=settings.season_type
+    )
+
+    return jsonify({
+        "current_week": week,
+        "season_year": settings.season_year,
+        "season_type": settings.season_type
+    })
   
 
 

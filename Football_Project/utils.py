@@ -2,7 +2,7 @@ from datetime import datetime
 import pytz
 import platform
 from .models import db, Game, Pick, UserScore
-from Football_Project.get_the_odds import get_current_week
+from Football_Project.services.season import get_current_week
 from football_scores import save_scores_to_db, get_football_scores
 import requests
 from flask import render_template, current_app, request, session
@@ -210,35 +210,67 @@ def get_saved_games(week=None):
     
     return games_list
 
-# Function to tally user scores based on the week
-def calculate_user_scores(week: int, write_final_only: bool = True):
-    """
-    Recalculate points_earned on each Pick for the given week (live).
-    Persist weekly totals to UserScore using FINAL games only (default).
-    Returns a dict of totals:
-      - if write_final_only=True -> FINAL-only totals
-      - else -> LIVE (in-progress + final) totals
-    """
-    games = Game.query.filter_by(week=week).all()
-    picks = Pick.query.filter_by(week=week).all()
+def season_type_to_espn(st: str) -> int:
+    st = (st or "REG").upper()
+    return {"PRE": 1, "REG": 2, "POST": 3}.get(st, 2)
 
-    # quick visibility
+def norm_status(s: str | None) -> str:
+    return (s or "").strip().upper()
+
+
+FINAL_STATUSES = {"STATUS_FINAL", "FINAL", "STATUS_GAME_OVER"}
+INPROG_STATUSES = {"STATUS_IN_PROGRESS", "IN_PROGRESS", "STATUS_HALFTIME"}  # add more if you store them
+
+
+def calculate_user_scores(week: int, season_year: int, season_type: str, write_final_only: bool = True):
+    games = (
+        Game.query
+        .filter_by(season_year=season_year, season_type=season_type, week=week)
+        .all()
+    )
+
+    print(f"[SCORES] games_in_db={len(games)} season_year={season_year} season_type={season_type} week={week}")
+
+    picks = (
+        Pick.query
+        .join(Game, Game.id == Pick.game_id)
+        .filter(
+            Game.season_year == season_year,
+            Game.season_type == season_type,
+            Game.week == week,
+        )
+        .all()
+    )
+    # Quick visibility
     distinct_statuses = {norm_status(g.status) for g in games}
-    print(f"[scores] Week {week} statuses in DB: {distinct_statuses}")
+    print(f"[SCORES] games_in_db={len(games)} season_year={season_year} season_type={season_type} week={week}")
 
-    live_total_by_user  = defaultdict(int)
+
+    # Picks ONLY for games in THIS season context (join ensures scope is correct)
+    picks = (
+        Pick.query
+        .join(Game, Game.id == Pick.game_id)
+        .filter(
+            Game.season_year == season_year,
+            Game.season_type == season_type,
+            Game.week == week,
+            Pick.week == week,  # keep if you still store week on Pick
+        )
+        .all()
+    )
+
+    live_total_by_user = defaultdict(int)
     final_total_by_user = defaultdict(int)
 
     considered, awarded = 0, 0
 
-    # Pre-index games for speed
     games_by_id = {g.id: g for g in games}
 
     for pick in picks:
-        if pick.is_overridden:
-            # honor manual override both in live and (if final) rollups
-            live_total_by_user[pick.user_id]  += pick.points_earned or 0
-            final_total_by_user[pick.user_id] += pick.points_earned or 0
+        # Manual overrides: keep whatever is stored
+        if getattr(pick, "is_overridden", False):
+            live_total_by_user[pick.user_id] += int(pick.points_earned or 0)
+            final_total_by_user[pick.user_id] += int(pick.points_earned or 0)
             continue
 
         game = games_by_id.get(pick.game_id)
@@ -247,8 +279,11 @@ def calculate_user_scores(week: int, write_final_only: bool = True):
 
         g_status = norm_status(game.status)
 
-        if g_status not in ('STATUS_IN_PROGRESS', 'STATUS_FINAL'):
-            # nothing to award yet
+        is_final = g_status in FINAL_STATUSES
+        is_inprog = g_status in INPROG_STATUSES
+
+        if not (is_final or is_inprog):
+            # not started / scheduled / unknown -> don't award
             continue
 
         considered += 1
@@ -258,22 +293,29 @@ def calculate_user_scores(week: int, write_final_only: bool = True):
         away = game.away_team_score
 
         if home is None or away is None:
-            # cannot judge without scores
             points = 0
         else:
-            # If spread is missing, award by straight winner
+            # Spread missing -> straight up winner
             if game.spread is None:
-                winner = game.home_team if home > away else game.away_team
-                if pick.team_picked == winner:
-                    points = pick.confidence or 0
-            else:
-                # ATS: favorite must cover
-                fav = game.favorite_team
-                if not fav:
-                    # fall back to straight winner if favorite unknown
+                if home == away:
+                    # tie -> 0 points (adjust if you want different behavior)
+                    points = 0
+                else:
                     winner = game.home_team if home > away else game.away_team
                     if pick.team_picked == winner:
-                        points = pick.confidence or 0
+                        points = int(pick.confidence or 0)
+
+            else:
+                fav = game.favorite_team
+
+                if not fav:
+                    # fallback to straight up if favorite missing
+                    if home == away:
+                        points = 0
+                    else:
+                        winner = game.home_team if home > away else game.away_team
+                        if pick.team_picked == winner:
+                            points = int(pick.confidence or 0)
                 else:
                     # margin from favorite's perspective
                     if game.home_team == fav:
@@ -281,43 +323,59 @@ def calculate_user_scores(week: int, write_final_only: bool = True):
                     else:
                         margin = away - home
 
+                    # NOTE: your original logic was "margin > abs(spread)"
+                    # If you want pushes to count as NOT covered, keep ">"
                     covered = margin > abs(game.spread)
 
                     if pick.team_picked == fav and covered:
-                        points = pick.confidence or 0
+                        points = int(pick.confidence or 0)
                     elif pick.team_picked != fav and not covered:
-                        points = pick.confidence or 0
+                        points = int(pick.confidence or 0)
 
-        # Update the pick row for live views
+        # Update pick row for live views
         pick.points_earned = points
         db.session.add(pick)
 
-        # Live total (in-progress + final)
         live_total_by_user[pick.user_id] += points
 
-        # Weekly locked totals: only from FINAL games
-        if g_status == 'STATUS_FINAL':
+        if is_final:
             final_total_by_user[pick.user_id] += points
             awarded += 1 if points else 0
 
+    print(f"[GRADE] {season_type} {season_year} week={week} games={len(games)} picks={len(picks)}")
     db.session.commit()
 
-    print(f"[scores] Week {week}: picks={len(picks)} considered={considered} final_awards>0={awarded}")
+    print(f"[scores] Week {week}: considered={considered} final_awards>0={awarded}")
 
-    # Persist to UserScore weekly table (locked totals only)
+    # Persist to UserScore (FINAL-only totals)
     if write_final_only:
         for user_id, score in final_total_by_user.items():
-            row = UserScore.query.filter_by(user_id=user_id, week=week).first()
+            row = (
+                UserScore.query
+                .filter_by(
+                    user_id=user_id,
+                    week=week,
+                    season_year=season_year,
+                    season_type=season_type
+                )
+                .first()
+            )
             if row:
-                row.score = score
+                row.score = int(score or 0)
                 row.calculated_at = datetime.utcnow()
             else:
-                db.session.add(UserScore(user_id=user_id, week=week, score=score))
+                db.session.add(UserScore(
+                    user_id=user_id,
+                    week=week,
+                    season_year=season_year,
+                    season_type=season_type,
+                    score=int(score or 0),
+                    calculated_at=datetime.utcnow()
+                ))
+
         db.session.commit()
-        # For callers that expect a dict of totals, return what we wrote (final-only)
         return dict(final_total_by_user)
 
-    # If someone needs live totals instead:
     return dict(live_total_by_user)
 
 def get_current_season_year():
@@ -509,7 +567,7 @@ def lock_picks_for_commenced_games(user_id):
     import pytz
 
     now_utc = datetime.now(timezone.utc)
-    current_week = get_current_week()
+    current_week = get_current_week(season_year, season_type)
 
     week_games = Game.query.filter(Game.week == current_week).all()
 
@@ -569,15 +627,6 @@ def lock_picks_for_commenced_games(user_id):
         p.confidence for p in Pick.query.filter_by(user_id=user_id, week=current_week)
         .filter(Pick.confidence.isnot(None)).all()
     ]
-
-    return render_template(
-        'nfl_picks.html',
-        now_utc=now_utc,
-        games=games_list,
-        selected_week=current_week,
-        used_confidence_points=used_confidence_points
-    )
-
 
 def group_games_by_day(games_list):
     grouped_games = {

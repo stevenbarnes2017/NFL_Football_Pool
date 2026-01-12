@@ -13,9 +13,11 @@ from sqlalchemy.exc import OperationalError  # ✅ NEW
 
 from .extensions import db
 from .models import User, JobRun
-from .utils import auto_fetch_scores, fetch_and_cache_scores, get_current_week
+from .utils import auto_fetch_scores, fetch_and_cache_scores
 from .services import attempt_import_odds, is_week_odds_complete, send_admin_email
+from Football_Project.services.season import get_current_week
 from .services.sms_helpers import sms_week_reminder_job, schedule_first_kick_sms_for_week
+from Football_Project.services.odds_care import attempt_import_odds, is_week_odds_complete
 
 
 load_dotenv()

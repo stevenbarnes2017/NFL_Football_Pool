@@ -10,7 +10,7 @@ from typing import Dict, Any, List, Tuple, Optional
 from flask import current_app
 from ..extensions import db
 from ..models import Game
-from ..utils import get_current_week
+from Football_Project.services.season import get_current_week
 from ..get_the_odds import get_nfl_spreads  # provider fetcher (keep your existing function)
 
 # ------------------------------ Utilities ------------------------------------

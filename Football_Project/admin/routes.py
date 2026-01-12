@@ -795,48 +795,93 @@ def admin_scores():
         season_type=season_type_label,         # optional (for header)
     )
 
-@admin_bp.route('/admin_calculate_scores', methods=['POST'])
+@admin_bp.route("/admin_calculate_scores", methods=["POST"])
 @login_required
 def admin_calculate_scores():
-    """Recalculate user totals and upsert into UserScore."""
-    selected_week = request.form.get('week', 'all')
+    if not getattr(current_user, "is_admin", False):
+        flash("Not authorized.", "danger")
+        return redirect(url_for("main.user_dashboard"))
+
+    settings = Settings.query.first()
+    if not settings:
+        flash("Settings row missing. Cannot calculate scores.", "danger")
+        return redirect(url_for("admin.admin_dashboard"))
+
+    season_year = settings.season_year
+    season_type = settings.season_type
+    current_week = settings.current_week
+
+    # Form options:
+    # week = "all" OR "all_except_current" OR a number like "3"
+    form_week = request.form.get("week", "all_except_current")
+
+    # Build weeks list for THIS season/year/type only
+    season_weeks = [
+        w for (w,) in (
+            db.session.query(Game.week)
+            .filter(
+                Game.season_year == season_year,
+                Game.season_type == season_type,
+                Game.week.isnot(None),
+            )
+            .distinct()
+            .order_by(Game.week.asc())
+            .all()
+        )
+    ]
+
+    if not season_weeks:
+        flash("No games found for this season context. Load schedule first.", "warning")
+        return redirect(url_for("admin.admin_dashboard"))
+
+    if form_week == "all":
+        weeks_to_process = [w for w in season_weeks if w <= current_week]
+    elif form_week == "all_except_current":
+        weeks_to_process = [w for w in season_weeks if w <= current_week and w != current_week]
+    else:
+        try:
+            w = int(form_week)
+        except ValueError:
+            flash("Invalid week selected.", "danger")
+            return redirect(url_for("admin.admin_dashboard"))
+
+        if w not in season_weeks:
+            flash(f"Week {w} not found for {season_year} {season_type}.", "warning")
+            return redirect(url_for("admin.admin_dashboard"))
+
+        weeks_to_process = [w]
+
+    if not weeks_to_process:
+        flash("No weeks to process.", "info")
+        return redirect(url_for("admin.admin_dashboard"))
 
     try:
-        if selected_week == 'all':
-            max_week = get_current_week()
-            weeks = range(1, max_week + 1)
-        else:
-            selected_week = int(selected_week)
-            weeks = [selected_week]
-    except ValueError:
-        flash("Invalid week selected.", "danger")
-        return redirect(url_for('admin.admin_dashboard'))
-
-    try:
-        for w in weeks:
-            # calculate_user_scores should return {user_id: total_points_for_week}
-            user_scores = calculate_user_scores(week=w, write_final_only=True)
-            if not isinstance(user_scores, dict):
-                continue
-
-            existing = UserScore.query.filter(UserScore.week == w,
-                                              UserScore.user_id.in_(list(user_scores.keys()))).all()
-            existing_map = {row.user_id: row for row in existing}
-
-            for uid, total in user_scores.items():
-                row = existing_map.get(uid)
-                if row:
-                    row.score = total
-                else:
-                    db.session.add(UserScore(user_id=uid, week=w, score=total, calculated_at=datetime.utcnow()))
+        processed = 0
+        for w in weeks_to_process:
+            # IMPORTANT: use season context
+            calculate_user_scores(
+                week=w,
+                season_year=season_year,
+                season_type=season_type,
+                write_final_only=True,   # only FINAL games contribute to UserScore
+            )
+            processed += 1
 
         db.session.commit()
-        flash("Scores calculated and saved.", "success")
+        if processed == 1:
+            flash(f"Scores recalculated for Week {weeks_to_process[0]} ({season_year} {season_type}).", "success")
+        else:
+            flash(
+                f"Scores recalculated for {season_year} {season_type} weeks "
+                f"{min(weeks_to_process)}–{max(weeks_to_process)}.",
+                "success",
+            )
+
     except Exception as e:
         db.session.rollback()
-        flash(f"Error calculating scores: {str(e)}", "danger")
+        flash(f"Error while calculating scores: {e}", "danger")
 
-    return redirect(url_for('admin.admin_dashboard'))
+    return redirect(url_for("admin.admin_dashboard"))
 
 @admin_bp.route('/admin_override_score', methods=['POST'])
 @login_required
@@ -878,72 +923,48 @@ def admin_override_score():
 @admin_bp.route('/process_user_scores', methods=['POST'])
 @login_required
 def process_user_scores():
-    """Recompute user totals and upsert into UserScore.
-       Defaults to all distinct weeks except the current week.
-       If form has week != 'all', only processes that week.
-    """
     try:
-        current_week = get_current_week()
+        settings = Settings.query.first()
+        season_year = settings.season_year
+        season_type = settings.season_type
+        current_week = settings.current_week
 
-        # Default: all distinct weeks except the current week
-        weeks = [w for (w,) in db.session.query(Game.week)
-                               .distinct()
-                               .order_by(Game.week)
-                               .all()
-                 if w != current_week]
+        # Weeks available for THIS season/type
+        season_weeks = [
+            w for (w,) in (
+                db.session.query(Game.week)
+                .filter(Game.season_year==season_year, Game.season_type==season_type)
+                .distinct()
+                .order_by(Game.week)
+                .all()
+            )
+        ]
 
-        # Optional: limit to a specific week from the form
         form_week = request.form.get('week', 'all')
         if form_week != 'all':
-            try:
-                form_week = int(form_week)
-            except ValueError:
-                flash("Invalid week selected.", "danger")
-                return redirect(url_for('admin.admin_dashboard'))
-            weeks = [form_week]
+            week = int(form_week)
+            weeks = [week]
+        else:
+            # ✅ don’t exclude week 1; instead exclude weeks that aren’t final yet (optional)
+            weeks = season_weeks
 
-        # Nothing to do?
-        if not weeks:
-            flash("No weeks to process.", "info")
-            return redirect(url_for('admin.admin_dashboard'))
-
-        # Recalculate and upsert
         for w in weeks:
-            user_scores = calculate_user_scores(week=w)  # expected {user_id: total_points}
-            if not isinstance(user_scores, dict):
-                continue
-
-            existing = UserScore.query.filter(
-                UserScore.week == w,
-                UserScore.user_id.in_(list(user_scores.keys()))
-            ).all()
-            existing_map = {row.user_id: row for row in existing}
-
-            for uid, total in user_scores.items():
-                row = existing_map.get(uid)
-                if row:
-                    row.score = total
-                    row.calculated_at = datetime.utcnow()
-                else:
-                    db.session.add(UserScore(
-                        user_id=uid,
-                        week=w,
-                        score=total,
-                        calculated_at=datetime.utcnow()
-                    ))
+            calculate_user_scores(
+                week=w,
+                season_year=season_year,
+                season_type=season_type,
+                write_final_only=True
+            )
 
         db.session.commit()
-
-        if len(weeks) == 1:
-            flash(f"Successfully processed user scores for Week {weeks[0]}.", "success")
-        else:
-            flash(f"Successfully processed user scores for weeks {min(weeks)}–{max(weeks)}.", "success")
+        flash(f"Successfully processed scores for {season_type} {season_year} week(s): {weeks}", "success")
 
     except Exception as e:
         db.session.rollback()
         flash(f"An error occurred while processing user scores: {str(e)}", "danger")
 
     return redirect(url_for('admin.admin_dashboard'))
+
 
 # assumes you already have these:
 # from Football_Project import db

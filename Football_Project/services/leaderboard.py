@@ -2,11 +2,9 @@
 
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from collections import defaultdict
 
-from sqlalchemy import func, case, literal, and_
-from flask import current_app
-from sqlalchemy.sql import true
-
+from sqlalchemy import func, case, literal
 from ..extensions import db
 from ..models import User, Pick, Game
 
@@ -14,160 +12,80 @@ from ..models import User, Pick, Game
 # ----------------------------- helpers ---------------------------------------
 
 def _now_mt():
-    # single source of truth for "now" in Mountain time
-    return datetime.now(ZoneInfo("US/Mountain"))
+    return datetime.now(ZoneInfo("America/Denver"))
 
-def _locked_q_base():
-    """
-    Base query for LOCKED games using ONLY kickoff time:
-      Game.commence_time_mt <= now (US/Mountain)
-    """
-    return db.session.query(Game.id, Game.week).filter(Game.commence_time_mt <= _now_mt())
+def _norm_status(s: str | None) -> str:
+    return (s or "").strip().upper()
 
+def _is_final_status(s: str | None) -> bool:
+    # ESPN commonly uses "STATUS_FINAL" in your DB, but be tolerant.
+    ss = _norm_status(s)
+    return ss in {"STATUS_FINAL", "FINAL", "STATUS_GAME_OVER"}
 
-# ----------------------------- SEASON ----------------------------------------
-
-def _season_user_rows(current_week: int, season_year: int, season_type: str):
-    """
-    Season totals = sum of weekly metrics (using the weekly logic).
-
-    Users who have never picked IN THIS SEASON/TYPE -> start at current_week
-    (so they aren't penalized for earlier weeks in this season/type).
-
-    IMPORTANT: Everything is scoped to (season_year, season_type) via Game.
-    """
-    # Seed all users so folks with 0 picks still appear
-    users = db.session.query(User.id, User.username).all()
-    agg = {
-        u.id: {
-            "user_id": u.id,
-            "username": u.username,
-            "total_points": 0,
-            "total_correct": 0,
-            "total_forfeits": 0,
-            "picks_made": 0,
-            "best_week_points": 0,
-            "last_week_points": 0,
-        }
-        for u in users
-    }
-
-    # Per-user start week (first time they picked IN THIS season/type)
-    user_start_week = dict(
-        db.session.query(Pick.user_id, func.min(Pick.week))
-        .join(Game, Game.id == Pick.game_id)
+def _final_games_subq(season_year: int, season_type: str, week: int):
+    """Subquery of FINAL game ids for this season/type/week."""
+    return (
+        db.session.query(Game.id.label("gid"))
         .filter(
             Game.season_year == season_year,
             Game.season_type == season_type,
+            Game.week == week,
+            Game.status.isnot(None),
         )
-        .group_by(Pick.user_id)
-        .all()
+        .filter(
+            # can't call python function inside SQL; use SQL-friendly comparison
+            func.upper(func.trim(Game.status)).in_(["STATUS_FINAL", "FINAL", "STATUS_GAME_OVER"])
+        )
+        .subquery()
     )
 
-    # Users with no picks yet start at current week (only count from now)
-    for uid in agg.keys():
-        if uid not in user_start_week or user_start_week[uid] is None:
-            user_start_week[uid] = current_week
+def _eligible_games_subq(season_year: int, season_type: str, week: int):
+    """Subquery of ALL game ids for this season/type/week."""
+    return (
+        db.session.query(Game.id.label("gid"))
+        .filter(
+            Game.season_year == season_year,
+            Game.season_type == season_type,
+            Game.week == week,
+        )
+        .subquery()
+    )
 
-    # Only aggregate weeks that actually have locked games (IN THIS season/type)
-    now_mt = datetime.now(ZoneInfo("US/Mountain"))
-    weeks_with_locked = [
+def _weeks_with_finals(season_year: int, season_type: str, through_week: int):
+    """Weeks that have at least one FINAL game (season/type scoped)."""
+    weeks = [
         w for (w,) in (
             db.session.query(Game.week)
             .filter(
                 Game.season_year == season_year,
                 Game.season_type == season_type,
-                Game.week <= current_week,
-                Game.commence_time_mt <= now_mt,
+                Game.week <= through_week,
             )
+            .filter(func.upper(func.trim(Game.status)).in_(["STATUS_FINAL", "FINAL", "STATUS_GAME_OVER"]))
             .distinct()
             .order_by(Game.week)
             .all()
         )
     ]
-
-    # Sum weekly rows, but only for users whose start_week <= week
-    for w in weeks_with_locked:
-        weekly_rows = _weekly_user_rows(w, season_year, season_type)
-        for r in weekly_rows:
-            if w < user_start_week.get(r["user_id"], current_week):
-                continue  # don't penalize weeks before this user started (in this season/type)
-
-            a = agg[r["user_id"]]
-            pts = int(r["points"] or 0)
-            corr = int(r["correct"] or 0)
-            ffs = int(r["forfeits"] or 0)
-            pm  = int(r.get("picks_made", 0) or 0)
-
-            a["total_points"]   += pts
-            a["total_correct"]  += corr
-            a["total_forfeits"] += ffs
-            a["picks_made"]     += pm
-
-            if pts > a["best_week_points"]:
-                a["best_week_points"] = pts
-
-            # keep your existing "last week" behavior
-            if w == current_week - 1:
-                a["last_week_points"] = pts
-
-    # Finalize rows
-    rows = []
-    for a in agg.values():
-        picks_made = a["picks_made"]
-        correct = a["total_correct"]
-        accuracy = (correct / picks_made) * 100 if picks_made else 0.0
-        rows.append({
-            "user_id": a["user_id"],
-            "username": a["username"],
-            "total_points": int(a["total_points"]),
-            "total_correct": int(a["total_correct"]),
-            "total_forfeits": int(max(0, a["total_forfeits"])),
-            "accuracy": round(accuracy, 1),
-            "best_week_points": int(a["best_week_points"]),
-            "last_week_points": int(a["last_week_points"]),
-        })
-    return rows
+    return weeks
 
 
 # ----------------------------- WEEKLY ----------------------------------------
 
 def _weekly_user_rows(week: int, season_year: int, season_type: str):
     """
-    Per-user metrics for a single week.
-
-    Forfeits = (# locked games this week) - (# valid picks with confidence for those locked games)
-
-    IMPORTANT: Everything here is scoped to (season_year, season_type, week) via Game.
+    Weekly leaderboard:
+      - points = sum(Pick.points_earned) for picks in this season/type/week
+      - correct = count of picks with points_earned > 0 (same scope)
+      - forfeits = (# FINAL games this week) - (# picks with confidence among FINAL games)
     """
-    now_mt = datetime.now(ZoneInfo("US/Mountain"))
 
-    # Eligible games for THIS season/type/week (prevents cross-season bleed)
-    eligible_games = (
-        db.session.query(Game.id.label("gid"))
-        .filter(
-            Game.season_year == season_year,
-            Game.season_type == season_type,
-            Game.week == week,
-        )
-        .subquery()
-    )
+    eligible_games = _eligible_games_subq(season_year, season_type, week)
+    final_games = _final_games_subq(season_year, season_type, week)
 
-    # Locked games for this week (kickoff passed) — scoped to eligible games
-    locked_games = (
-        db.session.query(Game.id.label("gid"))
-        .filter(
-            Game.season_year == season_year,
-            Game.season_type == season_type,
-            Game.week == week,
-            Game.commence_time_mt <= now_mt,
-        )
-        .subquery()
-    )
-    locked_count = db.session.query(func.count(locked_games.c.gid)).scalar() or 0
+    final_count = db.session.query(func.count(final_games.c.gid)).scalar() or 0
 
-    # User list & points for the week:
-    # ONLY count picks that belong to eligible games for this season/type/week.
+    # Points/correct/picks_made — scoped via Pick.game_id in eligible games
     points_block = (
         db.session.query(
             User.id.label("user_id"),
@@ -186,14 +104,17 @@ def _weekly_user_rows(week: int, season_year: int, season_type: str):
         .subquery()
     )
 
-    # Valid picks among LOCKED games (confidence not null)
+    # Valid picks among FINAL games = picks that have confidence (not null) for FINAL games
     valid_picks = (
         db.session.query(
             Pick.user_id.label("user_id"),
             func.count(Pick.id).label("valid_picks"),
         )
-        .join(locked_games, locked_games.c.gid == Pick.game_id)
-        .filter(Pick.week == week, Pick.confidence.isnot(None))
+        .join(final_games, final_games.c.gid == Pick.game_id)
+        .filter(
+            Pick.week == week,
+            Pick.confidence.isnot(None),
+        )
         .group_by(Pick.user_id)
         .subquery()
     )
@@ -205,7 +126,7 @@ def _weekly_user_rows(week: int, season_year: int, season_type: str):
             points_block.c.points,
             points_block.c.correct,
             points_block.c.picks_made,
-            (literal(locked_count) - func.coalesce(valid_picks.c.valid_picks, 0)).label("forfeits"),
+            (literal(final_count) - func.coalesce(valid_picks.c.valid_picks, 0)).label("forfeits"),
         )
         .outerjoin(valid_picks, valid_picks.c.user_id == points_block.c.user_id)
         .all()
@@ -228,12 +149,91 @@ def _weekly_user_rows(week: int, season_year: int, season_type: str):
         })
     return res
 
+
+# ----------------------------- SEASON ----------------------------------------
+
+def _season_user_rows(current_week: int, season_year: int, season_type: str):
+    """
+    Season totals = sum of weekly rows for weeks that have FINAL games.
+    Users with no picks yet start at current_week (same behavior you had).
+    """
+
+    users = db.session.query(User.id, User.username).all()
+    agg = {
+        u.id: {
+            "user_id": u.id,
+            "username": u.username,
+            "total_points": 0,
+            "total_correct": 0,
+            "total_forfeits": 0,
+            "picks_made": 0,
+            "best_week_points": 0,
+            "last_week_points": 0,
+        }
+        for u in users
+    }
+
+    user_start_week = dict(
+        db.session.query(Pick.user_id, func.min(Pick.week))
+        .join(Game, Game.id == Pick.game_id)
+        .filter(
+            Game.season_year == season_year,
+            Game.season_type == season_type,
+        )
+        .group_by(Pick.user_id)
+        .all()
+    )
+
+    for uid in agg.keys():
+        if uid not in user_start_week or user_start_week[uid] is None:
+            user_start_week[uid] = current_week
+
+    weeks_with_finals = _weeks_with_finals(season_year, season_type, current_week)
+
+    for w in weeks_with_finals:
+        weekly_rows = _weekly_user_rows(w, season_year, season_type)
+        for r in weekly_rows:
+            if w < user_start_week.get(r["user_id"], current_week):
+                continue
+
+            a = agg[r["user_id"]]
+            pts = int(r["points"] or 0)
+            corr = int(r["correct"] or 0)
+            ffs = int(r["forfeits"] or 0)
+            pm  = int(r.get("picks_made", 0) or 0)
+
+            a["total_points"]   += pts
+            a["total_correct"]  += corr
+            a["total_forfeits"] += ffs
+            a["picks_made"]     += pm
+
+            if pts > a["best_week_points"]:
+                a["best_week_points"] = pts
+
+            if w == current_week - 1:
+                a["last_week_points"] = pts
+
+    rows = []
+    for a in agg.values():
+        picks_made = a["picks_made"]
+        correct = a["total_correct"]
+        accuracy = (correct / picks_made) * 100 if picks_made else 0.0
+        rows.append({
+            "user_id": a["user_id"],
+            "username": a["username"],
+            "total_points": int(a["total_points"]),
+            "total_correct": int(a["total_correct"]),
+            "total_forfeits": int(max(0, a["total_forfeits"])),
+            "accuracy": round(accuracy, 1),
+            "best_week_points": int(a["best_week_points"]),
+            "last_week_points": int(a["last_week_points"]),
+        })
+    return rows
+
+
+# ----------------------------- ranking ---------------------------------------
+
 def _apply_season_tiebreak(r):
-    """
-    Sort key for season leaderboard.
-    Higher points/correct/best_week rank first; fewer forfeits rank higher; 
-    username ASC as final stable key.
-    """
     return (
         -int(r.get("total_points", 0)),
         -int(r.get("total_correct", 0)),
@@ -243,10 +243,6 @@ def _apply_season_tiebreak(r):
     )
 
 def _apply_weekly_tiebreak(r):
-    # 1) Points DESC
-    # 2) Correct DESC
-    # 3) Fewest Forfeits ASC
-    # 4) Username ASC
     return (-r["points"], -r["correct"], r["forfeits"], r["username"].lower())
 
 
@@ -256,7 +252,6 @@ def get_season_leaderboard(current_week: int, season_year: int, season_type: str
     rows = _season_user_rows(current_week, season_year, season_type)
     rows.sort(key=_apply_season_tiebreak)
 
-    # dense rank
     rank, last_key = 0, None
     for r in rows:
         key = _apply_season_tiebreak(r)
@@ -281,7 +276,6 @@ def get_weekly_leaderboard(week: int, season_year: int, season_type: str):
     rows = _weekly_user_rows(week, season_year, season_type)
     rows.sort(key=_apply_weekly_tiebreak)
 
-    # Dense ranks with ties
     rank, last_key = 0, None
     for r in rows:
         key = _apply_weekly_tiebreak(r)
@@ -298,4 +292,3 @@ def get_weekly_leaderboard(week: int, season_year: int, season_type: str):
         "season_type": season_type,
     }
     return header, rows
-
