@@ -32,12 +32,6 @@ from Football_Project.services.schedule_service import update_schedule
 from Football_Project.models import JobRun
 from Football_Project.extensions import db
 
-def _is_migration_command() -> bool:
-    return (
-        "db" in sys.argv
-        or "alembic" in sys.argv
-        or os.getenv("SKIP_SCHEDULER") == "1"
-    )
 
 def schedule_update_job_with_context(app):
     with app.app_context():
@@ -282,98 +276,153 @@ def create_app():
     from .routes import main_bp
     app.register_blueprint(main_bp)
 
-    # --- APScheduler wiring ---
+        # --- APScheduler wiring ---
     disable_sched = os.environ.get("DISABLE_APSCHEDULER") == "1"
     is_reloader_child = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
 
+    def _is_migration_command() -> bool:
+        return (
+            "db" in sys.argv
+            or "alembic" in sys.argv
+            or os.getenv("SKIP_SCHEDULER") == "1"
+        )
+
+    # SMS helper
+    def reschedule_current_week_sms(app):
+        """Schedules (or reschedules) the first-kickoff reminder for the current week."""
+        from Football_Project.models import Settings  # keep local to avoid import-order issues
+
+        with app.app_context():
+            try:
+                settings = Settings.query.first()
+                if not settings:
+                    app.logger.warning("[SMS] Settings missing; skipping SMS reschedule.")
+                    return
+
+                week = get_current_week(settings.season_year, settings.season_type)
+                schedule_first_kick_sms_for_week(app, week, scheduler)
+                db.session.commit()
+
+            except Exception:
+                db.session.rollback()
+                raise
+            finally:
+                db.session.remove()
+
     if not disable_sched:
-        # Only start the scheduler in the serving process (not on flask CLI commands)
-        if (is_reloader_child or os.environ.get("FLASK_ENV") != "development") and not scheduler.running:
+        # Only start the scheduler in the serving process
+        should_start_scheduler = (
+            (is_reloader_child or os.environ.get("FLASK_ENV") != "development")
+            and not scheduler.running
+        )
+
+        if should_start_scheduler:
             scheduler.remove_all_jobs(jobstore="default")
 
-            # Scores/odds recurring jobs
+            # Scores recurring jobs
             scheduler.add_job(
-                auto_fetch_scores_with_context, "cron",
-                args=[app], day_of_week="mon,tue,wed,thu,fri,sat,sun",
-                hour="0-23", minute="*/5",
-                id="auto_fetch_scores_job", replace_existing=True
+                auto_fetch_scores_with_context,
+                "cron",
+                args=[app],
+                day_of_week="mon,tue,wed,thu,fri,sat,sun",
+                hour="0-23",
+                minute="*/5",
+                id="auto_fetch_scores_job",
+                replace_existing=True,
             )
             scheduler.add_job(
-                fetch_and_cache_scores_with_context, "cron",
-                args=[app], day_of_week="mon,tue,wed,thu,fri,sat,sun",
-                hour="0-23", minute="*/5",
-                id="fetch_and_cache_scores_job", replace_existing=True
+                fetch_and_cache_scores_with_context,
+                "cron",
+                args=[app],
+                day_of_week="mon,tue,wed,thu,fri,sat,sun",
+                hour="0-23",
+                minute="*/5",
+                id="fetch_and_cache_scores_job",
+                replace_existing=True,
             )
 
             # Odds retry windows
             scheduler.add_job(
-                odds_window_job_with_context, "cron",
-                args=[app, "TueAM"], day_of_week="tue", hour=7, minute=0,
-                id="odds_tue_am", replace_existing=True
+                odds_window_job_with_context,
+                "cron",
+                args=[app, "TueAM"],
+                day_of_week="tue",
+                hour=7,
+                minute=0,
+                id="odds_tue_am",
+                replace_existing=True,
             )
             scheduler.add_job(
-                odds_window_job_with_context, "cron",
-                args=[app, "TuePM"], day_of_week="tue", hour=19, minute=0,
-                id="odds_tue_pm", replace_existing=True
+                odds_window_job_with_context,
+                "cron",
+                args=[app, "TuePM"],
+                day_of_week="tue",
+                hour=19,
+                minute=0,
+                id="odds_tue_pm",
+                replace_existing=True,
             )
             scheduler.add_job(
-                odds_window_job_with_context, "cron",
-                args=[app, "WedAM"], day_of_week="wed", hour=7, minute=0,
-                id="odds_wed_am", replace_existing=True
+                odds_window_job_with_context,
+                "cron",
+                args=[app, "WedAM"],
+                day_of_week="wed",
+                hour=7,
+                minute=0,
+                id="odds_wed_am",
+                replace_existing=True,
             )
             scheduler.add_job(
-                odds_window_job_with_context, "cron",
-                args=[app, "WedPM"], day_of_week="wed", hour=19, minute=0,
-                id="odds_wed_pm", replace_existing=True
+                odds_window_job_with_context,
+                "cron",
+                args=[app, "WedPM"],
+                day_of_week="wed",
+                hour=19,
+                minute=0,
+                id="odds_wed_pm",
+                replace_existing=True,
             )
             scheduler.add_job(
-                odds_escalation_job_with_context, "cron",
-                args=[app], day_of_week="thu", hour=7, minute=0,
-                id="odds_escalation", replace_existing=True
-            )
-
-            # --- SMS: schedule 2h before first kickoff of current week ---
-            def reschedule_current_week_sms(app):
-                """Schedules (or reschedules) the first-kickoff reminder for the current week."""
-                with app.app_context():
-                    try:
-                        settings = Settings.query.first()
-                        if not settings:
-                            app.logger.warning("[SMS] Settings missing; skipping SMS reschedule.")
-                            return
-
-                        week = get_current_week(settings.season_year, settings.season_type)
-                        schedule_first_kick_sms_for_week(app, week, scheduler)
-                        db.session.commit()
-
-                    except Exception:
-                        db.session.rollback()
-                        raise
-                    finally:
-                        db.session.remove()
-
-            # Run once at startup
-            reschedule_current_week_sms(app)
-
-            # Safety: re-evaluate each morning in case week/kickoff changes
-            scheduler.add_job(
-                func=lambda: reschedule_current_week_sms(app),
-                trigger="cron",
-                hour=3, minute=5,  # Mountain time
-                id="sms_rescheduler_daily",
+                odds_escalation_job_with_context,
+                "cron",
+                args=[app],
+                day_of_week="thu",
+                hour=7,
+                minute=0,
+                id="odds_escalation",
                 replace_existing=True,
             )
 
+            # Schedule updater (weekly)
             scheduler.add_job(
                 func=lambda: schedule_update_job_with_context(app),
                 trigger="cron",
                 day_of_week="tue",
-                hour=6, minute=20,
+                hour=6,
+                minute=20,
                 id="schedule_update_tue_am",
                 replace_existing=True,
             )
 
+            # ✅ SMS scheduling should NOT run during migrations
+            if not _is_migration_command():
+                # Run once at startup
+                reschedule_current_week_sms(app)
+
+                # Re-evaluate each morning
+                scheduler.add_job(
+                    func=lambda: reschedule_current_week_sms(app),
+                    trigger="cron",
+                    hour=3,
+                    minute=5,
+                    id="sms_rescheduler_daily",
+                    replace_existing=True,
+                )
+            else:
+                app.logger.info("[INIT] Skipping SMS scheduling during migrations.")
+
             scheduler.start()
+
 
     atexit.register(lambda: scheduler.shutdown(wait=False) if scheduler.running else None)
     return app
