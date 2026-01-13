@@ -6,21 +6,9 @@ from Football_Project.models import Settings, Game
 MT = ZoneInfo("America/Denver")
 
 def compute_week_from_games(season_year: int, season_type: str) -> int | None:
-    now = datetime.now(MT).replace(tzinfo=None)  # if DB stores naive MT
+    now = datetime.now(MT).replace(tzinfo=None)
 
-    last_started = (Game.query
-        .filter(
-            Game.season_year == season_year,
-            Game.season_type == season_type,
-            Game.commence_time_mt.isnot(None),
-            Game.commence_time_mt <= now
-        )
-        .order_by(Game.commence_time_mt.desc())
-        .first()
-    )
-    if last_started:
-        return last_started.week
-
+    # ✅ Use earliest upcoming game as the "current week"
     upcoming = (Game.query
         .filter(
             Game.season_year == season_year,
@@ -34,7 +22,17 @@ def compute_week_from_games(season_year: int, season_type: str) -> int | None:
     if upcoming:
         return upcoming.week
 
-    return None
+    # Fallback: season over, use last game week
+    last_game = (Game.query
+        .filter(
+            Game.season_year == season_year,
+            Game.season_type == season_type,
+            Game.commence_time_mt.isnot(None)
+        )
+        .order_by(Game.commence_time_mt.desc())
+        .first()
+    )
+    return last_game.week if last_game else None
 
 def sync_settings_current_week():
     s = Settings.query.first()
