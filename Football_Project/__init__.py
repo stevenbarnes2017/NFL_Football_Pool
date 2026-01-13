@@ -10,7 +10,7 @@ from pytz import timezone
 from dotenv import load_dotenv
 from Football_Project.time_utils import fmt_mt
 from sqlalchemy.exc import OperationalError  # ✅ NEW
-
+import sys
 from .extensions import db
 from .models import User, JobRun
 from .utils import auto_fetch_scores, fetch_and_cache_scores
@@ -31,6 +31,13 @@ from Football_Project.services.season import get_current_season_context
 from Football_Project.services.schedule_service import update_schedule
 from Football_Project.models import JobRun
 from Football_Project.extensions import db
+
+def _is_migration_command() -> bool:
+    return (
+        "db" in sys.argv
+        or "alembic" in sys.argv
+        or os.getenv("SKIP_SCHEDULER") == "1"
+    )
 
 def schedule_update_job_with_context(app):
     with app.app_context():
