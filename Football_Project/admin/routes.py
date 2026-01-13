@@ -8,7 +8,7 @@ from . import admin_bp
 from collections import defaultdict
 from zoneinfo import ZoneInfo
 # Data / services
-from Football_Project.get_the_odds import get_nfl_spreads, save_spreads_to_db, get_current_week, save_to_csv
+from Football_Project.get_the_odds import get_nfl_spreads, save_spreads_to_db, save_to_csv
 from football_scores import get_football_scores, save_scores_to_csv  # NOTE: don't import save_scores_to_db here
 from Football_Project.models import db, Game, Settings, User, UserScore, Pick, JobRun, Announcement
 from Football_Project.utils import calculate_user_scores, save_game_scores_to_db  # keep the utils version
@@ -433,7 +433,7 @@ def admin_dashboard():
     season_type = (settings.season_type if settings else "REG")
 
     # Use settings.current_week if present; else your existing logic
-    current_week = settings.current_week if settings else get_current_week()
+    current_week = settings.current_week
 
     last_odds_fetch = _last_odds_fetch_for_week(current_week)
 
@@ -507,8 +507,18 @@ def admin_dashboard():
 @login_required
 def fetch_odds():
     try:
+        settings = Settings.query.first()
+        if not settings:
+            flash("Settings not found. Please initialize Settings first.", "danger")
+            return redirect(url_for('admin.admin_dashboard'))
+
         week_option = request.form.get('week_option')
-        week = int(request.form.get('week_number')) if week_option == 'override' else get_current_week()
+
+        # ✅ Use Settings.current_week unless admin overrides
+        if week_option == 'override':
+            week = int(request.form.get('week_number'))
+        else:
+            week = settings.current_week
 
         games_list, num_of_games = get_nfl_spreads()
 
@@ -530,10 +540,11 @@ def fetch_odds():
             flash(f"Odds for week {week} have been successfully saved to the database.", "success")
             return redirect(url_for('admin.admin_dashboard'))
 
-        # default: render odds preview
         return render_template('display_odds.html', games_list=games_list, week=week)
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         flash(f"An error occurred while fetching the odds: {str(e)}", "danger")
         return redirect(url_for('admin.admin_dashboard'))
 
@@ -541,14 +552,29 @@ def fetch_odds():
 @login_required
 def save_odds():
     try:
+        from .models import Settings  # adjust import path if needed
+
+        settings = Settings.query.first()
+        if not settings:
+            flash("Settings not found. Please initialize Settings first.", "danger")
+            return redirect(url_for('admin.admin_dashboard'))
+
         action = request.form.get('action')
         form_week = request.form.get('week')
-        week = int(form_week) if form_week else get_current_week()
+
+        # ✅ Use posted week if present, else Settings.current_week
+        week = int(form_week) if form_week else settings.current_week
+
         games_list, _ = get_nfl_spreads()
+
+        if not games_list:
+            flash("No odds data available.", "warning")
+            return redirect(url_for('admin.admin_dashboard'))
 
         if action == "db":
             save_spreads_to_db(games_list, week)
             flash(f"Odds for week {week} have been saved to the database.", "success")
+
         elif action == "csv":
             filename = f'nfl_spreads_week_{week}.csv'
             save_dir = os.path.join(current_app.root_path, 'static', 'downloads')
@@ -556,19 +582,23 @@ def save_odds():
             save_path = os.path.join(save_dir, filename)
             save_to_csv(games_list, save_path)
             return send_file(save_path, as_attachment=True)
+
         else:
             flash("Invalid action.", "danger")
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         flash(f"An error occurred: {str(e)}", "danger")
 
     return redirect(url_for('admin.admin_dashboard'))
+
 
 @admin_bp.route('/display_odds')
 @login_required
 def display_odds():
     settings = Settings.query.first()
-    current_week = settings.current_week if settings else get_current_week()
+    current_week = settings.current_week
     games = Game.query.filter_by(week=current_week).all()
     return render_template('display_odds.html', games_list=games, week=current_week)
 
@@ -1080,8 +1110,15 @@ def _missing_counts_for_week(week: int) -> dict:
 @admin_bp.route('/missing_picks', methods=['GET'])
 @login_required
 def missing_picks():
+    from .models import Settings  # adjust import path if needed
+
+    settings = Settings.query.first()
+    if not settings:
+        flash("Settings not found. Please initialize Settings first.", "danger")
+        return redirect(url_for('admin.admin_dashboard'))
+
     # Inputs (defaults)
-    week = request.args.get('week', type=int) or get_current_week()
+    week = request.args.get('week', type=int) or settings.current_week
     filter_opt = request.args.get('filter', 'any')  # any | zero | complete | all
 
     # Core counts (unlocked-aware)
@@ -1133,11 +1170,11 @@ def missing_picks():
         filter=filter_opt,
         total_games=total_games,
         rows=display_rows,
-        # summary tiles
         zero_count=zero_count,
         any_count=any_count,
         complete_count=complete_count,
     )
+
 
 
 
@@ -1148,7 +1185,15 @@ def view_user_picks(user_id: int):
         flash("You do not have permission to access this page.", "danger")
         return redirect(url_for('main.index'))
 
-    week = request.args.get('week', type=int) or get_current_week()
+    from .models import Settings  # adjust import path if needed
+
+    settings = Settings.query.first()
+    if not settings:
+        flash("Settings not found. Please initialize Settings first.", "danger")
+        return redirect(url_for('admin.admin_dashboard'))
+
+    week = request.args.get('week', type=int) or settings.current_week
+
     user = User.query.get_or_404(user_id)
     total_games = _total_games_for_week(week)
 
@@ -1205,7 +1250,6 @@ def view_user_picks(user_id: int):
     if joined:
         def norm(p, g):
             pick_team = getattr(p, 'team_picked', None)
-            # Confidence field fallback chain
             confidence = (
                 getattr(p, 'confidence', None)
                 or getattr(p, 'confidence_points', None)
@@ -1219,7 +1263,6 @@ def view_user_picks(user_id: int):
         picks_made = len(view_rows)
 
     else:
-        # Fallback: show picks even if we can't match a Game row
         picks = (
             Pick.query.filter_by(user_id=user_id, week=week)
             .order_by(getattr(Pick, 'pick_time', getattr(Pick, 'created_at', Pick.id)).desc())

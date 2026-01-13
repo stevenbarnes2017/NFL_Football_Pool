@@ -18,6 +18,7 @@ from .services import attempt_import_odds, is_week_odds_complete, send_admin_ema
 from Football_Project.services.season import get_current_week
 from .services.sms_helpers import sms_week_reminder_job, schedule_first_kick_sms_for_week
 from Football_Project.services.odds_care import attempt_import_odds, is_week_odds_complete
+from Football_Project.services.settings_sync import sync_settings_current_week
 
 
 load_dotenv()
@@ -172,6 +173,17 @@ def odds_window_job_with_context(app, label: str):
         finally:
             db.session.remove()
 
+def sync_settings_current_week_with_context(app):
+    with app.app_context():
+        from Football_Project.extensions import db
+        try:
+            res = sync_settings_current_week()
+            print(f"[WEEK_SYNC] {res}")
+        except Exception as e:
+            db.session.rollback()
+            print(f"[WEEK_SYNC] error: {e}")
+        finally:
+            db.session.remove()
 
 def odds_escalation_job_with_context(app):
     from flask import current_app
@@ -286,7 +298,7 @@ def create_app():
             or "alembic" in sys.argv
             or os.getenv("SKIP_SCHEDULER") == "1"
         )
-
+    
     # SMS helper
     def reschedule_current_week_sms(app):
         """Schedules (or reschedules) the first-kickoff reminder for the current week."""
@@ -401,6 +413,17 @@ def create_app():
                 hour=6,
                 minute=20,
                 id="schedule_update_tue_am",
+                replace_existing=True,
+            )
+            # Scheduled job to check the current week in Settings
+            scheduler.add_job(
+                func=sync_settings_current_week_with_context,
+                trigger="cron",
+                args=[app],
+                day_of_week="mon,tue,wed,thu,fri,sat,sun",
+                hour="0-23",
+                minute="*/15",
+                id="sync_current_week",
                 replace_existing=True,
             )
 

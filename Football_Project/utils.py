@@ -222,7 +222,22 @@ FINAL_STATUSES = {"STATUS_FINAL", "FINAL", "STATUS_GAME_OVER"}
 INPROG_STATUSES = {"STATUS_IN_PROGRESS", "IN_PROGRESS", "STATUS_HALFTIME"}  # add more if you store them
 
 
-def calculate_user_scores(week: int, season_year: int, season_type: str, write_final_only: bool = True):
+from collections import defaultdict
+from datetime import datetime
+
+from Football_Project.extensions import db
+from Football_Project.models import Game, Pick, UserScore
+
+# make sure these exist in your module
+# FINAL_STATUSES = {"STATUS_FINAL", "FINAL", "STATUS_GAME_OVER"}
+# INPROG_STATUSES = {"STATUS_IN_PROGRESS", "IN_PROGRESS", "STATUS_IN_PROGRESS"}  # match your norm_status outputs
+
+def calculate_user_scores(
+    week: int,
+    season_year: int,
+    season_type: str,
+    write_final_only: bool = True
+):
     games = (
         Game.query
         .filter_by(season_year=season_year, season_type=season_type, week=week)
@@ -231,6 +246,7 @@ def calculate_user_scores(week: int, season_year: int, season_type: str, write_f
 
     print(f"[SCORES] games_in_db={len(games)} season_year={season_year} season_type={season_type} week={week}")
 
+    # ✅ ONLY rely on Game.week (never Pick.week)
     picks = (
         Pick.query
         .join(Game, Game.id == Pick.game_id)
@@ -241,35 +257,17 @@ def calculate_user_scores(week: int, season_year: int, season_type: str, write_f
         )
         .all()
     )
-    # Quick visibility
-    distinct_statuses = {norm_status(g.status) for g in games}
-    print(f"[SCORES] games_in_db={len(games)} season_year={season_year} season_type={season_type} week={week}")
 
-
-    # Picks ONLY for games in THIS season context (join ensures scope is correct)
-    picks = (
-        Pick.query
-        .join(Game, Game.id == Pick.game_id)
-        .filter(
-            Game.season_year == season_year,
-            Game.season_type == season_type,
-            Game.week == week,
-            Pick.week == week,  # keep if you still store week on Pick
-        )
-        .all()
-    )
-
-    live_total_by_user = defaultdict(int)
+    live_total_by_user  = defaultdict(int)
     final_total_by_user = defaultdict(int)
 
     considered, awarded = 0, 0
-
     games_by_id = {g.id: g for g in games}
 
     for pick in picks:
         # Manual overrides: keep whatever is stored
         if getattr(pick, "is_overridden", False):
-            live_total_by_user[pick.user_id] += int(pick.points_earned or 0)
+            live_total_by_user[pick.user_id]  += int(pick.points_earned or 0)
             final_total_by_user[pick.user_id] += int(pick.points_earned or 0)
             continue
 
@@ -283,8 +281,7 @@ def calculate_user_scores(week: int, season_year: int, season_type: str, write_f
         is_inprog = g_status in INPROG_STATUSES
 
         if not (is_final or is_inprog):
-            # not started / scheduled / unknown -> don't award
-            continue
+            continue  # scheduled / unknown -> don't award
 
         considered += 1
         points = 0
@@ -297,57 +294,38 @@ def calculate_user_scores(week: int, season_year: int, season_type: str, write_f
         else:
             # Spread missing -> straight up winner
             if game.spread is None:
-                if home == away:
-                    # tie -> 0 points (adjust if you want different behavior)
-                    points = 0
-                else:
+                if home != away:
                     winner = game.home_team if home > away else game.away_team
                     if pick.team_picked == winner:
                         points = int(pick.confidence or 0)
-
             else:
                 fav = game.favorite_team
-
                 if not fav:
-                    # fallback to straight up if favorite missing
-                    if home == away:
-                        points = 0
-                    else:
+                    if home != away:
                         winner = game.home_team if home > away else game.away_team
                         if pick.team_picked == winner:
                             points = int(pick.confidence or 0)
                 else:
                     # margin from favorite's perspective
-                    if game.home_team == fav:
-                        margin = home - away
-                    else:
-                        margin = away - home
-
-                    # NOTE: your original logic was "margin > abs(spread)"
-                    # If you want pushes to count as NOT covered, keep ">"
-                    covered = margin > abs(game.spread)
+                    margin = (home - away) if game.home_team == fav else (away - home)
+                    covered = margin > abs(game.spread)  # push treated as not covered
 
                     if pick.team_picked == fav and covered:
                         points = int(pick.confidence or 0)
                     elif pick.team_picked != fav and not covered:
                         points = int(pick.confidence or 0)
 
-        # Update pick row for live views
         pick.points_earned = points
         db.session.add(pick)
 
         live_total_by_user[pick.user_id] += points
-
         if is_final:
             final_total_by_user[pick.user_id] += points
             awarded += 1 if points else 0
 
-    print(f"[GRADE] {season_type} {season_year} week={week} games={len(games)} picks={len(picks)}")
+    print(f"[GRADE] {season_type} {season_year} week={week} games={len(games)} picks={len(picks)} considered={considered}")
     db.session.commit()
 
-    print(f"[scores] Week {week}: considered={considered} final_awards>0={awarded}")
-
-    # Persist to UserScore (FINAL-only totals)
     if write_final_only:
         for user_id, score in final_total_by_user.items():
             row = (
@@ -389,48 +367,25 @@ def get_current_season_year():
 def auto_fetch_scores():
     """Fetch and process scores automatically."""
     try:
-        from flask import current_app
         from .extensions import db
-        from .models import Settings, Game
+        from .models import Settings
 
         print("auto_fetch_scores triggered")
 
-        # ✅ Always use Settings as source of truth
         settings = Settings.query.first()
         if not settings:
             print("[SCORES] No Settings row found; skipping")
             return
 
         season_year = settings.season_year
-        season_type = settings.season_type   # "REG"/"POST"/"PRE"
+        season_type = settings.season_type
         current_week = settings.current_week
 
-        # ✅ Always update current week
+        # ✅ Simple: always refresh current + previous
         weeks_to_update = {current_week}
-
-        # ✅ Also update previous week if any game is not FINAL
         prev = (current_week or 0) - 1
         if prev >= 1:
-            has_unfinal = (
-                Game.query.filter(
-                    Game.season_year == season_year,
-                    Game.season_type == season_type,
-                    Game.week == prev,
-                    Game.status.isnot(None),
-                    Game.status != "FINAL"
-                ).count() > 0
-            )
-
-            # If status can be NULL early, you might want this instead:
-            # has_unfinal = Game.query.filter(
-            #     Game.season_year == season_year,
-            #     Game.season_type == season_type,
-            #     Game.week == prev,
-            #     Game.status != "FINAL"
-            # ).count() > 0
-
-            if has_unfinal:
-                weeks_to_update.add(prev)
+            weeks_to_update.add(prev)
 
         print(f"[SCORES] Updating weeks: {sorted(weeks_to_update)} for {season_type} {season_year}")
 
@@ -441,9 +396,10 @@ def auto_fetch_scores():
             calculate_user_scores(wk)
             print(f"[SCORES] calculated user scores for week={wk}")
 
-    except Exception as e:
-        # Ideally: logger.exception(...)
-        print(f"Error in auto_fetch_scores: {e}")
+    except Exception:
+        import traceback
+        print("Error in auto_fetch_scores:")
+        traceback.print_exc()
     finally:
         print("Finished running auto_fetch_scores")
 

@@ -516,23 +516,37 @@ def results():
 @main_bp.route('/user_scores/<int:week>', methods=['GET'])
 @login_required
 def user_scores(week):
-    week = get_current_week()
-    # Fetch the current user's pre-calculated score for the given week
-    current_user_score = UserScore.query.filter_by(user_id=current_user.id, week=week).first()
-    current_user_score = current_user_score.score if current_user_score else 0
+    from .models import Settings  # adjust import path if needed
 
-    # Fetch all pre-calculated scores for the given week
+    settings = Settings.query.first()
+    if not settings:
+        # If settings missing, just use the week from the URL
+        pass
+
+    # ✅ week comes from the URL; no get_current_week() call
+    current_user_score_row = UserScore.query.filter_by(
+        user_id=current_user.id,
+        week=week
+    ).first()
+    current_user_score = current_user_score_row.score if current_user_score_row else 0
+
     all_scores = UserScore.query.filter_by(week=week).all()
 
-    # Prepare the scores for display
     all_user_scores = {
         score.user_id: {
-            'username': score.user.username,
-            'score': score.score
-        } for score in all_scores
+            "username": score.user.username,
+            "score": score.score
+        }
+        for score in all_scores
     }
 
-    return render_template('user_scores.html', current_user_score=current_user_score, all_scores=all_user_scores, week=week)
+    return render_template(
+        "user_scores.html",
+        current_user_score=current_user_score,
+        all_scores=all_user_scores,
+        week=week
+    )
+
 
 
 @main_bp.route('/see_picks', methods=['GET', 'POST'])
