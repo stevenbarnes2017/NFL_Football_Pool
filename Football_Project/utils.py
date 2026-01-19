@@ -147,23 +147,42 @@ def fetch_and_cache_scores():
 def save_week_scores_to_db(year, seasontype, weeknum):
     """
     Fetch and save the football game scores for a given year, season type, and week.
+    Returns a human-readable status string (and logs useful debug info).
     """
     try:
-        # Fetch the football game scores for the given week
-        games = get_football_scores(year, seasontype, weeknum)  # This returns a list
+        # Fetch scores from ESPN (list of dicts)
+        games = get_football_scores(year, seasontype, weeknum)
 
-        # Check if games were retrieved successfully
         if not games:
-            print(f"No games data to save for week {weeknum}.")
+            msg = f"[SCORES] No games returned for year={year} type={seasontype} week={weeknum}"
+            print(msg)
             return f"No data available for week {weeknum}."
 
-        # Save each game's score to the database
-        save_scores_to_db(games, weeknum)  # Assumes save_scores_to_db can handle a list of game dictionaries
-        return f"Successfully saved game scores for week {weeknum} to the database."
+        print(f"[SCORES] Fetched year={year} type={seasontype} week={weeknum} events={len(games)}")
+
+        # Save to DB and get real counts back (update save_scores_to_db to return these)
+        result = save_scores_to_db(games, weeknum)
+
+        # Support both return styles: tuple (matched, updated) or dict
+        matched = updated = None
+        if isinstance(result, tuple) and len(result) == 2:
+            matched, updated = result
+        elif isinstance(result, dict):
+            matched = result.get("matched")
+            updated = result.get("updated")
+
+        if matched is not None and updated is not None:
+            print(f"[SCORES] Saved week={weeknum} matched={matched} updated={updated}")
+            return f"Saved week {weeknum}: matched={matched}, updated={updated}."
+        else:
+            # If save_scores_to_db doesn't return counts yet
+            print(f"[SCORES] Saved week={weeknum} (no counts returned from save_scores_to_db)")
+            return f"Successfully saved game scores for week {weeknum} to the database."
 
     except Exception as e:
-        print(f"An error occurred while fetching or saving the scores: {e}")
+        print(f"[SCORES] Error saving scores year={year} type={seasontype} week={weeknum}: {e}")
         return str(e)
+
 
 
 
