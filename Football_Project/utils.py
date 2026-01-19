@@ -393,7 +393,7 @@ def auto_fetch_scores():
             result = save_week_scores_to_db(season_year, season_type, wk)
             print(f"[SCORES] save_week_scores_to_db week={wk} -> {result}")
 
-            calculate_user_scores(wk)
+            calculate_user_scores(wk, season_year, season_type)
             print(f"[SCORES] calculated user scores for week={wk}")
 
     except Exception:
@@ -521,8 +521,18 @@ def highest_available_confidence(user_id: int, week: int) -> int | None:
 def lock_picks_for_commenced_games(user_id):
     from datetime import datetime, timezone
     import pytz
-
+    from .models import Settings
+    from .extensions import db
     now_utc = datetime.now(timezone.utc)
+
+    settings = Settings.query.first()
+    if not settings:
+        # Nothing to lock if settings not initialized
+        return
+
+    season_year = settings.season_year
+    season_type = settings.season_type
+
     current_week = get_current_week(season_year, season_type)
 
     week_games = Game.query.filter(Game.week == current_week).all()
