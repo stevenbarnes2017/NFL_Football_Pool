@@ -23,7 +23,7 @@ from datetime import datetime
 from pytz import timezone  # Add this
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from .extensions import db
-from .models import Game, Pick, User, Settings, UserScore, Announcement
+from .models import Game, Pick, User, Settings, UserScore, Announcement, BoardThread, BoardPost
 #from flask_mail import Message  # if you use Flask-Mail
 from .utils import generate_token, verify_token
 from .services.leaderboard import get_season_leaderboard, get_weekly_leaderboard
