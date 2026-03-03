@@ -38,7 +38,7 @@ def get_current_week(season_year, season_type):
         .filter(
             Game.season_year == season_year,
             Game.season_type == season_type,
-            Game.status != "completed"
+            Game.status != "STATUS_FINAL"
         )
         .scalar()
     )

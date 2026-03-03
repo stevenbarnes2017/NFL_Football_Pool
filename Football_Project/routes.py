@@ -1320,8 +1320,87 @@ def leaderboard():
         season_type=season_type,
     )
 
+@main.route("/board")
+@login_required
+def board():
+    page = request.args.get("page", 1, type=int)
 
+    threads = (
+        BoardThread.query
+        .filter_by(is_active=True)
+        .order_by(BoardThread.pinned.desc(),
+                  BoardThread.last_activity_at.desc())
+        .paginate(page=page, per_page=25)
+    )
 
+    return render_template("board.html", threads=threads)
+
+@main.route("/board/thread/<int:thread_id>", methods=["GET", "POST"])
+@login_required
+def view_thread(thread_id):
+    thread = BoardThread.query.get_or_404(thread_id)
+
+    if request.method == "POST":
+        if thread.locked:
+            flash("Thread is locked.", "warning")
+            return redirect(url_for("main.view_thread", thread_id=thread.id))
+
+        body = request.form.get("body")
+
+        if not body:
+            flash("Post cannot be empty.", "danger")
+        else:
+            post = BoardPost(
+                thread_id=thread.id,
+                author_user_id=current_user.id,
+                body=body
+            )
+            db.session.add(post)
+
+            thread.last_activity_at = datetime.utcnow()
+
+            db.session.commit()
+
+            return redirect(url_for("main.view_thread", thread_id=thread.id))
+
+    posts = (
+        BoardPost.query
+        .filter_by(thread_id=thread.id, is_active=True)
+        .order_by(BoardPost.created_at.asc())
+        .all()
+    )
+
+    return render_template("thread.html", thread=thread, posts=posts)
+
+@main.route("/board/new", methods=["GET", "POST"])
+@login_required
+def new_thread():
+    if request.method == "POST":
+        title = request.form.get("title")
+        body = request.form.get("body")
+
+        if not title or not body:
+            flash("Title and body required.", "danger")
+        else:
+            thread = BoardThread(
+                title=title,
+                created_by_user_id=current_user.id
+            )
+            db.session.add(thread)
+            db.session.flush()  # get thread.id
+
+            first_post = BoardPost(
+                thread_id=thread.id,
+                author_user_id=current_user.id,
+                body=body
+            )
+            db.session.add(first_post)
+
+            db.session.commit()
+
+            return redirect(url_for("main.view_thread", thread_id=thread.id))
+
+    return render_template("new_thread.html")
 
 
 
