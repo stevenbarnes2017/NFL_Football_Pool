@@ -1320,7 +1320,7 @@ def leaderboard():
         season_type=season_type,
     )
 
-@main.route("/board")
+@main_bp.route("/board")
 @login_required
 def board():
     page = request.args.get("page", 1, type=int)
@@ -1335,7 +1335,7 @@ def board():
 
     return render_template("board.html", threads=threads)
 
-@main.route("/board/thread/<int:thread_id>", methods=["GET", "POST"])
+@main_bp.route("/board/thread/<int:thread_id>", methods=["GET", "POST"])
 @login_required
 def view_thread(thread_id):
     thread = BoardThread.query.get_or_404(thread_id)
@@ -1372,7 +1372,7 @@ def view_thread(thread_id):
 
     return render_template("thread.html", thread=thread, posts=posts)
 
-@main.route("/board/new", methods=["GET", "POST"])
+@main_bp.route("/board/new", methods=["GET", "POST"])
 @login_required
 def new_thread():
     if request.method == "POST":
