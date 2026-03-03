@@ -5,6 +5,8 @@
 <h2>Start a New Thread</h2>
 
 <form method="POST">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
   <label>Title</label><br>
   <input type="text" name="title" required><br><br>
 
