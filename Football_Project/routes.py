@@ -1322,19 +1322,21 @@ def leaderboard():
 
 @main_bp.route("/board")
 @login_required
-def board():
+def board_threads():
     page = request.args.get("page", 1, type=int)
 
     threads = (
         BoardThread.query
-        .filter_by(is_active=True)
-        .order_by(BoardThread.pinned.desc(),
-                  BoardThread.last_activity_at.desc())
-        .paginate(page=page, per_page=25)
+        .filter(BoardThread.is_active.is_(True))
+        .order_by(
+            BoardThread.pinned.desc(),
+            BoardThread.last_activity_at.desc(),
+            BoardThread.created_at.desc(),
+        )
+        .paginate(page=page, per_page=25, error_out=False)
     )
 
-    return render_template("board.html", threads=threads)
-
+    return render_template("board_threads.html", threads=threads)
 @main_bp.route("/board/thread/<int:thread_id>", methods=["GET", "POST"])
 @login_required
 def view_thread(thread_id):
