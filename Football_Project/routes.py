@@ -33,30 +33,6 @@ from Football_Project.services.season import get_current_season_context
 
 main_bp = Blueprint('main', __name__)
 
-@main_bp.route("/board", methods=["GET"])
-@login_required
-def board_threads():
-    # placeholder for now
-    return render_template("board_threads.html")
-
-@main_bp.route("/announcements", methods=["GET"])
-@login_required
-def announcements():
-    season_year, season_type = get_current_season_context()
-
-    items = (
-        Announcement.query
-        .filter(Announcement.is_active.is_(True))
-        .order_by(Announcement.pinned.desc(), Announcement.created_at.desc())
-        .all()
-    )
-
-    return render_template(
-        "announcements.html",
-        announcements=items,
-        season_year=season_year,
-        season_type=season_type,
-    )
 
 @main_bp.route('/playoff-picture')
 def playoff_picture():
