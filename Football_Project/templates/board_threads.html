@@ -34,13 +34,13 @@
 {% if threads.pages > 1 %}
   <div class="pagination">
     {% if threads.has_prev %}
-      <a href="{{ url_for('main.board', page=threads.prev_num) }}">Previous</a>
+      <a href="{{ url_for('main.board_threads', page=threads.prev_num) }}">Previous</a>
     {% endif %}
 
     Page {{ threads.page }} of {{ threads.pages }}
 
     {% if threads.has_next %}
-      <a href="{{ url_for('main.board', page=threads.next_num) }}">Next</a>
+      <a href="{{ url_for('main.board_threads', page=threads.next_num) }}">Next</a>
     {% endif %}
   </div>
 {% endif %}
