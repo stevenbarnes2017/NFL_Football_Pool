@@ -31,7 +31,7 @@ class GroupMember(db.Model):
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     joined_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
-    group = db.relationship("Group", back_populates="members")
+    group = db.relationship("PoolGroup", back_populates="members")
     user = db.relationship("User", back_populates="group_memberships")
 # ----------------------------
 # User Model
