@@ -25,6 +25,7 @@ class GroupMember(db.Model):
     __tablename__ = "group_member"
 
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     group_id = db.Column(db.Integer, db.ForeignKey("pool_group.id"), nullable=False)
     group = db.relationship("PoolGroup", back_populates="members")
     role = db.Column(db.String(20), nullable=False, default="member")
