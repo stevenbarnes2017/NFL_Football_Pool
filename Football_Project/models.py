@@ -118,7 +118,7 @@ class Pick(db.Model):
     points_earned = db.Column(db.Integer, default=0)
     is_overridden = db.Column(db.Boolean, default=False)
     group_id = db.Column(db.Integer, db.ForeignKey("pool_group.id"), nullable=False)
-    group = db.relationship("PoolGroup", back_populates="members")
+    group = db.relationship("PoolGroup", back_populates="picks")
 
     # ✅ ADD THIS:
     #user = db.relationship('User', backref='picks', lazy=True)
