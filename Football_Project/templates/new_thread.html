@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}New Thread{% endblock %}
+
+{% block content %}
+<h2>Start a New Thread</h2>
+
+<form method="POST">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <label>Title</label><br>
+  <input type="text" name="title" required><br><br>
+
+  <label>Message</label><br>
+  <textarea name="body" rows="6" required></textarea><br><br>
+
+  <button type="submit">Create Thread</button>
+</form>
+
+<a href="{{ url_for('main.board_threads') }}">Cancel</a>
+
+{% endblock %}

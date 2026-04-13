@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Message Board{% endblock %}
+
+{% block content %}
+<h1>Message Board</h1>
+
+<a href="{{ url_for('main.new_thread') }}" class="btn btn-primary">
+  Start New Thread
+</a>
+
+<hr>
+
+{% for thread in threads.items %}
+  <div class="thread-card">
+    {% if thread.pinned %}
+      📌
+    {% endif %}
+
+    <a href="{{ url_for('main.view_thread', thread_id=thread.id) }}">
+      <strong>{{ thread.title }}</strong>
+    </a>
+
+    <div class="thread-meta">
+      Started by {{ thread.created_by.username }}
+      • {{ thread.created_at.strftime("%Y-%m-%d %H:%M") }}
+      • {{ thread.posts|length }} replies
+    </div>
+  </div>
+  <hr>
+{% else %}
+  <p>No threads yet. Start one!</p>
+{% endfor %}
+
+{% if threads.pages > 1 %}
+  <div class="pagination">
+    {% if threads.has_prev %}
+      <a href="{{ url_for('main.board_threads', page=threads.prev_num) }}">Previous</a>
+    {% endif %}
+
+    Page {{ threads.page }} of {{ threads.pages }}
+
+    {% if threads.has_next %}
+      <a href="{{ url_for('main.board_threads', page=threads.next_num) }}">Next</a>
+    {% endif %}
+  </div>
+{% endif %}
+
+{% endblock %}
+

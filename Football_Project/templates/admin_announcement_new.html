@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}New Announcement{% endblock %}
+{% block content %}
+<h1>Post Announcement</h1>
+
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div style="max-width:720px;">
+    <label style="display:block; margin:10px 0 4px;">Title</label>
+    <input name="title" style="width:100%; padding:10px; border:1px solid #ccc; border-radius:6px;">
+
+    <label style="display:block; margin:10px 0 4px;">Body</label>
+    <textarea name="body" rows="8" style="width:100%; padding:10px; border:1px solid #ccc; border-radius:6px;"></textarea>
+
+    <label style="display:flex; gap:8px; align-items:center; margin-top:10px;">
+      <input type="checkbox" name="pinned" value="1">
+      Pin this announcement
+    </label>
+
+    <div style="margin-top:14px;">
+      <button type="submit" style="padding:10px 14px; border-radius:6px; border:0; background:#3b82f6; color:white;">
+        Post
+      </button>
+      <a href="{{ url_for('admin.admin_announcements') }}" style="margin-left:10px;">Cancel</a>
+    </div>
+  </div>
+</form>
+{% endblock %}

@@ -89,23 +89,35 @@ def main():
     filename = f"football_scores_week{weeknum}.csv"
     save_scores_to_csv(football_scores, filename)
 
-def save_scores_to_db(games, week):
-        if games:
-            for game in games:                
-                existing_game = Game.query.filter_by(
-                    home_team=game['home_team'],
-                    away_team=game['away_team'],
-                    week=week
-                ).first()
+def save_scores_to_db(games, weeknum):
+    from .extensions import db
+    from .models import Game
 
-                if existing_game:
-                    existing_game.home_team_score = game['home_score']
-                    existing_game.away_team_score = game['away_score']
-                    existing_game.status = game['status']  # Save the game status
-                    db.session.commit()
-            print(f"Scores for week {week} saved to the database.")
-        else:
-            print("No data to save.")
+    matched = updated = 0
+
+    for g in games:
+        espn_id = str(g.get("game_id") or g.get("id"))  # depends on your get_football_scores shape
+        if not espn_id:
+            continue
+
+        game = Game.query.filter_by(game_id=espn_id).first()
+        if not game:
+            # optional: log miss
+            continue
+
+        matched += 1
+
+        # update fields your UI reads
+        game.home_team_score = g.get("home_team_score")
+        game.away_team_score = g.get("away_team_score")
+        game.status = g.get("status")
+        # also make sure week/year/type are set correctly if needed
+        updated += 1
+
+    db.session.commit()
+    print(f"[SCORES] week={weeknum} matched={matched} updated={updated}")
+    return matched, updated
+
 
 # Run the main function
 if __name__ == "__main__":

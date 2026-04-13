@@ -1,5 +1,5 @@
 # Football_Project/admin/routes.py
-from flask import render_template, request, redirect, url_for, flash, send_file, current_app, abort, Blueprint
+from flask import render_template, request, redirect, url_for, flash, send_file, current_app, abort, Blueprint, session
 from flask_login import login_required, current_user
 from datetime import datetime, timezone
 import os
@@ -8,12 +8,257 @@ from . import admin_bp
 from collections import defaultdict
 from zoneinfo import ZoneInfo
 # Data / services
-from Football_Project.get_the_odds import get_nfl_spreads, save_spreads_to_db, get_current_week, save_to_csv
+from Football_Project.get_the_odds import get_nfl_spreads, save_spreads_to_db, save_to_csv
 from football_scores import get_football_scores, save_scores_to_csv  # NOTE: don't import save_scores_to_db here
-from Football_Project.models import db, Game, Settings, User, UserScore, Pick
+from Football_Project.models import db, Game, Settings, User, UserScore, Pick, JobRun, Announcement
 from Football_Project.utils import calculate_user_scores, save_game_scores_to_db  # keep the utils version
 from werkzeug.security import generate_password_hash
 from Football_Project.services.sms_helpers import sms_week_reminder_job
+from Football_Project.services.season import get_current_season_context, get_current_week
+from Football_Project.services.schedule_service import update_schedule
+
+
+
+#--------------------------
+# Admin Announcements
+#--------------------------
+
+@admin_bp.route("/board", methods=["GET"])
+@login_required
+def admin_board():
+    # placeholder for later moderation UI
+    return render_template("admin_board.html")
+
+
+@admin_bp.route("/announcements", methods=["GET"])
+@login_required
+def admin_announcements():
+    # optional: prefill season context defaults
+    season_year, season_type = get_current_season_context()
+
+    announcements = (
+        Announcement.query
+        .filter(Announcement.is_active.is_(True))
+        .order_by(Announcement.pinned.desc(), Announcement.created_at.desc())
+        .all()
+    )
+
+    return render_template(
+        "admin_announcements.html",
+        announcements=announcements,
+        season_year=season_year,
+        season_type=season_type,
+    )
+
+
+@admin_bp.route("/announcements/new", methods=["POST"])
+@login_required
+def admin_announcement_new():
+    title = (request.form.get("title") or "").strip()
+    body = (request.form.get("body") or "").strip()
+
+    # optional context fields
+    season_year = request.form.get("season_year", type=int)
+    season_type = (request.form.get("season_type") or "").strip().upper() or None
+    week = request.form.get("week", type=int)
+
+    pinned = True if request.form.get("pinned") in ("1", "on", "true", "True") else False
+
+    if not title or not body:
+        flash("Title and message are required.", "danger")
+        return redirect(url_for("admin.admin_announcements"))
+
+    try:
+        ann = Announcement(
+            title=title,
+            body=body,
+            created_by_user_id=current_user.id,
+            season_year=season_year,
+            season_type=season_type,
+            week=week,
+            pinned=pinned,
+            is_active=True,
+        )
+        db.session.add(ann)
+        db.session.commit()
+        flash("Announcement posted.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Failed to post announcement: {e}", "danger")
+
+    return redirect(url_for("admin.admin_announcements"))
+
+
+@admin_bp.route("/announcements/<int:ann_id>/toggle_pin", methods=["POST"])
+@login_required
+def admin_toggle_announcement_pin(ann_id):
+    ann = Announcement.query.get_or_404(ann_id)
+
+    try:
+        ann.pinned = not bool(ann.pinned)
+        db.session.commit()
+        flash(f"Announcement {'pinned' if ann.pinned else 'unpinned'}.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Failed to update: {e}", "danger")
+
+    return redirect(url_for("admin.admin_announcements"))
+
+
+@admin_bp.route("/announcements/<int:ann_id>/delete", methods=["POST"])
+@login_required
+def admin_delete_announcement(ann_id):
+    ann = Announcement.query.get_or_404(ann_id)
+
+    try:
+        ann.is_active = False
+        db.session.commit()
+        flash("Announcement removed.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Failed to remove: {e}", "danger")
+
+    return redirect(url_for("admin.admin_announcements"))
+
+   
+
+
+
+#--------------------------
+# Admin Game Schedule 
+#--------------------------
+
+@admin_bp.route("/update_schedule", methods=["POST"])
+@login_required
+def admin_update_schedule():
+    from datetime import datetime
+    from Football_Project.extensions import db
+    from Football_Project.models import JobRun
+    from Football_Project.services.schedule_service import update_schedule
+    from Football_Project.services.season import get_current_season_context
+
+    # single source of truth
+    season_year, season_type_label = get_current_season_context()
+
+    season_type_map = {"PRE": 1, "REG": 2, "POST": 3}
+    season_type = season_type_map.get((season_type_label or "REG").upper(), 2)
+
+    # optional override from form (week range)
+    try:
+        week_end = int(request.form.get("week_end", 18))
+    except ValueError:
+        week_end = 18
+
+    try:
+        result = update_schedule(
+            season_year=season_year,
+            season_type=season_type,
+            week_start=1,
+            week_end=week_end,
+        )
+
+        # ✅ record job run
+        jr = JobRun(
+            job_name="schedule_update",
+            ran_at=datetime.utcnow(),
+            ok=True,
+            inserted=result.get("inserted", 0),
+            updated=result.get("updated", 0),
+            unchanged=result.get("unchanged", 0),
+            failed_weeks=result.get("failed_weeks", 0),
+            message=f"Manual schedule update from admin (Y{season_year} {season_type_label}, weeks 1-{week_end})",
+        )
+        db.session.add(jr)
+        db.session.commit()
+
+        flash(
+            f"Schedule updated: "
+            f"{result.get('inserted', 0)} added, "
+            f"{result.get('updated', 0)} updated, "
+            f"{result.get('unchanged', 0)} unchanged"
+            + (f", {result.get('failed_weeks', 0)} week(s) failed" if result.get("failed_weeks", 0) else ""),
+            "success",
+        )
+
+    except Exception as e:
+        db.session.rollback()
+
+        # ✅ record failed job run
+        try:
+            jr = JobRun(
+                job_name="schedule_update",
+                ran_at=datetime.utcnow(),
+                ok=False,
+                inserted=0,
+                updated=0,
+                unchanged=0,
+                failed_weeks=0,
+                message=str(e)[:500],
+            )
+            db.session.add(jr)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+        flash(f"Schedule update failed: {e}", "danger")
+
+    return redirect(url_for("admin.admin_dashboard"))
+
+
+#--------------------------
+# Admin User Views
+#--------------------------
+@admin_bp.route("/view_as_user", methods=["POST"])
+@login_required
+def view_as_user():
+    if not current_user.is_admin:
+        flash("Not authorized.", "danger")
+        return redirect(url_for("admin.manage_users"))
+
+    user_id = request.form.get("user_id", type=int)
+    if not user_id:
+        flash("Please select a user.", "warning")
+        return redirect(url_for("admin.manage_users"))
+
+    # ✅ USE THE SAME KEY nfl_picks READS
+    session["view_as_user_id"] = user_id
+    session.modified = True
+
+    flash(f"Now viewing as user {user_id}.", "success")
+    return redirect(url_for("main.user_dashboard"))
+
+@admin_bp.route("/exit_view_as_user", methods=["POST"])
+@login_required
+def exit_view_as_user():
+    if not current_user.is_admin:
+        flash("Not authorized.", "danger")
+        return redirect(url_for("admin.manage_users"))
+
+    session.pop("view_as_user_id", None)
+    session.modified = True
+
+    flash("View-as user disabled.", "info")
+    return redirect(url_for("admin.manage_users"))
+
+@admin_bp.route("/force_exit_view_as", methods=["GET"])
+@login_required
+def force_exit_view_as():
+    if not current_user.is_admin:
+        return "Not authorized", 403
+
+    session.pop("view_as_user_id", None)
+    session.pop("admin_view_as_user_id", None)
+    session.modified = True
+    return "OK: view-as cleared"
+
+@admin_bp.route("/debug_session", methods=["GET"])
+@login_required
+def debug_session():
+    if not current_user.is_admin:
+        return "Not authorized", 403
+    return f"session={dict(session)}"
+
+
 
 @admin_bp.route("/test_sms/<int:week>")
 def test_sms_week(week):
@@ -153,26 +398,83 @@ def _last_odds_fetch_for_week(week: int):
         ts = ts.replace(tzinfo=timezone.utc)
     return ts.astimezone(ZoneInfo("US/Mountain")).strftime("%Y-%m-%d %I:%M %p %Z")
 
+def _settings_to_espn_seasontype(settings) -> int:
+    if not settings or not settings.season_type:
+        return 2
+
+    st = settings.season_type.upper()
+    if st in ("PRE", "PRESEASON"):
+        return 1
+    if st in ("REG", "REGULAR"):
+        return 2
+    if st in ("POST", "POSTSEASON", "PLAYOFFS"):
+        return 3
+
+    return 2
+
+def in_view_as_mode():
+    return bool(session.get("view_as_user_id") or session.get("admin_view_as_user_id"))
+
 @admin_bp.route('/admin_dashboard')
 @login_required
 def admin_dashboard():
-    current_year = datetime.utcnow().year
-    default_season_type = 2  # regular season default
-    current_week = get_current_week()                      # ← define first
-    last_odds_fetch = _last_odds_fetch_for_week(current_week)  # ← now safe
+    print("ADMIN_DASH session keys:", dict(session))  # TEMP DEBUG
+
+    if in_view_as_mode():
+        return redirect(url_for("main.user_dashboard"))
+
+    settings = Settings.query.first()
+
+    # Fallbacks if settings row somehow missing (shouldn't happen now)
+    season_year = settings.season_year if settings else datetime.utcnow().year
+    default_season_type = _settings_to_espn_seasontype(settings)
+
+    # Your settings season_type appears to be 'REG'/'POST'/'PRE' (string)
+    season_type = (settings.season_type if settings else "REG")
+
+    # Use settings.current_week if present; else your existing logic
+    current_week = settings.current_week
+
+    last_odds_fetch = _last_odds_fetch_for_week(current_week)
+
+    last_schedule_sync = (
+        JobRun.query
+        .filter_by(job_name="schedule_update")
+        .order_by(JobRun.ran_at.desc())
+        .first()
+    )
 
     weeks = list(range(1, current_week + 1))
     users = User.query.order_by(User.username).all()
-    total_games = _total_games_for_week(current_week)
-    counts = _missing_counts_for_week(current_week)
 
-    # Status cards (time-based lock)
-    now_mt = datetime.now(ZoneInfo("US/Mountain"))
-    locked_games = (
+    # ⚠️ NOTE: these two helpers probably need season filters too.
+    # We'll fix them next if they are also pulling old seasons.
+    total_games = (
         db.session.query(func.count(Game.id))
-        .filter(Game.week == current_week, Game.commence_time_mt <= now_mt)
+        .filter(
+            Game.week == current_week,
+            Game.season_year == season_year,
+            Game.season_type == season_type,
+        )
         .scalar() or 0
     )
+    counts = _missing_counts_for_week(current_week)
+
+    # ✅ Status cards (time-based lock) — FIXED: filter by season_year + season_type
+    now_mt = datetime.now(ZoneInfo("America/Denver"))
+
+    locked_games = (
+        db.session.query(func.count(Game.id))
+        .filter(
+            Game.week == current_week,
+            Game.season_year == season_year,
+            Game.season_type == season_type,
+            Game.commence_time_mt <= now_mt,
+        )
+        .scalar() or 0
+    )
+
+    # ✅ Remaining should be based on total_games for THIS season/week too
     remaining = max(0, (total_games or 0) - locked_games)
 
     # Optional: last grading timestamp
@@ -189,21 +491,34 @@ def admin_dashboard():
 
     return render_template(
         'admin_dashboard.html',
-        current_year=current_year,
-        default_season_type=default_season_type,
+        settings=settings,
+        current_year=season_year,
+        season_type=season_type,
         weeks=weeks,
         users=users,
         current_week=current_week,
         week=current_week,
         counts=counts,
         stats=stats,
+        last_schedule_sync=last_schedule_sync,
     )
+
 @admin_bp.route('/fetch_odds', methods=['POST'])
 @login_required
 def fetch_odds():
     try:
+        settings = Settings.query.first()
+        if not settings:
+            flash("Settings not found. Please initialize Settings first.", "danger")
+            return redirect(url_for('admin.admin_dashboard'))
+
         week_option = request.form.get('week_option')
-        week = int(request.form.get('week_number')) if week_option == 'override' else get_current_week()
+
+        # ✅ Use Settings.current_week unless admin overrides
+        if week_option == 'override':
+            week = int(request.form.get('week_number'))
+        else:
+            week = settings.current_week
 
         games_list, num_of_games = get_nfl_spreads()
 
@@ -225,10 +540,11 @@ def fetch_odds():
             flash(f"Odds for week {week} have been successfully saved to the database.", "success")
             return redirect(url_for('admin.admin_dashboard'))
 
-        # default: render odds preview
         return render_template('display_odds.html', games_list=games_list, week=week)
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         flash(f"An error occurred while fetching the odds: {str(e)}", "danger")
         return redirect(url_for('admin.admin_dashboard'))
 
@@ -236,14 +552,29 @@ def fetch_odds():
 @login_required
 def save_odds():
     try:
+        from .models import Settings  # adjust import path if needed
+
+        settings = Settings.query.first()
+        if not settings:
+            flash("Settings not found. Please initialize Settings first.", "danger")
+            return redirect(url_for('admin.admin_dashboard'))
+
         action = request.form.get('action')
         form_week = request.form.get('week')
-        week = int(form_week) if form_week else get_current_week()
+
+        # ✅ Use posted week if present, else Settings.current_week
+        week = int(form_week) if form_week else settings.current_week
+
         games_list, _ = get_nfl_spreads()
+
+        if not games_list:
+            flash("No odds data available.", "warning")
+            return redirect(url_for('admin.admin_dashboard'))
 
         if action == "db":
             save_spreads_to_db(games_list, week)
             flash(f"Odds for week {week} have been saved to the database.", "success")
+
         elif action == "csv":
             filename = f'nfl_spreads_week_{week}.csv'
             save_dir = os.path.join(current_app.root_path, 'static', 'downloads')
@@ -251,19 +582,23 @@ def save_odds():
             save_path = os.path.join(save_dir, filename)
             save_to_csv(games_list, save_path)
             return send_file(save_path, as_attachment=True)
+
         else:
             flash("Invalid action.", "danger")
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         flash(f"An error occurred: {str(e)}", "danger")
 
     return redirect(url_for('admin.admin_dashboard'))
+
 
 @admin_bp.route('/display_odds')
 @login_required
 def display_odds():
     settings = Settings.query.first()
-    current_week = settings.current_week if settings else get_current_week()
+    current_week = settings.current_week
     games = Game.query.filter_by(week=current_week).all()
     return render_template('display_odds.html', games_list=games, week=current_week)
 
@@ -275,9 +610,10 @@ def display_odds():
 @login_required
 def fetch_scores():
     # year, season type, week from form
-    year = request.form.get('year')
-    seasontype = request.form.get('seasontype')
-    weeknum = request.form.get('weeknum')
+    settings = Settings.query.first()
+    year = int(request.form.get("year") or settings.season_year)
+    seasontype = int(request.form.get("seasontype") or _settings_to_espn_seasontype(settings))
+    weeknum = int(request.form.get("weeknum") or settings.current_week)
     action = request.form.get('action')
 
     try:
@@ -308,6 +644,9 @@ def admin_scores():
     selected_week = request.args.get("week", "all")
     selected_user = request.args.get("user", "all")
 
+    # ✅ season context
+    season_year, season_type_label = get_current_season_context()
+
     # sanitize inputs
     try:
         if selected_week != "all":
@@ -325,38 +664,73 @@ def admin_scores():
 
     all_users = User.query.order_by(User.username).all()
 
-    # ---- games (respect week filter)
-    games_q = Game.query
+    # -------------------------------------------------------
+    # ✅ Games: always filter to current season + optional week
+    # -------------------------------------------------------
+    games_q = Game.query.filter(
+        Game.season_year == season_year,
+        Game.season_type == season_type_label
+    )
+
     if selected_week != "all":
-        games_q = games_q.filter_by(week=selected_week)
+        games_q = games_q.filter(Game.week == selected_week)
+
     games = games_q.order_by(Game.week.asc(), Game.id.asc()).all()
 
-    # ---- picks (respect week + user filter)
-    picks_q = db.session.query(Pick).join(User, User.id == Pick.user_id)
+    # -------------------------------------------------------
+    # ✅ Picks: join Game so season filter is guaranteed
+    # -------------------------------------------------------
+    picks_q = (
+        db.session.query(Pick)
+        .join(Game, Game.id == Pick.game_id)
+        .join(User, User.id == Pick.user_id)
+        .filter(
+            Game.season_year == season_year,
+            Game.season_type == season_type_label
+        )
+    )
+
     if selected_week != "all":
         picks_q = picks_q.filter(Pick.week == selected_week)
+
     if selected_user != "all":
         picks_q = picks_q.filter(Pick.user_id == selected_user)
+
     picks = picks_q.all()
 
-    # ---- totals from picks (since scoring is automated)
+    # -------------------------------------------------------
+    # ✅ Totals: computed from picks, season-filtered via Game
+    # -------------------------------------------------------
     user_totals = {u.username: 0 for u in all_users}
-    totals_q = db.session.query(User.username, func.coalesce(func.sum(Pick.points_earned), 0)) \
-                         .join(User, User.id == Pick.user_id)
+
+    totals_q = (
+        db.session.query(User.username, func.coalesce(func.sum(Pick.points_earned), 0))
+        .join(Pick, Pick.user_id == User.id)
+        .join(Game, Game.id == Pick.game_id)
+        .filter(
+            Game.season_year == season_year,
+            Game.season_type == season_type_label
+        )
+    )
+
     if selected_week != "all":
         totals_q = totals_q.filter(Pick.week == selected_week)
+
     if selected_user != "all":
         totals_q = totals_q.filter(Pick.user_id == selected_user)
+
     totals_q = totals_q.group_by(User.username).all()
+
     for uname, total in totals_q:
         user_totals[uname] = int(total or 0)
 
-    # ---- index picks by game for fast build
+    # -------------------------------------------------------
+    # Index picks by game for fast build
+    # -------------------------------------------------------
     picks_by_game: dict[int, list[Pick]] = defaultdict(list)
     for p in picks:
         picks_by_game[p.game_id].append(p)
 
-    # ---- build rows
     def winner_for(g: Game):
         if g.home_team_score is None or g.away_team_score is None:
             return None
@@ -381,29 +755,61 @@ def admin_scores():
             "winner": win,
             "picks": []
         }
+
         for p in picks_by_game.get(g.id, []):
             is_correct = (win is not None and p.team_picked == win)
             grp["picks"].append({
                 "username": p.user.username,
                 "user_id": p.user_id,
-                "team_picked": p.team_picked,          # ← NEW (what you asked for)
+                "team_picked": p.team_picked,
                 "confidence": p.confidence,
                 "points_earned": p.points_earned,
-                "is_correct": is_correct,               # ← handy for coloring
+                "is_correct": is_correct,
             })
+
         game_picks.append(grp)
 
-    # ---- week list for dropdown
-    weeks = [w for (w,) in db.session.query(Game.week).distinct().order_by(Game.week).all()]
+    # -------------------------------------------------------
+    # ✅ Weeks dropdown: season-filtered
+    # -------------------------------------------------------
+    weeks = [
+        w for (w,) in (
+            db.session.query(Game.week)
+            .filter(Game.season_year == season_year, Game.season_type == season_type_label)
+            .distinct()
+            .order_by(Game.week)
+            .all()
+        )
+        if w is not None
+    ]
 
-    # ---- optional: locked/total stats for this week
+    # -------------------------------------------------------
+    # ✅ locked/total stats: season-filtered
+    # -------------------------------------------------------
     locked_count = total_games = None
     if selected_week != "all":
         now_mt = datetime.now(ZoneInfo("US/Mountain"))
-        locked_count = db.session.query(func.count(Game.id)) \
-            .filter(Game.week == selected_week, Game.commence_time_mt <= now_mt).scalar() or 0
-        total_games = db.session.query(func.count(Game.id)) \
-            .filter(Game.week == selected_week).scalar() or 0
+
+        locked_count = (
+            db.session.query(func.count(Game.id))
+            .filter(
+                Game.season_year == season_year,
+                Game.season_type == season_type_label,
+                Game.week == selected_week,
+                Game.commence_time_mt <= now_mt
+            )
+            .scalar() or 0
+        )
+
+        total_games = (
+            db.session.query(func.count(Game.id))
+            .filter(
+                Game.season_year == season_year,
+                Game.season_type == season_type_label,
+                Game.week == selected_week
+            )
+            .scalar() or 0
+        )
 
     return render_template(
         "admin_scores.html",
@@ -415,50 +821,97 @@ def admin_scores():
         users=all_users,
         locked_count=locked_count,
         total_games=total_games,
+        season_year=season_year,               # optional (for header)
+        season_type=season_type_label,         # optional (for header)
     )
 
-@admin_bp.route('/admin_calculate_scores', methods=['POST'])
+@admin_bp.route("/admin_calculate_scores", methods=["POST"])
 @login_required
 def admin_calculate_scores():
-    """Recalculate user totals and upsert into UserScore."""
-    selected_week = request.form.get('week', 'all')
+    if not getattr(current_user, "is_admin", False):
+        flash("Not authorized.", "danger")
+        return redirect(url_for("main.user_dashboard"))
+
+    settings = Settings.query.first()
+    if not settings:
+        flash("Settings row missing. Cannot calculate scores.", "danger")
+        return redirect(url_for("admin.admin_dashboard"))
+
+    season_year = settings.season_year
+    season_type = settings.season_type
+    current_week = settings.current_week
+
+    # Form options:
+    # week = "all" OR "all_except_current" OR a number like "3"
+    form_week = request.form.get("week", "all_except_current")
+
+    # Build weeks list for THIS season/year/type only
+    season_weeks = [
+        w for (w,) in (
+            db.session.query(Game.week)
+            .filter(
+                Game.season_year == season_year,
+                Game.season_type == season_type,
+                Game.week.isnot(None),
+            )
+            .distinct()
+            .order_by(Game.week.asc())
+            .all()
+        )
+    ]
+
+    if not season_weeks:
+        flash("No games found for this season context. Load schedule first.", "warning")
+        return redirect(url_for("admin.admin_dashboard"))
+
+    if form_week == "all":
+        weeks_to_process = [w for w in season_weeks if w <= current_week]
+    elif form_week == "all_except_current":
+        weeks_to_process = [w for w in season_weeks if w <= current_week and w != current_week]
+    else:
+        try:
+            w = int(form_week)
+        except ValueError:
+            flash("Invalid week selected.", "danger")
+            return redirect(url_for("admin.admin_dashboard"))
+
+        if w not in season_weeks:
+            flash(f"Week {w} not found for {season_year} {season_type}.", "warning")
+            return redirect(url_for("admin.admin_dashboard"))
+
+        weeks_to_process = [w]
+
+    if not weeks_to_process:
+        flash("No weeks to process.", "info")
+        return redirect(url_for("admin.admin_dashboard"))
 
     try:
-        if selected_week == 'all':
-            max_week = get_current_week()
-            weeks = range(1, max_week + 1)
-        else:
-            selected_week = int(selected_week)
-            weeks = [selected_week]
-    except ValueError:
-        flash("Invalid week selected.", "danger")
-        return redirect(url_for('admin.admin_dashboard'))
-
-    try:
-        for w in weeks:
-            # calculate_user_scores should return {user_id: total_points_for_week}
-            user_scores = calculate_user_scores(week=w, write_final_only=True)
-            if not isinstance(user_scores, dict):
-                continue
-
-            existing = UserScore.query.filter(UserScore.week == w,
-                                              UserScore.user_id.in_(list(user_scores.keys()))).all()
-            existing_map = {row.user_id: row for row in existing}
-
-            for uid, total in user_scores.items():
-                row = existing_map.get(uid)
-                if row:
-                    row.score = total
-                else:
-                    db.session.add(UserScore(user_id=uid, week=w, score=total, calculated_at=datetime.utcnow()))
+        processed = 0
+        for w in weeks_to_process:
+            # IMPORTANT: use season context
+            calculate_user_scores(
+                week=w,
+                season_year=season_year,
+                season_type=season_type,
+                write_final_only=True,   # only FINAL games contribute to UserScore
+            )
+            processed += 1
 
         db.session.commit()
-        flash("Scores calculated and saved.", "success")
+        if processed == 1:
+            flash(f"Scores recalculated for Week {weeks_to_process[0]} ({season_year} {season_type}).", "success")
+        else:
+            flash(
+                f"Scores recalculated for {season_year} {season_type} weeks "
+                f"{min(weeks_to_process)}–{max(weeks_to_process)}.",
+                "success",
+            )
+
     except Exception as e:
         db.session.rollback()
-        flash(f"Error calculating scores: {str(e)}", "danger")
+        flash(f"Error while calculating scores: {e}", "danger")
 
-    return redirect(url_for('admin.admin_dashboard'))
+    return redirect(url_for("admin.admin_dashboard"))
 
 @admin_bp.route('/admin_override_score', methods=['POST'])
 @login_required
@@ -500,72 +953,48 @@ def admin_override_score():
 @admin_bp.route('/process_user_scores', methods=['POST'])
 @login_required
 def process_user_scores():
-    """Recompute user totals and upsert into UserScore.
-       Defaults to all distinct weeks except the current week.
-       If form has week != 'all', only processes that week.
-    """
     try:
-        current_week = get_current_week()
+        settings = Settings.query.first()
+        season_year = settings.season_year
+        season_type = settings.season_type
+        current_week = settings.current_week
 
-        # Default: all distinct weeks except the current week
-        weeks = [w for (w,) in db.session.query(Game.week)
-                               .distinct()
-                               .order_by(Game.week)
-                               .all()
-                 if w != current_week]
+        # Weeks available for THIS season/type
+        season_weeks = [
+            w for (w,) in (
+                db.session.query(Game.week)
+                .filter(Game.season_year==season_year, Game.season_type==season_type)
+                .distinct()
+                .order_by(Game.week)
+                .all()
+            )
+        ]
 
-        # Optional: limit to a specific week from the form
         form_week = request.form.get('week', 'all')
         if form_week != 'all':
-            try:
-                form_week = int(form_week)
-            except ValueError:
-                flash("Invalid week selected.", "danger")
-                return redirect(url_for('admin.admin_dashboard'))
-            weeks = [form_week]
+            week = int(form_week)
+            weeks = [week]
+        else:
+            # ✅ don’t exclude week 1; instead exclude weeks that aren’t final yet (optional)
+            weeks = season_weeks
 
-        # Nothing to do?
-        if not weeks:
-            flash("No weeks to process.", "info")
-            return redirect(url_for('admin.admin_dashboard'))
-
-        # Recalculate and upsert
         for w in weeks:
-            user_scores = calculate_user_scores(week=w)  # expected {user_id: total_points}
-            if not isinstance(user_scores, dict):
-                continue
-
-            existing = UserScore.query.filter(
-                UserScore.week == w,
-                UserScore.user_id.in_(list(user_scores.keys()))
-            ).all()
-            existing_map = {row.user_id: row for row in existing}
-
-            for uid, total in user_scores.items():
-                row = existing_map.get(uid)
-                if row:
-                    row.score = total
-                    row.calculated_at = datetime.utcnow()
-                else:
-                    db.session.add(UserScore(
-                        user_id=uid,
-                        week=w,
-                        score=total,
-                        calculated_at=datetime.utcnow()
-                    ))
+            calculate_user_scores(
+                week=w,
+                season_year=season_year,
+                season_type=season_type,
+                write_final_only=True
+            )
 
         db.session.commit()
-
-        if len(weeks) == 1:
-            flash(f"Successfully processed user scores for Week {weeks[0]}.", "success")
-        else:
-            flash(f"Successfully processed user scores for weeks {min(weeks)}–{max(weeks)}.", "success")
+        flash(f"Successfully processed scores for {season_type} {season_year} week(s): {weeks}", "success")
 
     except Exception as e:
         db.session.rollback()
         flash(f"An error occurred while processing user scores: {str(e)}", "danger")
 
     return redirect(url_for('admin.admin_dashboard'))
+
 
 # assumes you already have these:
 # from Football_Project import db
@@ -681,8 +1110,15 @@ def _missing_counts_for_week(week: int) -> dict:
 @admin_bp.route('/missing_picks', methods=['GET'])
 @login_required
 def missing_picks():
+    from .models import Settings  # adjust import path if needed
+
+    settings = Settings.query.first()
+    if not settings:
+        flash("Settings not found. Please initialize Settings first.", "danger")
+        return redirect(url_for('admin.admin_dashboard'))
+
     # Inputs (defaults)
-    week = request.args.get('week', type=int) or get_current_week()
+    week = request.args.get('week', type=int) or settings.current_week
     filter_opt = request.args.get('filter', 'any')  # any | zero | complete | all
 
     # Core counts (unlocked-aware)
@@ -734,11 +1170,11 @@ def missing_picks():
         filter=filter_opt,
         total_games=total_games,
         rows=display_rows,
-        # summary tiles
         zero_count=zero_count,
         any_count=any_count,
         complete_count=complete_count,
     )
+
 
 
 
@@ -749,7 +1185,15 @@ def view_user_picks(user_id: int):
         flash("You do not have permission to access this page.", "danger")
         return redirect(url_for('main.index'))
 
-    week = request.args.get('week', type=int) or get_current_week()
+    from .models import Settings  # adjust import path if needed
+
+    settings = Settings.query.first()
+    if not settings:
+        flash("Settings not found. Please initialize Settings first.", "danger")
+        return redirect(url_for('admin.admin_dashboard'))
+
+    week = request.args.get('week', type=int) or settings.current_week
+
     user = User.query.get_or_404(user_id)
     total_games = _total_games_for_week(week)
 
@@ -806,7 +1250,6 @@ def view_user_picks(user_id: int):
     if joined:
         def norm(p, g):
             pick_team = getattr(p, 'team_picked', None)
-            # Confidence field fallback chain
             confidence = (
                 getattr(p, 'confidence', None)
                 or getattr(p, 'confidence_points', None)
@@ -820,7 +1263,6 @@ def view_user_picks(user_id: int):
         picks_made = len(view_rows)
 
     else:
-        # Fallback: show picks even if we can't match a Game row
         picks = (
             Pick.query.filter_by(user_id=user_id, week=week)
             .order_by(getattr(Pick, 'pick_time', getattr(Pick, 'created_at', Pick.id)).desc())

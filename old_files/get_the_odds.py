@@ -30,12 +30,9 @@ def get_nfl_spreads():
         return [], 0
 
 def get_current_week():
-    # Assuming NFL season starts on a known date
-    nfl_start_date = datetime(2025, 9, 4)  # Example start date
-    current_date = datetime.utcnow()
-    week = ((current_date - nfl_start_date).days // 7) + 1
-    return week
-
+    s = Settings.query.first()
+    return s.current_week
+    
 # Function to convert commence time to Mountain Time
 def convert_to_mountain_time(utc_time_str):
     # Parse the time string and assume it's in UTC

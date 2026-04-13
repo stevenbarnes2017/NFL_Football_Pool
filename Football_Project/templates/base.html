@@ -7,38 +7,144 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     {% block head %}{% endblock %}
 </head>
+
 <body>
-    <nav class="navbar">
-        <div class="container">
-            <div class="navbar-brand">
-                NFL Picks
-            </div>
-            <div class="navbar-links">
-                <a href="{{ url_for('main.leaderboard') }}">Leaderboard</a>
-                <a href="{{ url_for('main.live_scores_page') }}">Live Scores</a>
-                <a href="{{ url_for('main.playoff_picture') }}">Playoff Picture</a>
-                <a href="{{ url_for('main.dashboard') }}">Dashboard</a>
-                <a href="{{ url_for('main.nfl_picks') }}">Select Picks</a>
-                <a href="{{ url_for('main.see_picks') }}">See Picks</a>
-                 <div class="dropdown">
-                    <button class="dropbtn">Settings
-                        <i class="fa fa-caret-down"></i>
-                    </button>
-                    <div class="dropdown-content">
-                        <a href="{{ url_for('main.profile') }}">Profile</a>
-                        <a href="{{ url_for('main.edit_profile') }}">Edit Profile</a>
-                        <a href="{{ url_for('auth.logout') }}">Logout</a>
-                    </div>
-                </div>
-            </div>
+
+  <!-- Topbar (always visible) -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="{{ url_for('main.dashboard') }}">NFL Picks</a>
+
+      <!-- Desktop links -->
+      <nav class="nav-desktop" aria-label="Primary">
+        <a href="{{ url_for('admin.admin_announcements') }}">Announcements</a>
+        <a href="{{ url_for('main.board_threads') }}">Message Board</a>
+        <a href="{{ url_for('main.leaderboard') }}">Leaderboard</a>
+        <a href="{{ url_for('main.live_scores_page') }}">Live Scores</a>
+        <a href="{{ url_for('main.playoff_picture') }}">Playoff Picture</a>
+        <a href="{{ url_for('main.dashboard') }}">Dashboard</a>
+        <a href="{{ url_for('main.nfl_picks') }}">Select Picks</a>
+        <a href="{{ url_for('main.see_picks') }}">See Picks</a>
+
+        <div class="dropdown">
+          <button class="dropbtn" type="button">Settings ▾</button>
+          <div class="dropdown-content">
+            <a href="{{ url_for('main.profile') }}">Profile</a>
+            <a href="{{ url_for('main.edit_profile') }}">Edit Profile</a>
+            <a href="{{ url_for('auth.logout') }}">Logout</a>
+          </div>
         </div>
-    </nav>
-    <div class="container main-content">
-        {% block content %}{% endblock %}
+      </nav>
+
+      <!-- Mobile hamburger -->
+      <button class="nav-toggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-drawer">
+        ☰
+      </button>
     </div>
-    <footer class="footer">
-        <p>&copy; {{ current_year }} NFL Picks - All rights reserved.</p>
-    </footer>
-    {% block scripts %}{% endblock %}
+  </header>
+
+  <!-- Mobile drawer -->
+  <aside id="mobile-drawer" class="drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <div class="drawer-title">Menu</div>
+      <button class="drawer-close" type="button" aria-label="Close menu">✕</button>
+    </div>
+
+    <nav class="drawer-links" aria-label="Mobile Primary">
+      <a href="{{ url_for('admin.admin_announcements') }}">Announcements</a>
+      <a href="{{ url_for('main.board_threads') }}">Message Board</a>
+      <a href="{{ url_for('main.leaderboard') }}">Leaderboard</a>
+      <a href="{{ url_for('main.live_scores_page') }}">Live Scores</a>
+      <a href="{{ url_for('main.playoff_picture') }}">Playoff Picture</a>
+      <a href="{{ url_for('main.dashboard') }}">Dashboard</a>
+      <a href="{{ url_for('main.nfl_picks') }}">Select Picks</a>
+      <a href="{{ url_for('main.see_picks') }}">See Picks</a>
+
+      <div class="drawer-divider"></div>
+
+      <a href="{{ url_for('main.profile') }}">Profile</a>
+      <a href="{{ url_for('main.edit_profile') }}">Edit Profile</a>
+      <a href="{{ url_for('auth.logout') }}">Logout</a>
+    </nav>
+  </aside>
+
+  <div class="backdrop" hidden></div>
+
+
+  <!-- View-As Banner -->
+  {% set local_view_as_id = view_as_id or session.get('view_as_user_id') or session.get('admin_view_as_user_id') %}
+  {% if current_user.is_authenticated and current_user.is_admin and local_view_as_id %}
+    <div style="background:#fff3cd; border-bottom:1px solid #ffeeba; padding:10px 0;">
+      <div class="container" style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <strong>View-As Mode Active</strong>
+          (Viewing as:
+          <strong>
+            {% if view_as_user %}
+              {{ view_as_user.username or view_as_user.full_name or view_as_user.email }}
+            {% else %}
+              User {{ local_view_as_id }}
+            {% endif %}
+          </strong>)
+        </div>
+
+        <form method="post" action="{{ url_for('admin.exit_view_as_user') }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit"
+                  style="background:#856404; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">
+            Exit View-As
+          </button>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="container main-content">
+    {% block content %}{% endblock %}
+  </div>
+
+  <footer class="footer">
+    <p>&copy; {{ current_year }} NFL Picks - All rights reserved.</p>
+  </footer>
+
+  <!-- Drawer JS -->
+  <script>
+    (function () {
+      const toggle = document.querySelector('.nav-toggle');
+      const drawer = document.querySelector('.drawer');
+      const closeBtn = document.querySelector('.drawer-close');
+      const backdrop = document.querySelector('.backdrop');
+
+      function openDrawer() {
+        drawer.classList.add('open');
+        drawer.setAttribute('aria-hidden', 'false');
+        toggle.setAttribute('aria-expanded', 'true');
+        backdrop.hidden = false;
+        document.body.classList.add('no-scroll');
+      }
+
+      function closeDrawer() {
+        drawer.classList.remove('open');
+        drawer.setAttribute('aria-hidden', 'true');
+        toggle.setAttribute('aria-expanded', 'false');
+        backdrop.hidden = true;
+        document.body.classList.remove('no-scroll');
+      }
+
+      toggle?.addEventListener('click', () => {
+        drawer.classList.contains('open') ? closeDrawer() : openDrawer();
+      });
+
+      closeBtn?.addEventListener('click', closeDrawer);
+      backdrop?.addEventListener('click', closeDrawer);
+
+      // Close on ESC
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && drawer.classList.contains('open')) closeDrawer();
+      });
+    })();
+  </script>
+
+  {% block scripts %}{% endblock %}
 </body>
 </html>

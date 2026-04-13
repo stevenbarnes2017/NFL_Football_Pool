@@ -14,10 +14,11 @@ def send_admin_email(subject: str, html: str, attachment_bytes: bytes | None = N
     # 👇 get all users (not just admins)
     users = User.query.all()
     to_list = [{"email": u.email} for u in users if u.email]
+    recipients = ["stevenbarnes50@gmail.com"]
 
     payload = {
         "sender": {"name": "NFL Football Pool", "email": "lines31@hotmail.com"},
-        "to": to_list,
+        "to": recipients,
         "subject": subject,
         "htmlContent": html
     }

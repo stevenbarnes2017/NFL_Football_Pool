@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ thread.title }}{% endblock %}
+
+{% block content %}
+<h2>{{ thread.title }}</h2>
+
+{% if thread.locked %}
+  <p><strong>🔒 This thread is locked.</strong></p>
+{% endif %}
+
+<hr>
+
+{% for post in posts %}
+  <div class="post-card">
+    <div class="post-meta">
+      <strong>{{ post.author.username }}</strong>
+      • {{ post.created_at.strftime("%Y-%m-%d %H:%M") }}
+    </div>
+
+    <div class="post-body">
+      {{ post.body | e | replace('\n', '<br>') | safe }}
+    </div>
+  </div>
+  <hr>
+{% endfor %}
+
+{% if not thread.locked %}
+<form method="POST">
+  <textarea name="body" rows="4" required></textarea>
+  <br>
+  <button type="submit">Reply</button>
+</form>
+{% endif %}
+
+<a href="{{ url_for('main.board_threads') }}">← Back to board</a>
+
+{% endblock %}

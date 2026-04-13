@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Admin Announcements{% endblock %}
+{% block content %}
+
+<style>
+  .wrap{max-width:900px;margin:0 auto;padding:12px}
+  .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin:12px 0}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .btn{display:inline-block;padding:8px 12px;border-radius:8px;border:1px solid #d1d5db;background:#f9fafb;text-decoration:none;color:#111827;cursor:pointer}
+  .btn:hover{background:#f3f4f6}
+  .btn-primary{background:#3b82f6;border-color:#2563eb;color:#fff}
+  .btn-primary:hover{background:#2563eb}
+  .btn-danger{background:#fee2e2;border-color:#fca5a5;color:#991b1b}
+  .btn-danger:hover{background:#fecaca}
+  input,textarea,select{border:1px solid #d1d5db;border-radius:8px;padding:10px}
+  textarea{min-height:120px;width:100%}
+  .meta{color:#6b7280;font-size:12px}
+  .pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:9999px;border:1px solid #e5e7eb;background:#f9fafb}
+  .pill-pin{border-color:#93c5fd;background:#eff6ff;color:#1d4ed8}
+</style>
+
+<div class="wrap">
+  <h1 class="text-2xl font-bold text-center mb-2">Admin Announcements</h1>
+
+  <div class="card">
+    <h2 class="font-semibold mb-2">Post a new announcement</h2>
+
+    <form method="post" action="{{ url_for('admin.admin_announcement_new') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="row">
+        <input name="title" placeholder="Title" style="flex:1;min-width:260px" required>
+        <label class="meta" style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" name="pinned" value="1"> Pin
+        </label>
+      </div>
+
+      <div style="margin-top:10px">
+        <textarea name="body" placeholder="Write the announcement..." required></textarea>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <input type="number" name="season_year" value="{{ season_year }}" style="width:140px" placeholder="Year">
+        <select name="season_type" style="width:170px">
+          <option value="">(no season)</option>
+          <option value="REG" {% if season_type=='REG' %}selected{% endif %}>REG</option>
+          <option value="POST" {% if season_type=='POST' %}selected{% endif %}>POST</option>
+          <option value="PRE" {% if season_type=='PRE' %}selected{% endif %}>PRE</option>
+        </select>
+        <input type="number" name="week" min="1" max="30" style="width:120px" placeholder="Week">
+        <button class="btn btn-primary" type="submit">Post</button>
+      </div>
+    </form>
+  </div>
+
+  {% for a in announcements %}
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div>
+          <div class="row" style="align-items:center">
+            <h3 class="font-semibold">{{ a.title }}</h3>
+            {% if a.pinned %}<span class="pill pill-pin">Pinned</span>{% endif %}
+            {% if a.season_year and a.season_type %}
+              <span class="pill">{{ a.season_type }} {{ a.season_year }}{% if a.week %} • W{{ a.week }}{% endif %}</span>
+            {% endif %}
+          </div>
+          <div class="meta">
+            Posted {{ a.created_at.strftime("%Y-%m-%d %I:%M %p") }} UTC by {{ a.created_by.username }}
+          </div>
+        </div>
+
+        <div class="row">
+          <form method="post" action="{{ url_for('admin.admin_toggle_announcement_pin', ann_id=a.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn" type="submit">{% if a.pinned %}Unpin{% else %}Pin{% endif %}</button>
+          </form>
+          <form method="post" action="{{ url_for('admin.admin_delete_announcement', ann_id=a.id) }}"
+                onsubmit="return confirm('Remove this announcement?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-danger" type="submit">Remove</button>
+          </form>
+        </div>
+      </div>
+
+      <div style="margin-top:10px;white-space:pre-wrap">{{ a.body }}</div>
+    </div>
+  {% else %}
+    <div class="card meta">No announcements yet.</div>
+  {% endfor %}
+</div>
+
+{% endblock %}

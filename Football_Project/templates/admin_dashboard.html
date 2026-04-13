@@ -55,18 +55,44 @@
     <div class="value">{{ stats.current_week }}</div>
     <div class="muted">Year {{ current_year }}</div>
   </div>
+
   <div class="card">
     <div class="label">Games (Locked / Total)</div>
     <div class="value">{{ stats.locked_games }} / {{ stats.total_games }}</div>
     <div class="muted">Remaining: {{ stats.remaining_games }}</div>
   </div>
+
   <div class="card">
     <div class="label">Last Grading Run</div>
     <div class="value">{{ stats.last_grading or '—' }}</div>
   </div>
+
   <div class="card">
     <div class="label">Last Odds Fetch</div>
     <div class="value">{{ stats.last_odds_fetch or '—' }}</div>
+  </div>
+
+  <!-- ✅ NEW: Last Schedule Sync -->
+  <div class="card">
+    <div class="label">Last Schedule Sync</div>
+
+    {% if last_schedule_sync %}
+      <div class="value">
+        {% if last_schedule_sync.ok %}✅ OK{% else %}❌ Failed{% endif %}
+      </div>
+      <div class="muted">
+        {{ last_schedule_sync.ran_at }}<br>
+        {{ last_schedule_sync.inserted }} added,
+        {{ last_schedule_sync.updated }} updated,
+        {{ last_schedule_sync.unchanged }} unchanged
+        {% if last_schedule_sync.failed_weeks and last_schedule_sync.failed_weeks > 0 %}
+          <br><strong>Failed weeks:</strong> {{ last_schedule_sync.failed_weeks }}
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="value">—</div>
+      <div class="muted">No sync has run yet</div>
+    {% endif %}
   </div>
 </div>
 
@@ -78,6 +104,7 @@
   <a class="btn" href="{{ url_for('main.leaderboard', tab='season') }}">Season Leaderboard</a>
   <a class="btn" href="{{ url_for('admin.admin_scores') }}">Audit All Weeks</a>
   <a class="btn" href="{{ url_for('admin.manage_users') }}">Manage Users</a>
+  <a class="btn" href="{{ url_for('admin.admin_announcements') }}">Announcements</a>
 </div>
 
 {# Missing picks panel #}
@@ -87,7 +114,7 @@
   <div class="mp-card">
     <div class="mp-head">
       <h2>Missing Picks (Week {{ counts['week'] }})</h2>
-      <div class="mp-sub">Unlocked games: {{ counts['unlocked_games'] }} / {{ counts['total_games'] }}</div>
+      
     </div>
 
     <div class="mp-controls">
@@ -158,14 +185,28 @@
   {% set default_week = stats.current_week - 1 if stats.current_week > 1 else stats.current_week %}
 
   <form action="{{ url_for('admin.fetch_scores') }}" method="post"
-        style="margin-top:10px; display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+      style="margin-top:10px; display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="year" value="{{ current_year }}">
-    <input type="hidden" name="seasontype" value="2">
+
+    <label style="display:block;">
+      <span style="display:block; font-size:12px; color:#666; margin-bottom:4px;">Year</span>
+      <input type="number" name="year" value="{{ settings.season_year }}" min="2000" max="2100"
+             style="padding:8px; border:1px solid #ccc; border-radius:6px; width:110px;">
+    </label>
+
+    <label style="display:block;">
+      <span style="display:block; font-size:12px; color:#666; margin-bottom:4px;">Season Type</span>
+      <select name="seasontype"
+              style="padding:8px; border:1px solid #ccc; border-radius:6px;">
+        <option value="2" {% if settings.season_type == 'REG' %}selected{% endif %}>Regular (2)</option>
+        <option value="3" {% if settings.season_type == 'POST' %}selected{% endif %}>Postseason (3)</option>
+        <option value="1" {% if settings.season_type == 'PRE' %}selected{% endif %}>Preseason (1)</option>
+      </select>
+    </label>
 
     <label style="display:block;">
       <span style="display:block; font-size:12px; color:#666; margin-bottom:4px;">Week</span>
-      <input type="number" name="weeknum" value="{{ default_week }}" min="1"
+      <input type="number" name="weeknum" value="{{ settings.current_week }}" min="1"
              style="padding:8px; border:1px solid #ccc; border-radius:6px; width:90px;">
     </label>
 
@@ -196,6 +237,12 @@
           onsubmit="return confirm('Manual odds fetch (normally automated). Run now?');">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn" type="submit">Fetch Odds (Manual)</button>
+    </form>
+
+    <form action="{{ url_for('admin.admin_update_schedule') }}" method="post"
+          onsubmit="return confirm('Update schedule from ESPN now?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn" type="submit">Update Schedule</button>
     </form>
   </div>
 </details>

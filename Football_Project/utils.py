@@ -2,10 +2,10 @@ from datetime import datetime
 import pytz
 import platform
 from .models import db, Game, Pick, UserScore
-from Football_Project.get_the_odds import get_current_week
+from Football_Project.services.season import get_current_week
 from football_scores import save_scores_to_db, get_football_scores
 import requests
-from flask import render_template, current_app, request
+from flask import render_template, current_app, request, session
 from pytz import timezone  # Add this
 import logging  # Ensure logging is imported at the top
 import os
@@ -17,9 +17,41 @@ from collections import defaultdict
 import re
 
 
+
 season_type = 2  # 1 = preseason, 2 = regular, 3 = postseason
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def get_effective_user_id():
+    view_as_id = session.get("view_as_user_id") or session.get("admin_view_as_user_id")
+    if view_as_id and getattr(current_user, "is_admin", False):
+        try:
+            return int(view_as_id)
+        except (TypeError, ValueError):
+            return current_user.id
+    return current_user.id
+
+def get_settings() ->"Settings":
+    s = Settings.query.first()
+    if not s:
+        s = Settings(current_week=18, season_year=2025, season_type="REG", season_locked=True)
+        db.session.add(s)
+        db.session.commit()
+    return s
+
+def get_effective_user():
+    """
+    Returns the user we should act as:
+    - If admin is in view-as mode: that user
+    - Otherwise: current_user
+    """
+    view_as_id = session.get("view_as_user_id")
+    if view_as_id and getattr(current_user, "is_admin", False):
+        u = User.query.get(view_as_id)
+        if u:
+            return u
+    return current_user
 
 def send_picks_email(recipient_email, user_picks):
     # Format the picks into an email-friendly string
@@ -115,23 +147,42 @@ def fetch_and_cache_scores():
 def save_week_scores_to_db(year, seasontype, weeknum):
     """
     Fetch and save the football game scores for a given year, season type, and week.
+    Returns a human-readable status string (and logs useful debug info).
     """
     try:
-        # Fetch the football game scores for the given week
-        games = get_football_scores(year, seasontype, weeknum)  # This returns a list
+        # Fetch scores from ESPN (list of dicts)
+        games = get_football_scores(year, seasontype, weeknum)
 
-        # Check if games were retrieved successfully
         if not games:
-            print(f"No games data to save for week {weeknum}.")
+            msg = f"[SCORES] No games returned for year={year} type={seasontype} week={weeknum}"
+            print(msg)
             return f"No data available for week {weeknum}."
 
-        # Save each game's score to the database
-        save_scores_to_db(games, weeknum)  # Assumes save_scores_to_db can handle a list of game dictionaries
-        return f"Successfully saved game scores for week {weeknum} to the database."
+        print(f"[SCORES] Fetched year={year} type={seasontype} week={weeknum} events={len(games)}")
+
+        # Save to DB and get real counts back (update save_scores_to_db to return these)
+        result = save_scores_to_db(games, weeknum)
+
+        # Support both return styles: tuple (matched, updated) or dict
+        matched = updated = None
+        if isinstance(result, tuple) and len(result) == 2:
+            matched, updated = result
+        elif isinstance(result, dict):
+            matched = result.get("matched")
+            updated = result.get("updated")
+
+        if matched is not None and updated is not None:
+            print(f"[SCORES] Saved week={weeknum} matched={matched} updated={updated}")
+            return f"Saved week {weeknum}: matched={matched}, updated={updated}."
+        else:
+            # If save_scores_to_db doesn't return counts yet
+            print(f"[SCORES] Saved week={weeknum} (no counts returned from save_scores_to_db)")
+            return f"Successfully saved game scores for week {weeknum} to the database."
 
     except Exception as e:
-        print(f"An error occurred while fetching or saving the scores: {e}")
+        print(f"[SCORES] Error saving scores year={year} type={seasontype} week={weeknum}: {e}")
         return str(e)
+
 
 
 
@@ -178,35 +229,65 @@ def get_saved_games(week=None):
     
     return games_list
 
-# Function to tally user scores based on the week
-def calculate_user_scores(week: int, write_final_only: bool = True):
-    """
-    Recalculate points_earned on each Pick for the given week (live).
-    Persist weekly totals to UserScore using FINAL games only (default).
-    Returns a dict of totals:
-      - if write_final_only=True -> FINAL-only totals
-      - else -> LIVE (in-progress + final) totals
-    """
-    games = Game.query.filter_by(week=week).all()
-    picks = Pick.query.filter_by(week=week).all()
+def season_type_to_espn(st: str) -> int:
+    st = (st or "REG").upper()
+    return {"PRE": 1, "REG": 2, "POST": 3}.get(st, 2)
 
-    # quick visibility
-    distinct_statuses = {norm_status(g.status) for g in games}
-    print(f"[scores] Week {week} statuses in DB: {distinct_statuses}")
+def norm_status(s: str | None) -> str:
+    return (s or "").strip().upper()
+
+
+FINAL_STATUSES = {"STATUS_FINAL", "FINAL", "STATUS_GAME_OVER"}
+INPROG_STATUSES = {"STATUS_IN_PROGRESS", "IN_PROGRESS", "STATUS_HALFTIME"}  # add more if you store them
+
+
+from collections import defaultdict
+from datetime import datetime
+
+from Football_Project.extensions import db
+from Football_Project.models import Game, Pick, UserScore
+
+# make sure these exist in your module
+# FINAL_STATUSES = {"STATUS_FINAL", "FINAL", "STATUS_GAME_OVER"}
+# INPROG_STATUSES = {"STATUS_IN_PROGRESS", "IN_PROGRESS", "STATUS_IN_PROGRESS"}  # match your norm_status outputs
+
+def calculate_user_scores(
+    week: int,
+    season_year: int,
+    season_type: str,
+    write_final_only: bool = True
+):
+    games = (
+        Game.query
+        .filter_by(season_year=season_year, season_type=season_type, week=week)
+        .all()
+    )
+
+    print(f"[SCORES] games_in_db={len(games)} season_year={season_year} season_type={season_type} week={week}")
+
+    # ✅ ONLY rely on Game.week (never Pick.week)
+    picks = (
+        Pick.query
+        .join(Game, Game.id == Pick.game_id)
+        .filter(
+            Game.season_year == season_year,
+            Game.season_type == season_type,
+            Game.week == week,
+        )
+        .all()
+    )
 
     live_total_by_user  = defaultdict(int)
     final_total_by_user = defaultdict(int)
 
     considered, awarded = 0, 0
-
-    # Pre-index games for speed
     games_by_id = {g.id: g for g in games}
 
     for pick in picks:
-        if pick.is_overridden:
-            # honor manual override both in live and (if final) rollups
-            live_total_by_user[pick.user_id]  += pick.points_earned or 0
-            final_total_by_user[pick.user_id] += pick.points_earned or 0
+        # Manual overrides: keep whatever is stored
+        if getattr(pick, "is_overridden", False):
+            live_total_by_user[pick.user_id]  += int(pick.points_earned or 0)
+            final_total_by_user[pick.user_id] += int(pick.points_earned or 0)
             continue
 
         game = games_by_id.get(pick.game_id)
@@ -215,9 +296,11 @@ def calculate_user_scores(week: int, write_final_only: bool = True):
 
         g_status = norm_status(game.status)
 
-        if g_status not in ('STATUS_IN_PROGRESS', 'STATUS_FINAL'):
-            # nothing to award yet
-            continue
+        is_final = g_status in FINAL_STATUSES
+        is_inprog = g_status in INPROG_STATUSES
+
+        if not (is_final or is_inprog):
+            continue  # scheduled / unknown -> don't award
 
         considered += 1
         points = 0
@@ -226,108 +309,136 @@ def calculate_user_scores(week: int, write_final_only: bool = True):
         away = game.away_team_score
 
         if home is None or away is None:
-            # cannot judge without scores
             points = 0
         else:
-            # If spread is missing, award by straight winner
+            # Spread missing -> straight up winner
             if game.spread is None:
-                winner = game.home_team if home > away else game.away_team
-                if pick.team_picked == winner:
-                    points = pick.confidence or 0
-            else:
-                # ATS: favorite must cover
-                fav = game.favorite_team
-                if not fav:
-                    # fall back to straight winner if favorite unknown
+                if home != away:
                     winner = game.home_team if home > away else game.away_team
                     if pick.team_picked == winner:
-                        points = pick.confidence or 0
+                        points = int(pick.confidence or 0)
+            else:
+                fav = game.favorite_team
+                if not fav:
+                    if home != away:
+                        winner = game.home_team if home > away else game.away_team
+                        if pick.team_picked == winner:
+                            points = int(pick.confidence or 0)
                 else:
                     # margin from favorite's perspective
-                    if game.home_team == fav:
-                        margin = home - away
-                    else:
-                        margin = away - home
-
-                    covered = margin > abs(game.spread)
+                    margin = (home - away) if game.home_team == fav else (away - home)
+                    covered = margin > abs(game.spread)  # push treated as not covered
 
                     if pick.team_picked == fav and covered:
-                        points = pick.confidence or 0
+                        points = int(pick.confidence or 0)
                     elif pick.team_picked != fav and not covered:
-                        points = pick.confidence or 0
+                        points = int(pick.confidence or 0)
 
-        # Update the pick row for live views
         pick.points_earned = points
         db.session.add(pick)
 
-        # Live total (in-progress + final)
         live_total_by_user[pick.user_id] += points
-
-        # Weekly locked totals: only from FINAL games
-        if g_status == 'STATUS_FINAL':
+        if is_final:
             final_total_by_user[pick.user_id] += points
             awarded += 1 if points else 0
 
+    print(f"[GRADE] {season_type} {season_year} week={week} games={len(games)} picks={len(picks)} considered={considered}")
     db.session.commit()
 
-    print(f"[scores] Week {week}: picks={len(picks)} considered={considered} final_awards>0={awarded}")
-
-    # Persist to UserScore weekly table (locked totals only)
     if write_final_only:
         for user_id, score in final_total_by_user.items():
-            row = UserScore.query.filter_by(user_id=user_id, week=week).first()
+            row = (
+                UserScore.query
+                .filter_by(
+                    user_id=user_id,
+                    week=week,
+                    season_year=season_year,
+                    season_type=season_type
+                )
+                .first()
+            )
             if row:
-                row.score = score
+                row.score = int(score or 0)
                 row.calculated_at = datetime.utcnow()
             else:
-                db.session.add(UserScore(user_id=user_id, week=week, score=score))
+                db.session.add(UserScore(
+                    user_id=user_id,
+                    week=week,
+                    season_year=season_year,
+                    season_type=season_type,
+                    score=int(score or 0),
+                    calculated_at=datetime.utcnow()
+                ))
+
         db.session.commit()
-        # For callers that expect a dict of totals, return what we wrote (final-only)
         return dict(final_total_by_user)
 
-    # If someone needs live totals instead:
     return dict(live_total_by_user)
 
+def get_current_season_year():
+    """
+    Returns the NFL season year (not calendar year).
+    Jan–Feb belong to the prior season.
+    """
+    now = datetime.now(timezone("US/Mountain"))
+    return now.year - 1 if now.month in (1, 2) else now.year
 
 def auto_fetch_scores():
     """Fetch and process scores automatically."""
     try:
-        logger.debug("Executing auto_fetch_scores job")
+        from .extensions import db
+        from .models import Settings
+
         print("auto_fetch_scores triggered")
 
-        with current_app.app_context():
-            from datetime import datetime
-            
-            year = datetime.utcnow().year
+        settings = Settings.query.first()
+        if not settings:
+            print("[SCORES] No Settings row found; skipping")
+            return
 
-            current_week = get_current_week()
-            print(f"Year: {year}, Season Type: {season_type}, Fetching scores for Week: {current_week}")
+        season_year = settings.season_year
+        season_type = settings.season_type
+        current_week = settings.current_week
 
-            games = get_football_scores(year, season_type, current_week)
-            result = save_week_scores_to_db(year, season_type, current_week)
-            print(f"Result of save_week_scores_to_db: {result}")
+        # ✅ Simple: always refresh current + previous
+        weeks_to_update = {current_week}
+        prev = (current_week or 0) - 1
+        if prev >= 1:
+            weeks_to_update.add(prev)
 
-            calculate_user_scores(current_week)
-            print(f"User scores calculated and updated for week {current_week}.")
+        print(f"[SCORES] Updating weeks: {sorted(weeks_to_update)} for {season_type} {season_year}")
 
-    except Exception as e:
-        print(f"Error in auto_fetch_scores: {e}")
+        for wk in sorted(weeks_to_update):
+            result = save_week_scores_to_db(season_year, season_type, wk)
+            print(f"[SCORES] save_week_scores_to_db week={wk} -> {result}")
+
+            calculate_user_scores(wk, season_year, season_type)
+            print(f"[SCORES] calculated user scores for week={wk}")
+
+    except Exception:
+        import traceback
+        print("Error in auto_fetch_scores:")
+        traceback.print_exc()
     finally:
         print("Finished running auto_fetch_scores")
 
 
 
-def get_unpicked_games_for_week(user_picks, week):
-    # Get the IDs of the games the user has already picked
-    picked_game_ids = [pick.game_id for pick in user_picks]
 
-    # Fetch all games for the selected week
-    all_games_for_week = Game.query.filter_by(week=week).all()
 
-    # Return only the games that the user has not picked
-    unpicked_games = [game for game in all_games_for_week if game.id not in picked_game_ids]
+def get_unpicked_games_for_week(user_picks, week, season_year, season_type):
+    picked_game_ids = {pick.game_id for pick in user_picks}
 
-    return unpicked_games
+    query = Game.query.filter(
+        Game.season_year == season_year,
+        Game.season_type == season_type,
+        Game.week == week
+    )
+
+    if picked_game_ids:
+        query = query.filter(~Game.id.in_(picked_game_ids))
+
+    return query.order_by(Game.commence_time_mt.asc()).all()
 
 def save_user_scores_to_db(user_scores, week):
     """
@@ -429,14 +540,24 @@ def highest_available_confidence(user_id: int, week: int) -> int | None:
 def lock_picks_for_commenced_games(user_id):
     from datetime import datetime, timezone
     import pytz
-
+    from .models import Settings
+    from .extensions import db
     now_utc = datetime.now(timezone.utc)
-    current_week = get_current_week()
 
-    commenced_games = Game.query.filter(Game.week == current_week).all()
+    settings = Settings.query.first()
+    if not settings:
+        # Nothing to lock if settings not initialized
+        return
+
+    season_year = settings.season_year
+    season_type = settings.season_type
+
+    current_week = get_current_week(season_year, season_type)
+
+    week_games = Game.query.filter(Game.week == current_week).all()
 
     games_list = []
-    for game in commenced_games:
+    for game in week_games:
         # normalize to aware UTC
         if isinstance(game.commence_time_mt, str):
             game_commence_time_utc = convert_to_utc(game.commence_time_mt)
@@ -491,15 +612,6 @@ def lock_picks_for_commenced_games(user_id):
         p.confidence for p in Pick.query.filter_by(user_id=user_id, week=current_week)
         .filter(Pick.confidence.isnot(None)).all()
     ]
-
-    return render_template(
-        'nfl_picks.html',
-        now_utc=now_utc,
-        games=games_list,
-        selected_week=current_week,
-        used_confidence_points=used_confidence_points
-    )
-
 
 def group_games_by_day(games_list):
     grouped_games = {
@@ -632,6 +744,8 @@ def assign_missed_pick_confidence(available_confidences):
 
 import requests
 import requests
+
+
 
 def fetch_live_scores():
     url = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
