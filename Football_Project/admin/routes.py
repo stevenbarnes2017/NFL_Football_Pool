@@ -916,10 +916,14 @@ def admin_calculate_scores():
 @admin_bp.route('/admin_override_score', methods=['POST'])
 @login_required
 def admin_override_score():
+    from Football_Project.services.group_service import get_active_group_id
+
     user_id = request.form.get('user_id', type=int)
     week = request.form.get('week', type=int)
     game_id = request.form.get('game_id', type=int)
     new_score = request.form.get('new_score')
+
+    group_id = get_active_group_id()
 
     try:
         new_score = float(new_score)
@@ -927,7 +931,13 @@ def admin_override_score():
         flash("Invalid score value.", "danger")
         return redirect(url_for('admin.admin_scores', week=week))
 
-    pick = Pick.query.filter_by(user_id=user_id, game_id=game_id, week=week).first()
+    pick = Pick.query.filter_by(
+        user_id=user_id,
+        game_id=game_id,
+        week=week,
+        group_id=group_id,
+    ).first()
+
     if not pick:
         flash("Pick not found.", "danger")
         return redirect(url_for('admin.admin_scores', week=week))
@@ -937,14 +947,21 @@ def admin_override_score():
     db.session.add(pick)
     db.session.commit()
 
-    # Recompute totals for that week
-    user_scores = calculate_user_scores(week=week)
+    # Recompute totals for that week/group
+    user_scores = calculate_user_scores(week=week, group_id=group_id)
+
     row = UserScore.query.filter_by(user_id=user_id, week=week).first()
     if row:
         row.score = user_scores.get(user_id, row.score)
     else:
-        db.session.add(UserScore(user_id=user_id, week=week, score=user_scores.get(user_id, 0),
-                                 calculated_at=datetime.utcnow()))
+        db.session.add(
+            UserScore(
+                user_id=user_id,
+                week=week,
+                score=user_scores.get(user_id, 0),
+                calculated_at=datetime.utcnow(),
+            )
+        )
     db.session.commit()
 
     flash("Score successfully overridden and totals updated.", "success")
@@ -1192,6 +1209,8 @@ def view_user_picks(user_id: int):
         flash("Settings not found. Please initialize Settings first.", "danger")
         return redirect(url_for('admin.admin_dashboard'))
 
+    group_id = get_active_group_id()
+
     week = request.args.get('week', type=int) or settings.current_week
 
     user = User.query.get_or_404(user_id)
@@ -1207,7 +1226,11 @@ def view_user_picks(user_id: int):
             joined_rows = (
                 db.session.query(Pick, Game)
                 .join(Game, Game.id == Pick.game_id)
-                .filter(Pick.user_id == user_id, Pick.week == week)
+                .filter(
+                    Pick.user_id == user_id,
+                    Pick.week == week,
+                    Pick.group_id == group_id,
+                )
                 .order_by(Game.commence_time_mt.asc())
                 .all()
             )
@@ -1223,7 +1246,11 @@ def view_user_picks(user_id: int):
                     & (Game.home_team == Pick.home_team)
                     & (Game.away_team == Pick.away_team)
                 )
-                .filter(Pick.user_id == user_id, Pick.week == week)
+                .filter(
+                    Pick.user_id == user_id,
+                    Pick.week == week,
+                    Pick.group_id == group_id,
+                )
                 .order_by(Game.commence_time_mt.asc())
                 .all()
             )
@@ -1239,7 +1266,11 @@ def view_user_picks(user_id: int):
                     & or_(Game.home_team == Pick.team_picked,
                           Game.away_team == Pick.team_picked)
                 )
-                .filter(Pick.user_id == user_id, Pick.week == week)
+                .filter(
+                    Pick.user_id == user_id,
+                    Pick.week == week,
+                    Pick.group_id == group_id,
+                )
                 .order_by(Game.commence_time_mt.asc())
                 .all()
             )
@@ -1264,7 +1295,11 @@ def view_user_picks(user_id: int):
 
     else:
         picks = (
-            Pick.query.filter_by(user_id=user_id, week=week)
+            Pick.query.filter_by(
+                user_id=user_id,
+                week=week,
+                group_id=group_id,
+            )
             .order_by(getattr(Pick, 'pick_time', getattr(Pick, 'created_at', Pick.id)).desc())
             .all()
         )

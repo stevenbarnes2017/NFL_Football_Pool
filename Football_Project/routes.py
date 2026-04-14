@@ -29,6 +29,8 @@ from .utils import generate_token, verify_token
 from .services.leaderboard import get_season_leaderboard, get_weekly_leaderboard
 from .services.auth_context import get_effective_user_id
 from Football_Project.services.season import get_current_season_context
+from Football_Retry.Football_Project.services.group_service import get_active_group_id
+
 
 
 main_bp = Blueprint('main', __name__)
@@ -56,16 +58,58 @@ def index():
 @main_bp.route('/my_picks', methods=['GET', 'POST'])
 @login_required
 def my_picks():
-    # List of weeks (assuming 17 weeks in the NFL season)
-    weeks = list(range(1, 18))
+    from Football_Project.services.group_service import get_active_group_id
 
-    # Default to current week or use the selected week from the form
-    selected_week = int(request.form.get('week', 1))
+    settings = Settings.query.first()
+    season_year = settings.season_year
+    season_type = settings.season_type
+    current_week = settings.current_week
 
-    # Query for the user's picks for the selected week
-    user_picks = Pick.query.filter_by(user_id=current_user.id, week=selected_week).all()
+    group_id = get_active_group_id()
 
-    return render_template('my_picks.html', picks=user_picks, weeks=weeks, selected_week=selected_week)
+    weeks = [
+        wk for (wk,) in (
+            db.session.query(Game.week)
+            .filter(
+                Game.season_year == season_year,
+                Game.season_type == season_type,
+            )
+            .distinct()
+            .order_by(Game.week.asc())
+            .all()
+        )
+    ]
+
+    if request.method == 'POST':
+        selected_week = request.form.get('week', type=int) or current_week
+    else:
+        selected_week = request.args.get('week', type=int) or current_week
+
+    if weeks and selected_week not in weeks:
+        selected_week = weeks[0]
+
+    user_picks = (
+        Pick.query
+        .join(Game, Pick.game_id == Game.id)
+        .filter(
+            Pick.user_id == current_user.id,
+            Pick.group_id == group_id,
+            Pick.week == selected_week,
+            Game.season_year == season_year,
+            Game.season_type == season_type,
+        )
+        .order_by(Pick.confidence.desc().nullslast())
+        .all()
+    )
+
+    return render_template(
+        'my_picks.html',
+        picks=user_picks,
+        weeks=weeks,
+        selected_week=selected_week,
+        season_year=season_year,
+        season_type=season_type,
+    )
 
 @main_bp.route("/register")
 def legacy_register():
@@ -536,6 +580,8 @@ def see_picks():
     season_type = settings.season_type
     current_week = settings.current_week
 
+    group_id = get_active_group_id()
+
     # ✅ View-as support: use effective_user_id for loading picks
     view_as_id = session.get("view_as_user_id") or session.get("admin_view_as_user_id")
     effective_user_id = current_user.id
@@ -569,12 +615,13 @@ def see_picks():
     if all_weeks and selected_week not in all_weeks:
         selected_week = all_weeks[0]
 
-    # ✅ User picks for ONLY games in this season/week/type (view-as aware)
+    # ✅ User picks for ONLY games in this season/week/type/group (view-as aware)
     user_picks = (
         Pick.query
         .join(Game, Pick.game_id == Game.id)
         .filter(
-            Pick.user_id == effective_user_id,   # ✅ CHANGED
+            Pick.user_id == effective_user_id,
+            Pick.group_id == group_id,
             Game.season_year == season_year,
             Game.season_type == season_type,
             Game.week == selected_week
@@ -583,12 +630,13 @@ def see_picks():
         .all()
     )
 
-    # ✅ Unpicked games should also be season filtered.
+    # ✅ Unpicked games should also be season filtered and group-aware
     unpicked_games = get_unpicked_games_for_week(
         user_picks=user_picks,
         week=selected_week,
         season_year=season_year,
-        season_type=season_type
+        season_type=season_type,        
+        
     )
 
     return render_template(
@@ -599,9 +647,8 @@ def see_picks():
         unpicked_games=unpicked_games,
         season_year=season_year,
         season_type=season_type,
-        effective_user_id=effective_user_id  # optional debug/header
+        effective_user_id=effective_user_id
     )
-
 
 
 from flask import jsonify, request
@@ -1002,6 +1049,7 @@ def nfl_picks():
     import pytz
     from flask import request, render_template, session
     from flask_login import current_user
+    from Football_Project.services.group_service import get_active_group_id
 
     utc = pytz.utc
     mt = pytz.timezone("America/Denver")
@@ -1012,6 +1060,8 @@ def nfl_picks():
     season_year = settings.season_year
     season_type = settings.season_type
     current_week = settings.current_week
+
+    group_id = get_active_group_id()
 
     # ✅ View-as support
     view_as_id = session.get("view_as_user_id")
@@ -1058,7 +1108,7 @@ def nfl_picks():
     )
     num_of_games = len(games)
 
-    # ✅ Group games by Mountain weekday for display (DEFINE THIS!)
+    # ✅ Group games by Mountain weekday for display
     grouped_games = {}
     for g in games:
         dt_mt = g.commence_time_mt.astimezone(mt) if g.commence_time_mt else None
@@ -1068,13 +1118,14 @@ def nfl_picks():
     # DB PK ids for the week's games
     game_db_ids = [g.id for g in games]
 
-    # ✅ Picks for ONLY these games, ONLY this week, and the effective user
+    # ✅ Picks for ONLY these games, ONLY this week, ONLY this group, and the effective user
     rows = (
         db.session.query(Pick, Game)
         .join(Game, Pick.game_id == Game.id)
         .filter(
             Pick.user_id == effective_user_id,
-            Pick.week == selected_week,          # ✅ IMPORTANT
+            Pick.group_id == group_id,
+            Pick.week == selected_week,
             Game.id.in_(game_db_ids)
         )
         .all()

@@ -255,7 +255,8 @@ def calculate_user_scores(
     week: int,
     season_year: int,
     season_type: str,
-    write_final_only: bool = True
+    group_id: int,
+    write_final_only: bool = True,
 ):
     games = (
         Game.query
@@ -263,9 +264,12 @@ def calculate_user_scores(
         .all()
     )
 
-    print(f"[SCORES] games_in_db={len(games)} season_year={season_year} season_type={season_type} week={week}")
+    print(
+        f"[SCORES] games_in_db={len(games)} "
+        f"season_year={season_year} season_type={season_type} week={week} group_id={group_id}"
+    )
 
-    # ✅ ONLY rely on Game.week (never Pick.week)
+    # ✅ ONLY rely on Game.week (never Pick.week), and scope picks to group
     picks = (
         Pick.query
         .join(Game, Game.id == Pick.game_id)
@@ -273,11 +277,12 @@ def calculate_user_scores(
             Game.season_year == season_year,
             Game.season_type == season_type,
             Game.week == week,
+            Pick.group_id == group_id,
         )
         .all()
     )
 
-    live_total_by_user  = defaultdict(int)
+    live_total_by_user = defaultdict(int)
     final_total_by_user = defaultdict(int)
 
     considered, awarded = 0, 0
@@ -286,7 +291,7 @@ def calculate_user_scores(
     for pick in picks:
         # Manual overrides: keep whatever is stored
         if getattr(pick, "is_overridden", False):
-            live_total_by_user[pick.user_id]  += int(pick.points_earned or 0)
+            live_total_by_user[pick.user_id] += int(pick.points_earned or 0)
             final_total_by_user[pick.user_id] += int(pick.points_earned or 0)
             continue
 
@@ -342,35 +347,14 @@ def calculate_user_scores(
             final_total_by_user[pick.user_id] += points
             awarded += 1 if points else 0
 
-    print(f"[GRADE] {season_type} {season_year} week={week} games={len(games)} picks={len(picks)} considered={considered}")
+    print(
+        f"[GRADE] {season_type} {season_year} "
+        f"week={week} group_id={group_id} games={len(games)} picks={len(picks)} considered={considered}"
+    )
     db.session.commit()
 
+    # ⚠️ UserScore is not group-scoped yet, so do not persist ambiguous totals
     if write_final_only:
-        for user_id, score in final_total_by_user.items():
-            row = (
-                UserScore.query
-                .filter_by(
-                    user_id=user_id,
-                    week=week,
-                    season_year=season_year,
-                    season_type=season_type
-                )
-                .first()
-            )
-            if row:
-                row.score = int(score or 0)
-                row.calculated_at = datetime.utcnow()
-            else:
-                db.session.add(UserScore(
-                    user_id=user_id,
-                    week=week,
-                    season_year=season_year,
-                    season_type=season_type,
-                    score=int(score or 0),
-                    calculated_at=datetime.utcnow()
-                ))
-
-        db.session.commit()
         return dict(final_total_by_user)
 
     return dict(live_total_by_user)
@@ -522,26 +506,33 @@ def convert_to_utc(time_value):
     return utc_time
 
 
-def highest_available_confidence(user_id: int, week: int) -> int | None:
-    """Return the highest confidence number not yet used by this user in this week."""
+def highest_available_confidence(user_id: int, week: int, group_id: int) -> int | None:
+    """Return the highest confidence number not yet used by this user in this week (group-scoped)."""
+
     # how many games this week = how many confidence points exist
     total_games = Game.query.filter_by(week=week).count()
+
     all_confidences = set(range(1, total_games + 1))
+
     used = {
         p.confidence
-        for p in Pick.query.filter_by(user_id=user_id, week=week)
+        for p in Pick.query
+        .filter_by(user_id=user_id, week=week, group_id=group_id)
         .filter(Pick.confidence.isnot(None))
         .all()
     }
+
     available = sorted(list(all_confidences - used), reverse=True)
+
     return available[0] if available else None
 
 
-def lock_picks_for_commenced_games(user_id):
+def lock_picks_for_commenced_games(user_id, group_id):
     from datetime import datetime, timezone
     import pytz
     from .models import Settings
     from .extensions import db
+
     now_utc = datetime.now(timezone.utc)
 
     settings = Settings.query.first()
@@ -554,7 +545,15 @@ def lock_picks_for_commenced_games(user_id):
 
     current_week = get_current_week(season_year, season_type)
 
-    week_games = Game.query.filter(Game.week == current_week).all()
+    week_games = (
+        Game.query
+        .filter(
+            Game.season_year == season_year,
+            Game.season_type == season_type,
+            Game.week == current_week,
+        )
+        .all()
+    )
 
     games_list = []
     for game in week_games:
@@ -563,7 +562,7 @@ def lock_picks_for_commenced_games(user_id):
             game_commence_time_utc = convert_to_utc(game.commence_time_mt)
         elif isinstance(game.commence_time_mt, datetime):
             if game.commence_time_mt.tzinfo is None:
-                local_tz = pytz.timezone('America/Denver')
+                local_tz = pytz.timezone("America/Denver")
                 localized_dt = local_tz.localize(game.commence_time_mt)
                 game_commence_time_utc = localized_dt.astimezone(pytz.utc)
             else:
@@ -572,27 +571,33 @@ def lock_picks_for_commenced_games(user_id):
             raise ValueError(f"Invalid commence_time format for game {game.id}")
 
         games_list.append({
-            'id': game.id,
-            'home_team': game.home_team,
-            'away_team': game.away_team,
-            'spread': game.spread,
-            'favorite_team': game.favorite_team,
-            'commence_time_utc': game_commence_time_utc,
-            'commence_time_mt': game.commence_time_mt,
+            "id": game.id,
+            "home_team": game.home_team,
+            "away_team": game.away_team,
+            "spread": game.spread,
+            "favorite_team": game.favorite_team,
+            "commence_time_utc": game_commence_time_utc,
+            "commence_time_mt": game.commence_time_mt,
         })
 
         # lock if kicked off
         if game_commence_time_utc <= now_utc:
-            existing_pick = Pick.query.filter_by(user_id=user_id, game_id=game.id).first()
+            existing_pick = Pick.query.filter_by(
+                user_id=user_id,
+                game_id=game.id,
+                week=current_week,
+                group_id=group_id,
+            ).first()
 
             if not existing_pick:
                 # Case A: no pick at all -> create a missed pick with highest available confidence
-                avail = highest_available_confidence(user_id, current_week)
+                avail = highest_available_confidence(user_id, current_week, group_id)
                 missed_pick = Pick(
                     user_id=user_id,
                     game_id=game.id,
                     week=current_week,
-                    team_picked=None,        # no team chosen
+                    group_id=group_id,
+                    team_picked=None,   # no team chosen
                     confidence=avail,
                     points_earned=0,
                 )
@@ -600,7 +605,7 @@ def lock_picks_for_commenced_games(user_id):
 
             elif existing_pick.team_picked and (existing_pick.confidence is None or existing_pick.confidence == 0):
                 # Case B: team chosen but no confidence -> assign highest available
-                avail = highest_available_confidence(user_id, current_week)
+                avail = highest_available_confidence(user_id, current_week, group_id)
                 existing_pick.confidence = avail
                 db.session.add(existing_pick)
 
@@ -609,9 +614,17 @@ def lock_picks_for_commenced_games(user_id):
     db.session.commit()
 
     used_confidence_points = [
-        p.confidence for p in Pick.query.filter_by(user_id=user_id, week=current_week)
-        .filter(Pick.confidence.isnot(None)).all()
+        p.confidence
+        for p in Pick.query.filter_by(
+            user_id=user_id,
+            week=current_week,
+            group_id=group_id,
+        )
+        .filter(Pick.confidence.isnot(None))
+        .all()
     ]
+
+    return used_confidence_points
 
 def group_games_by_day(games_list):
     grouped_games = {
@@ -912,44 +925,76 @@ def fetch_last_week_scores():
 
     return last_week_games
 
-def save_pick_to_db(user_id, week, game_id, pick, confidence):
+def save_pick_to_db(user_id, week, game_id, pick, confidence, group_id):
     """
-    Save or update the user's pick for a specific game in the database.
+    Save or update the user's pick for a specific game in the database (group-scoped).
     """
-    existing_pick = Pick.query.filter_by(user_id=user_id, week=week, game_id=game_id).first()
+
+    existing_pick = Pick.query.filter_by(
+        user_id=user_id,
+        week=week,
+        game_id=game_id,
+        group_id=group_id,
+    ).first()
 
     if existing_pick:
         # Debugging: Log the update action
-        print(f"Updating pick for user {user_id} in week {week}, game {game_id}: {pick}, confidence {confidence}")
+        print(f"Updating pick for user {user_id} in week {week}, game {game_id}, group {group_id}: {pick}, confidence {confidence}")
+
         # Update the existing pick
-        existing_pick.team = pick
+        existing_pick.team_picked = pick
         existing_pick.confidence = confidence
+
     else:
         # Debugging: Log the new pick action
-        print(f"Saving new pick for user {user_id} in week {week}, game {game_id}: {pick}, confidence {confidence}")
+        print(f"Saving new pick for user {user_id} in week {week}, game {game_id}, group {group_id}: {pick}, confidence {confidence}")
+
         # Create a new pick
-        new_pick = Pick(user_id=user_id, week=week, game_id=game_id, team_picked=pick, confidence=confidence)
+        new_pick = Pick(
+            user_id=user_id,
+            week=week,
+            game_id=game_id,
+            group_id=group_id,
+            team_picked=pick,
+            confidence=confidence,
+        )
         db.session.add(new_pick)
 
     db.session.commit()
 
-def get_user_picks(user_id, week):
+def get_user_picks(user_id, week, group_id):
     """
-    Retrieve the user's picks from the database for the given week.
+    Retrieve the user's picks from the database for the given week (group-scoped).
     """
-    picks = Pick.query.filter_by(user_id=user_id, week=week).all()
-    user_picks = {pick.game_id: (pick.team_picked, pick.confidence) for pick in picks}
+
+    picks = Pick.query.filter_by(
+        user_id=user_id,
+        week=week,
+        group_id=group_id,
+    ).all()
+
+    user_picks = {
+        pick.game_id: (pick.team_picked, pick.confidence)
+        for pick in picks
+    }
 
     # Debugging: Log the retrieved picks
-    print(f"Retrieved picks for user {user_id} in week {week}: {user_picks}")
+    print(f"Retrieved picks for user {user_id} in week {week}, group {group_id}: {user_picks}")
 
     return user_picks
 
 
-def get_picks(user_id, week):
-    # Query picks for the specified user and week
-    picks = Pick.query.filter_by(user_id=user_id, week=week).all()
-    # Format the picks data as needed for Excel or email
+def get_picks(user_id, week, group_id):
+    """
+    Retrieve picks for a user/week scoped to a specific group.
+    """
+
+    picks = Pick.query.filter_by(
+        user_id=user_id,
+        week=week,
+        group_id=group_id,
+    ).all()
+
     picks_data = [
         {
             "home_team": pick.game.home_team,
@@ -957,13 +1002,12 @@ def get_picks(user_id, week):
             "spread": pick.game.spread,
             "favorite_team": pick.game.favorite_team,
             "team_picked": pick.team_picked,
-            "confidence": pick.confidence
+            "confidence": pick.confidence,
         }
         for pick in picks
     ]
-    return picks_data
 
-import requests
+    return picks_data
 
 def get_nfl_playoff_picture():
     import requests
