@@ -20,4 +20,4 @@ COPY . .
 
 ENV PORT=8000
 
-CMD ["sh", "-c", "gunicorn -w 3 -b 0.0.0.0:${PORT} wsgi:app"]
+CMD ["sh", "-c", "gunicorn -w 1 -b 0.0.0.0:${PORT} wsgi:app"]

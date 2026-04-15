@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  football-app:
+    image: football-app:latest
+    container_name: football-app
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: 8000
+      SECRET_KEY: password
+      DATABASE_URL: postgresql://pickarena_app_user:Silkyjungle432!@10.0.0.129:5432/pickarena_prod_db
+    restart: unless-stopped
