@@ -23,13 +23,19 @@ from datetime import datetime
 from pytz import timezone  # Add this
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from .extensions import db
-from .models import Game, Pick, User, Settings, UserScore, Announcement, BoardThread, BoardPost
+from .models import Game, Pick, User, Settings, UserScore, Announcement, BoardThread, BoardPost, GroupMember, PoolGroup
 #from flask_mail import Message  # if you use Flask-Mail
 from .utils import generate_token, verify_token
 from .services.leaderboard import get_season_leaderboard, get_weekly_leaderboard
 from .services.auth_context import get_effective_user_id
 from Football_Project.services.season import get_current_season_context
+<<<<<<< HEAD
 from .services.group_service import get_active_group_id
+=======
+from Football_Retry.Football_Project.services.group_service import get_active_group_id
+from slugify import slugify
+
+>>>>>>> 48d0bb5 (scoping users view throughout admin routes)
 
 
 main_bp = Blueprint('main', __name__)
@@ -336,16 +342,28 @@ def submit_picks():
     from datetime import datetime
     import pytz
     from flask import session
+    from Football_Project.services.group_service import get_active_group_id
 
     utc = pytz.utc
     now_utc = datetime.now(utc)
 
-    # ✅ DB-driven season context to match nfl_picks
     settings = Settings.query.first()
     season_year = settings.season_year
     season_type = settings.season_type
 
-    # ✅ View-as support: use effective_user_id when admin is impersonating
+    # Active group should come from the same source as nfl_picks
+    group_id = get_active_group_id()
+    if not group_id:
+        flash("No active group selected.", "danger")
+        return redirect(url_for("main.nfl_picks"))
+
+    # Optional fallback if you still want to compare against posted value
+    posted_group_id = request.form.get("group_id", type=int)
+    if posted_group_id and posted_group_id != group_id:
+        flash("Group mismatch detected.", "danger")
+        return redirect(url_for("main.nfl_picks"))
+
+    # View-as support
     view_as_id = session.get("view_as_user_id") or session.get("admin_view_as_user_id")
     effective_user_id = current_user.id
     if view_as_id and getattr(current_user, "is_admin", False):
@@ -354,20 +372,28 @@ def submit_picks():
         except (TypeError, ValueError):
             effective_user_id = current_user.id
 
-    # Week
     try:
-        week = int(request.form.get('week', '0'))
+        week = int(request.form.get("week", "0"))
     except (TypeError, ValueError):
         flash("Invalid week.", "danger")
-        return redirect(url_for('main.nfl_picks'))
+        return redirect(url_for("main.nfl_picks"))
 
-    # ✅ Pull games for the week WITH season filters (avoid cross-season bleed)
+    membership = GroupMember.query.filter_by(
+        user_id=effective_user_id,
+        group_id=group_id,
+        is_active=True,
+    ).first()
+
+    if not membership:
+        flash("You are not a member of that group.", "danger")
+        return redirect(url_for("main.nfl_picks", week=week))
+
     games = (
         Game.query
         .filter(
             Game.week == week,
             Game.season_year == season_year,
-            Game.season_type == season_type
+            Game.season_type == season_type,
         )
         .all()
     )
@@ -390,8 +416,14 @@ def submit_picks():
             locked += 1
             continue
 
+        if team_picked and team_picked not in {game.home_team, game.away_team}:
+            flash(f"Invalid team selection for game {nat_id}.", "warning")
+            skipped += 1
+            continue
+
         conf_val = None
         conf_set_to_null = False
+
         if conf_raw == "":
             conf_set_to_null = True
         else:
@@ -402,42 +434,46 @@ def submit_picks():
                 skipped += 1
                 continue
 
-        # ✅ Upsert by (effective_user_id, week, numeric FK)
         existing = Pick.query.filter_by(
-            user_id=effective_user_id,   # ✅ CHANGED
-            week=week,
-            game_id=game.id
+            user_id=effective_user_id,
+            game_id=game.id,
+            group_id=group_id,
         ).first()
 
         if existing:
             changed = False
-            if team_picked:
+
+            if team_picked and existing.team_picked != team_picked:
                 existing.team_picked = team_picked
                 changed = True
 
-            if conf_set_to_null:
+            if conf_set_to_null and existing.confidence is not None:
                 existing.confidence = None
                 changed = True
-            elif conf_val is not None:
+            elif conf_val is not None and existing.confidence != conf_val:
                 existing.confidence = conf_val
                 changed = True
 
             if changed:
+                existing.week = game.week
                 existing.pick_time = datetime.utcnow()
                 updated += 1
             else:
                 skipped += 1
+
         else:
             if not team_picked:
                 skipped += 1
                 continue
 
             db.session.add(Pick(
-                user_id=effective_user_id,  # ✅ CHANGED
-                week=week,
+                user_id=effective_user_id,
+                week=game.week,
                 game_id=game.id,
+                group_id=group_id,
                 team_picked=team_picked,
                 confidence=(None if conf_set_to_null else conf_val),
+                pick_time=datetime.utcnow(),
             ))
             created += 1
 
@@ -446,14 +482,13 @@ def submit_picks():
     except Exception as e:
         db.session.rollback()
         flash(f"Error saving picks: {e}", "danger")
-        return redirect(url_for('main.nfl_picks', week=week))
+        return redirect(url_for("main.nfl_picks", week=week))
 
     flash(
         f"Saved for user {effective_user_id} — Created: {created}, Updated: {updated}, Locked: {locked}, Skipped: {skipped}",
         "success" if (created or updated) else "warning"
     )
-    return redirect(url_for('main.nfl_picks', week=week))
-
+    return redirect(url_for("main.nfl_picks", week=week))
 
 
 
@@ -492,7 +527,8 @@ def admin_set_week():
 @main_bp.route('/user_dashboard')
 @login_required
 def user_dashboard():
-    lock_picks_for_commenced_games(current_user.id)
+    group_id = get_active_group_id()
+    lock_picks_for_commenced_games(current_user.id, group_id)
     settings = Settings.query.first()
     current_week = settings.current_week if settings else 1
     all_weeks = list(range(1, current_week ))  # List of all weeks up to the current week
@@ -1124,8 +1160,9 @@ def nfl_picks():
         .filter(
             Pick.user_id == effective_user_id,
             Pick.group_id == group_id,
-            Pick.week == selected_week,
-            Game.id.in_(game_db_ids)
+            Game.season_year == season_year,
+            Game.season_type == season_type,
+            Game.week == selected_week,
         )
         .all()
     )
@@ -1168,13 +1205,9 @@ def nfl_picks():
         locked_ids=locked_ids,
         season_year=season_year,
         season_type=season_type,
-        effective_user_id=effective_user_id
+        effective_user_id=effective_user_id,
+        group_id=group_id
     )
-
-
-
-
-
 
 import json
 @main_bp.route('/stream-live-scores')
@@ -1293,6 +1326,11 @@ def reset_password(token):
 def leaderboard():
     tab = request.args.get("tab", "season")  # 'season' | 'weekly'
 
+    active_group_id = session.get("active_group_id")
+    if not active_group_id:
+        flash("No active group selected.", "warning")
+        return redirect(url_for("main.groups"))
+
     settings = Settings.query.first()
     season_year = settings.season_year
     season_type = settings.season_type
@@ -1317,8 +1355,12 @@ def leaderboard():
         if all_weeks and week not in all_weeks:
             week = all_weeks[0]
 
-        # ✅ New signature
-        w_header, w_rows = get_weekly_leaderboard(week, season_year, season_type)
+        w_header, w_rows = get_weekly_leaderboard(
+            week=week,
+            season_year=season_year,
+            season_type=season_type,
+            group_id=active_group_id,
+        )
 
         return render_template(
             "leaderboard.html",
@@ -1332,8 +1374,12 @@ def leaderboard():
             season_type=season_type,
         )
 
-    # ✅ Season tab (new signature)
-    s_header, s_rows = get_season_leaderboard(current_week, season_year, season_type)
+    s_header, s_rows = get_season_leaderboard(
+        current_week=current_week,
+        season_year=season_year,
+        season_type=season_type,
+        group_id=active_group_id,
+    )
 
     return render_template(
         "leaderboard.html",
@@ -1430,9 +1476,158 @@ def new_thread():
 
     return render_template("new_thread.html")
 
+@main_bp.route("/groups/create", methods=["GET", "POST"])
+@login_required
+def create_group():
+    if request.method == "POST":
+        name = (request.form.get("name") or "").strip()
+        slug = slugify(name)
 
+        if not name:
+            flash("Group name is required.", "danger")
+            return redirect(url_for("main.create_group"))
 
+        existing = PoolGroup.query.filter_by(slug=slug).first()
+        if existing:
+            flash("A group with that name already exists.", "warning")
+            return redirect(url_for("main.create_group"))
+
+        group = PoolGroup(
+            name=name,
+            slug=slug,
+            is_active=True,
+            created_by_user_id=current_user.id,
+        )
+        db.session.add(group)
+        db.session.flush()
+
+        membership = GroupMember(
+            user_id=current_user.id,
+            group_id=group.id,
+            role="commissioner",
+            is_active=True,
+        )
+        db.session.add(membership)
+        db.session.commit()
+
+        session["active_group_id"] = group.id
+        flash("Group created successfully.", "success")
+        return redirect(url_for("main.nfl_picks"))
+
+    return render_template("create_group.html")
+
+@main_bp.route("/groups/switch/<int:group_id>", methods=["POST"])
+@login_required
+def switch_group(group_id):
+    membership = GroupMember.query.filter_by(
+        user_id=current_user.id,
+        group_id=group_id,
+        is_active=True,
+    ).first()
+
+    if not membership:
+        flash("You do not have access to that group.", "danger")
+        return redirect(url_for("main.groups"))
+
+    session["active_group_id"] = group_id
+    flash("Active group updated.", "success")
+    return redirect(url_for("main.nfl_picks"))
     
+@main_bp.route("/groups/join", methods=["GET", "POST"])
+@login_required
+def join_group():
+    if request.method == "POST":
+        slug = (request.form.get("slug") or "").strip().lower()
+
+        if not slug:
+            flash("Group slug is required.", "danger")
+            return redirect(url_for("main.join_group"))
+
+        group = PoolGroup.query.filter_by(slug=slug, is_active=True).first()
+
+        if not group:
+            flash("Group not found.", "danger")
+            return redirect(url_for("main.join_group"))
+
+        existing_membership = GroupMember.query.filter_by(
+            user_id=current_user.id,
+            group_id=group.id,
+        ).first()
+
+        if existing_membership:
+            if not existing_membership.is_active:
+                existing_membership.is_active = True
+                db.session.commit()
+
+            session["active_group_id"] = group.id
+            flash("You are already a member of that group.", "info")
+            return redirect(url_for("main.groups"))
+
+        membership = GroupMember(
+            user_id=current_user.id,
+            group_id=group.id,
+            role="member",
+            is_active=True,
+        )
+        db.session.add(membership)
+        db.session.commit()
+
+        session["active_group_id"] = group.id
+        flash(f"You joined {group.name}.", "success")
+        return redirect(url_for("main.nfl_picks"))
+
+    return render_template("join_group.html")
+
+@main_bp.route("/groups", methods=["GET"])
+@login_required
+def groups():
+    from Football_Project.services.group_service import get_active_group_id
+
+    active_group_id = get_active_group_id()
+
+    memberships = (
+        db.session.query(GroupMember, PoolGroup)
+        .join(PoolGroup, GroupMember.group_id == PoolGroup.id)
+        .filter(
+            GroupMember.user_id == current_user.id,
+            GroupMember.is_active == True,
+            PoolGroup.is_active == True,
+        )
+        .order_by(PoolGroup.name.asc())
+        .all()
+    )
+
+    return render_template(
+        "groups.html",
+        memberships=memberships,
+        active_group_id=active_group_id,
+    )
 
 
+@main_bp.app_context_processor
+def inject_active_group():
+    from Football_Project.services.group_service import get_active_group_id
 
+    group_id = get_active_group_id()
+    active_group = None
+    active_membership = None
+
+    print(f"[CTX] current_user_authenticated={getattr(current_user, 'is_authenticated', False)}")
+    print(f"[CTX] group_id={group_id}")
+
+    if group_id and getattr(current_user, "is_authenticated", False):
+        active_group = PoolGroup.query.filter_by(id=group_id, is_active=True).first()
+        print(f"[CTX] active_group={active_group}")
+
+        if active_group:
+            active_membership = GroupMember.query.filter_by(
+                user_id=current_user.id,
+                group_id=group_id,
+                is_active=True,
+            ).first()
+            print(f"[CTX] active_membership={active_membership}")
+
+    return dict(
+        active_group=active_group,
+        active_membership=active_membership,
+    )

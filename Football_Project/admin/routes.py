@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 # Data / services
 from Football_Project.get_the_odds import get_nfl_spreads, save_spreads_to_db, save_to_csv
 from football_scores import get_football_scores, save_scores_to_csv  # NOTE: don't import save_scores_to_db here
-from Football_Project.models import db, Game, Settings, User, UserScore, Pick, JobRun, Announcement
+from Football_Project.models import db, Game, Settings, User, UserScore, Pick, JobRun, Announcement, GroupMember
 from Football_Project.utils import calculate_user_scores, save_game_scores_to_db  # keep the utils version
 from werkzeug.security import generate_password_hash
 from Football_Project.services.sms_helpers import sms_week_reminder_job
@@ -291,7 +291,22 @@ def admin_guard():
 @admin_bp.route('/manage_users')
 @login_required
 def manage_users():
-    users = User.query.order_by(User.username).all()
+    active_group_id = session.get("active_group_id")
+
+    if not active_group_id:
+        flash("No active group selected.", "warning")
+        return redirect(url_for("main.user_dashboard"))
+
+    memberships = GroupMember.query.filter_by(group_id=active_group_id).all()
+    user_ids = [m.user_id for m in memberships]
+
+    users = (
+        User.query
+        .filter(User.id.in_(user_ids))
+        .order_by(User.username)
+        .all()
+    ) if user_ids else []
+
     return render_template('manage_users.html', users=users)
 
 @admin_bp.route('/edit_user/<int:user_id>', methods=['GET', 'POST'])
@@ -425,14 +440,8 @@ def admin_dashboard():
 
     settings = Settings.query.first()
 
-    # Fallbacks if settings row somehow missing (shouldn't happen now)
     season_year = settings.season_year if settings else datetime.utcnow().year
-    default_season_type = _settings_to_espn_seasontype(settings)
-
-    # Your settings season_type appears to be 'REG'/'POST'/'PRE' (string)
     season_type = (settings.season_type if settings else "REG")
-
-    # Use settings.current_week if present; else your existing logic
     current_week = settings.current_week
 
     last_odds_fetch = _last_odds_fetch_for_week(current_week)
@@ -445,10 +454,22 @@ def admin_dashboard():
     )
 
     weeks = list(range(1, current_week + 1))
-    users = User.query.order_by(User.username).all()
 
-    # ⚠️ NOTE: these two helpers probably need season filters too.
-    # We'll fix them next if they are also pulling old seasons.
+    # get active group id
+    active_group_id = session.get("active_group_id")
+    if not active_group_id:
+        flash("No active group selected.", "warning")
+        return redirect(url_for("main.user_dashboard"))
+
+    # only users in active group
+    users = (
+        User.query
+        .join(GroupMember, GroupMember.user_id == User.id)
+        .filter(GroupMember.group_id == active_group_id)
+        .order_by(User.username)
+        .all()
+    )
+
     total_games = (
         db.session.query(func.count(Game.id))
         .filter(
@@ -458,9 +479,19 @@ def admin_dashboard():
         )
         .scalar() or 0
     )
-    counts = _missing_counts_for_week(current_week)
 
-    # ✅ Status cards (time-based lock) — FIXED: filter by season_year + season_type
+    active_group_id = session.get("active_group_id")
+    if not active_group_id:
+        flash("No active group selected.", "warning")
+        return redirect(url_for("main.user_dashboard"))
+
+    counts = _missing_counts_for_week(
+        week=current_week,
+        group_id=active_group_id,
+        season_year=season_year,
+        season_type=season_type,
+    )
+
     now_mt = datetime.now(ZoneInfo("America/Denver"))
 
     locked_games = (
@@ -474,10 +505,8 @@ def admin_dashboard():
         .scalar() or 0
     )
 
-    # ✅ Remaining should be based on total_games for THIS season/week too
     remaining = max(0, (total_games or 0) - locked_games)
 
-    # Optional: last grading timestamp
     last_grading = db.session.query(func.max(UserScore.calculated_at)).scalar()
 
     stats = {
@@ -552,8 +581,6 @@ def fetch_odds():
 @login_required
 def save_odds():
     try:
-        from .models import Settings  # adjust import path if needed
-
         settings = Settings.query.first()
         if not settings:
             flash("Settings not found. Please initialize Settings first.", "danger")
@@ -644,6 +671,11 @@ def admin_scores():
     selected_week = request.args.get("week", "all")
     selected_user = request.args.get("user", "all")
 
+    active_group_id = session.get("active_group_id")
+    if not active_group_id:
+        flash("No active group selected.", "warning")
+        return redirect(url_for("main.user_dashboard"))
+
     # ✅ season context
     season_year, season_type_label = get_current_season_context()
 
@@ -662,10 +694,19 @@ def admin_scores():
         flash("Invalid user selected.", "danger")
         return redirect(url_for("admin.admin_dashboard"))
 
-    all_users = User.query.order_by(User.username).all()
+    memberships = GroupMember.query.filter_by(group_id=active_group_id).all()
+    user_ids = [m.user_id for m in memberships]
+
+    all_users = (
+        User.query
+        .filter(User.id.in_(user_ids))
+        .order_by(User.username)
+        .all()
+    ) if user_ids else []
 
     # -------------------------------------------------------
     # ✅ Games: always filter to current season + optional week
+    # Games are global, so no group filter here
     # -------------------------------------------------------
     games_q = Game.query.filter(
         Game.season_year == season_year,
@@ -679,6 +720,7 @@ def admin_scores():
 
     # -------------------------------------------------------
     # ✅ Picks: join Game so season filter is guaranteed
+    # ✅ Group-scoped via Pick.group_id
     # -------------------------------------------------------
     picks_q = (
         db.session.query(Pick)
@@ -686,7 +728,8 @@ def admin_scores():
         .join(User, User.id == Pick.user_id)
         .filter(
             Game.season_year == season_year,
-            Game.season_type == season_type_label
+            Game.season_type == season_type_label,
+            Pick.group_id == active_group_id
         )
     )
 
@@ -694,12 +737,17 @@ def admin_scores():
         picks_q = picks_q.filter(Pick.week == selected_week)
 
     if selected_user != "all":
+        # optional extra safety so a user from another group can't be forced in by URL
+        if selected_user not in user_ids:
+            flash("Invalid user selected for this group.", "danger")
+            return redirect(url_for("admin.admin_scores", week=selected_week))
         picks_q = picks_q.filter(Pick.user_id == selected_user)
 
     picks = picks_q.all()
 
     # -------------------------------------------------------
     # ✅ Totals: computed from picks, season-filtered via Game
+    # ✅ Group-scoped via Pick.group_id
     # -------------------------------------------------------
     user_totals = {u.username: 0 for u in all_users}
 
@@ -709,7 +757,8 @@ def admin_scores():
         .join(Game, Game.id == Pick.game_id)
         .filter(
             Game.season_year == season_year,
-            Game.season_type == season_type_label
+            Game.season_type == season_type_label,
+            Pick.group_id == active_group_id
         )
     )
 
@@ -771,11 +820,15 @@ def admin_scores():
 
     # -------------------------------------------------------
     # ✅ Weeks dropdown: season-filtered
+    # Games are global, so no group filter here
     # -------------------------------------------------------
     weeks = [
         w for (w,) in (
             db.session.query(Game.week)
-            .filter(Game.season_year == season_year, Game.season_type == season_type_label)
+            .filter(
+                Game.season_year == season_year,
+                Game.season_type == season_type_label
+            )
             .distinct()
             .order_by(Game.week)
             .all()
@@ -785,6 +838,7 @@ def admin_scores():
 
     # -------------------------------------------------------
     # ✅ locked/total stats: season-filtered
+    # Games are global, so no group filter here
     # -------------------------------------------------------
     locked_count = total_games = None
     if selected_week != "all":
@@ -821,8 +875,8 @@ def admin_scores():
         users=all_users,
         locked_count=locked_count,
         total_games=total_games,
-        season_year=season_year,               # optional (for header)
-        season_type=season_type_label,         # optional (for header)
+        season_year=season_year,
+        season_type=season_type_label,
     )
 
 @admin_bp.route("/admin_calculate_scores", methods=["POST"])
@@ -1046,43 +1100,62 @@ def _user_pick_aggregate_for_week(week: int):
 
 
 
-def _missing_counts_for_week(week: int) -> dict:
+def _missing_counts_for_week(
+    week: int,
+    group_id: int,
+    season_year: int,
+    season_type: str,
+) -> dict:
     """
-    Missing picks = for UNLOCKED games (kickoff in future or unknown),
-    count per user how many valid picks are missing (no row OR confidence is NULL).
+    Missing picks = for UNLOCKED games in the selected season/week,
+    count per user in the active group how many valid picks are missing
+    (no row OR confidence is NULL).
     Returns a dict with 'rows' for UI use.
     """
     now_mt = datetime.now(ZoneInfo("US/Mountain"))
 
     total_games = (
         db.session.query(func.count(Game.id))
-        .filter(Game.week == week)
+        .filter(
+            Game.week == week,
+            Game.season_year == season_year,
+            Game.season_type == season_type,
+        )
         .scalar()
         or 0
     )
 
-    # Unlocked = kickoff in the future (or unknown)
+    # Unlocked games only for this season/week
     unlocked_ids = [
         gid
         for (gid,) in db.session.query(Game.id)
         .filter(
             Game.week == week,
+            Game.season_year == season_year,
+            Game.season_type == season_type,
             or_(Game.commence_time_mt.is_(None), Game.commence_time_mt > now_mt),
         )
         .all()
     ]
     unlocked_count = len(unlocked_ids)
 
-    # All users
-    users = db.session.query(User.id, User.username).order_by(User.username).all()
+    # Only users in this group
+    users = (
+        db.session.query(User.id, User.username)
+        .join(GroupMember, GroupMember.user_id == User.id)
+        .filter(GroupMember.group_id == group_id)
+        .order_by(User.username)
+        .all()
+    )
 
-    # Valid picks among unlocked games = confidence is not NULL
+    # Valid picks among unlocked games for this group only
     valid_by_user = {}
     if unlocked_count:
         valid_rows = (
             db.session.query(Pick.user_id, func.count(Pick.id))
             .filter(
                 Pick.week == week,
+                Pick.group_id == group_id,
                 Pick.confidence.isnot(None),
                 Pick.game_id.in_(unlocked_ids),
             )
@@ -1098,7 +1171,7 @@ def _missing_counts_for_week(week: int) -> dict:
     for uid, uname in users:
         made = valid_by_user.get(uid, 0)
         miss = max(0, unlocked_count - made)
-        # include both 'made' and 'picks_made' for template compatibility
+
         row = {
             "user_id": uid,
             "username": uname,
@@ -1111,7 +1184,6 @@ def _missing_counts_for_week(week: int) -> dict:
         by_user[uname] = miss
         missing_total += miss
 
-    # Sort: most missing first, then username
     rows.sort(key=lambda r: (-r["missing"], r["username"].lower()))
 
     return {
@@ -1123,11 +1195,9 @@ def _missing_counts_for_week(week: int) -> dict:
         "rows": rows,
     }
 
-
 @admin_bp.route('/missing_picks', methods=['GET'])
 @login_required
 def missing_picks():
-    from .models import Settings  # adjust import path if needed
 
     settings = Settings.query.first()
     if not settings:

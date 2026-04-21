@@ -321,12 +321,11 @@ def create_app():
             finally:
                 db.session.remove()
 
-    if not disable_sched:
-        # Only start the scheduler in the serving process
         should_start_scheduler = (
-            (is_reloader_child or os.environ.get("FLASK_ENV") != "development")
+            not disable_sched
             and not scheduler.running
-        )
+            and (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true")
+)
 
         if should_start_scheduler:
             scheduler.remove_all_jobs(jobstore="default")

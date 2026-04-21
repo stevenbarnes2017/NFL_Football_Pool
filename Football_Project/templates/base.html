@@ -12,36 +12,48 @@
 
   <!-- Topbar (always visible) -->
   <header class="topbar">
-    <div class="topbar-inner">
+  
+  <div class="topbar-inner">
+
+    <div class="brand-group-wrap">
       <a class="brand" href="{{ url_for('main.dashboard') }}">NFL Picks</a>
 
-      <!-- Desktop links -->
-      <nav class="nav-desktop" aria-label="Primary">
-        <a href="{{ url_for('admin.admin_announcements') }}">Announcements</a>
-        <a href="{{ url_for('main.board_threads') }}">Message Board</a>
-        <a href="{{ url_for('main.leaderboard') }}">Leaderboard</a>
-        <a href="{{ url_for('main.live_scores_page') }}">Live Scores</a>
-        <a href="{{ url_for('main.playoff_picture') }}">Playoff Picture</a>
-        <a href="{{ url_for('main.dashboard') }}">Dashboard</a>
-        <a href="{{ url_for('main.nfl_picks') }}">Select Picks</a>
-        <a href="{{ url_for('main.see_picks') }}">See Picks</a>
-
-        <div class="dropdown">
-          <button class="dropbtn" type="button">Settings ▾</button>
-          <div class="dropdown-content">
-            <a href="{{ url_for('main.profile') }}">Profile</a>
-            <a href="{{ url_for('main.edit_profile') }}">Edit Profile</a>
-            <a href="{{ url_for('auth.logout') }}">Logout</a>
-          </div>
-        </div>
-      </nav>
-
-      <!-- Mobile hamburger -->
-      <button class="nav-toggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-drawer">
-        ☰
-      </button>
+      {% if current_user.is_authenticated and active_group %}
+        <span class="active-group-pill">
+          Group: {{ active_group.name }}
+          {% if active_membership and active_membership.role %}
+            • {{ active_membership.role|capitalize }}
+          {% endif %}
+        </span>
+      {% endif %}
     </div>
-  </header>
+
+    <nav class="nav-desktop" aria-label="Primary">
+      <a href="{{ url_for('admin.admin_announcements') }}">Announcements</a>
+      <a href="{{ url_for('main.board_threads') }}">Message Board</a>
+      <a href="{{ url_for('main.leaderboard') }}">Leaderboard</a>
+      <a href="{{ url_for('main.live_scores_page') }}">Live Scores</a>
+      <a href="{{ url_for('main.playoff_picture') }}">Playoff Picture</a>
+      <a href="{{ url_for('main.dashboard') }}">Dashboard</a>
+      <a href="{{ url_for('main.nfl_picks') }}">Select Picks</a>
+      <a href="{{ url_for('main.see_picks') }}">See Picks</a>
+      <a href="{{ url_for('main.groups') }}">My Groups</a>
+
+      <div class="dropdown">
+        <button class="dropbtn" type="button">Settings ▾</button>
+        <div class="dropdown-content">
+          <a href="{{ url_for('main.profile') }}">Profile</a>
+          <a href="{{ url_for('main.edit_profile') }}">Edit Profile</a>
+          <a href="{{ url_for('auth.logout') }}">Logout</a>
+        </div>
+      </div>
+    </nav>
+
+    <button class="nav-toggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-drawer">
+      ☰
+    </button>
+  </div>
+</header>
 
   <!-- Mobile drawer -->
   <aside id="mobile-drawer" class="drawer" aria-hidden="true">
@@ -49,6 +61,16 @@
       <div class="drawer-title">Menu</div>
       <button class="drawer-close" type="button" aria-label="Close menu">✕</button>
     </div>
+
+    <!-- Active Group (Mobile) -->
+    {% if current_user.is_authenticated and active_group %}
+      <div class="drawer-active-group">
+        <strong>Group:</strong> {{ active_group.name }}
+        {% if active_membership %}
+          <br><strong>Role:</strong> {{ active_membership.role|capitalize }}
+        {% endif %}
+      </div>
+    {% endif %}
 
     <nav class="drawer-links" aria-label="Mobile Primary">
       <a href="{{ url_for('admin.admin_announcements') }}">Announcements</a>
@@ -59,6 +81,7 @@
       <a href="{{ url_for('main.dashboard') }}">Dashboard</a>
       <a href="{{ url_for('main.nfl_picks') }}">Select Picks</a>
       <a href="{{ url_for('main.see_picks') }}">See Picks</a>
+      <a href="{{ url_for('main.groups') }}">My Groups</a>
 
       <div class="drawer-divider"></div>
 
@@ -69,7 +92,6 @@
   </aside>
 
   <div class="backdrop" hidden></div>
-
 
   <!-- View-As Banner -->
   {% set local_view_as_id = view_as_id or session.get('view_as_user_id') or session.get('admin_view_as_user_id') %}
@@ -99,6 +121,7 @@
     </div>
   {% endif %}
 
+  <!-- Main Content -->
   <div class="container main-content">
     {% block content %}{% endblock %}
   </div>
@@ -118,7 +141,7 @@
       function openDrawer() {
         drawer.classList.add('open');
         drawer.setAttribute('aria-hidden', 'false');
-        toggle.setAttribute('aria-expanded', 'true');
+        toggle?.setAttribute('aria-expanded', 'true');
         backdrop.hidden = false;
         document.body.classList.add('no-scroll');
       }
@@ -126,7 +149,7 @@
       function closeDrawer() {
         drawer.classList.remove('open');
         drawer.setAttribute('aria-hidden', 'true');
-        toggle.setAttribute('aria-expanded', 'false');
+        toggle?.setAttribute('aria-expanded', 'false');
         backdrop.hidden = true;
         document.body.classList.remove('no-scroll');
       }
@@ -138,9 +161,10 @@
       closeBtn?.addEventListener('click', closeDrawer);
       backdrop?.addEventListener('click', closeDrawer);
 
-      // Close on ESC
       document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && drawer.classList.contains('open')) closeDrawer();
+        if (e.key === 'Escape' && drawer.classList.contains('open')) {
+          closeDrawer();
+        }
       });
     })();
   </script>

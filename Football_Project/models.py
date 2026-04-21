@@ -192,6 +192,8 @@ class UserScore(db.Model):
 
     user = db.relationship("User", back_populates="scores")
 
+    group_id = db.Column(db.Integer, db.ForeignKey("pool_group.id"), nullable=True, index=True)
+    group = db.relationship("PoolGroup")
 #------------------------------
 # Announcements and Message Board
 #------------------------------

@@ -6,7 +6,7 @@ from collections import defaultdict
 
 from sqlalchemy import func, case, literal
 from ..extensions import db
-from ..models import User, Pick, Game
+from ..models import User, Pick, Game, GroupMember
 
 
 # ----------------------------- helpers ---------------------------------------
@@ -72,39 +72,33 @@ def _weeks_with_finals(season_year: int, season_type: str, through_week: int):
 
 # ----------------------------- WEEKLY ----------------------------------------
 
-def _weekly_user_rows(week: int, season_year: int, season_type: str):
-    """
-    Weekly leaderboard:
-      - points = sum(Pick.points_earned) for picks in this season/type/week
-      - correct = count of picks with points_earned > 0 (same scope)
-      - forfeits = (# FINAL games this week) - (# picks with confidence among FINAL games)
-    """
-
+def _weekly_user_rows(week: int, season_year: int, season_type: str, group_id: int):
     eligible_games = _eligible_games_subq(season_year, season_type, week)
     final_games = _final_games_subq(season_year, season_type, week)
+    group_users = _group_users_subq(group_id)
 
     final_count = db.session.query(func.count(final_games.c.gid)).scalar() or 0
 
-    # Points/correct/picks_made — scoped via Pick.game_id in eligible games
     points_block = (
         db.session.query(
-            User.id.label("user_id"),
-            User.username.label("username"),
+            group_users.c.user_id.label("user_id"),
+            group_users.c.username.label("username"),
             func.coalesce(func.sum(Pick.points_earned), 0).label("points"),
             func.coalesce(func.sum(case((Pick.points_earned > 0, 1), else_=0)), 0).label("correct"),
             func.coalesce(func.count(Pick.id), 0).label("picks_made"),
         )
+        .select_from(group_users)
         .outerjoin(
             Pick,
-            (Pick.user_id == User.id)
+            (Pick.user_id == group_users.c.user_id)
             & (Pick.week == week)
+            & (Pick.group_id == group_id)
             & (Pick.game_id.in_(db.session.query(eligible_games.c.gid)))
         )
-        .group_by(User.id)
+        .group_by(group_users.c.user_id, group_users.c.username)
         .subquery()
     )
 
-    # Valid picks among FINAL games = picks that have confidence (not null) for FINAL games
     valid_picks = (
         db.session.query(
             Pick.user_id.label("user_id"),
@@ -113,6 +107,7 @@ def _weekly_user_rows(week: int, season_year: int, season_type: str):
         .join(final_games, final_games.c.gid == Pick.game_id)
         .filter(
             Pick.week == week,
+            Pick.group_id == group_id,
             Pick.confidence.isnot(None),
         )
         .group_by(Pick.user_id)
@@ -152,13 +147,17 @@ def _weekly_user_rows(week: int, season_year: int, season_type: str):
 
 # ----------------------------- SEASON ----------------------------------------
 
-def _season_user_rows(current_week: int, season_year: int, season_type: str):
-    """
-    Season totals = sum of weekly rows for weeks that have FINAL games.
-    Users with no picks yet start at current_week (same behavior you had).
-    """
+def _season_user_rows(current_week: int, season_year: int, season_type: str, group_id: int):
+    users = (
+        db.session.query(User.id, User.username)
+        .join(GroupMember, GroupMember.user_id == User.id)
+        .filter(
+            GroupMember.group_id == group_id,
+            GroupMember.is_active.is_(True),
+        )
+        .all()
+    )
 
-    users = db.session.query(User.id, User.username).all()
     agg = {
         u.id: {
             "user_id": u.id,
@@ -179,6 +178,7 @@ def _season_user_rows(current_week: int, season_year: int, season_type: str):
         .filter(
             Game.season_year == season_year,
             Game.season_type == season_type,
+            Pick.group_id == group_id,
         )
         .group_by(Pick.user_id)
         .all()
@@ -191,7 +191,7 @@ def _season_user_rows(current_week: int, season_year: int, season_type: str):
     weeks_with_finals = _weeks_with_finals(season_year, season_type, current_week)
 
     for w in weeks_with_finals:
-        weekly_rows = _weekly_user_rows(w, season_year, season_type)
+        weekly_rows = _weekly_user_rows(w, season_year, season_type, group_id)
         for r in weekly_rows:
             if w < user_start_week.get(r["user_id"], current_week):
                 continue
@@ -200,12 +200,12 @@ def _season_user_rows(current_week: int, season_year: int, season_type: str):
             pts = int(r["points"] or 0)
             corr = int(r["correct"] or 0)
             ffs = int(r["forfeits"] or 0)
-            pm  = int(r.get("picks_made", 0) or 0)
+            pm = int(r.get("picks_made", 0) or 0)
 
-            a["total_points"]   += pts
-            a["total_correct"]  += corr
+            a["total_points"] += pts
+            a["total_correct"] += corr
             a["total_forfeits"] += ffs
-            a["picks_made"]     += pm
+            a["picks_made"] += pm
 
             if pts > a["best_week_points"]:
                 a["best_week_points"] = pts
@@ -230,7 +230,6 @@ def _season_user_rows(current_week: int, season_year: int, season_type: str):
         })
     return rows
 
-
 # ----------------------------- ranking ---------------------------------------
 
 def _apply_season_tiebreak(r):
@@ -248,8 +247,8 @@ def _apply_weekly_tiebreak(r):
 
 # ----------------------------- Public API ------------------------------------
 
-def get_season_leaderboard(current_week: int, season_year: int, season_type: str):
-    rows = _season_user_rows(current_week, season_year, season_type)
+def get_season_leaderboard(current_week: int, season_year: int, season_type: str, group_id: int):
+    rows = _season_user_rows(current_week, season_year, season_type, group_id)
     rows.sort(key=_apply_season_tiebreak)
 
     rank, last_key = 0, None
@@ -272,8 +271,8 @@ def get_season_leaderboard(current_week: int, season_year: int, season_type: str
     return header, rows
 
 
-def get_weekly_leaderboard(week: int, season_year: int, season_type: str):
-    rows = _weekly_user_rows(week, season_year, season_type)
+def get_weekly_leaderboard(week: int, season_year: int, season_type: str, group_id: int):
+    rows = _weekly_user_rows(week, season_year, season_type, group_id)
     rows.sort(key=_apply_weekly_tiebreak)
 
     rank, last_key = 0, None
@@ -292,3 +291,17 @@ def get_weekly_leaderboard(week: int, season_year: int, season_type: str):
         "season_type": season_type,
     }
     return header, rows
+
+def _group_users_subq(group_id: int):
+    return (
+        db.session.query(
+            User.id.label("user_id"),
+            User.username.label("username"),
+        )
+        .join(GroupMember, GroupMember.user_id == User.id)
+        .filter(
+            GroupMember.group_id == group_id,
+            GroupMember.is_active.is_(True),
+        )
+        .subquery()
+    )

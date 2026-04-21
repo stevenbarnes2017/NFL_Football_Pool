@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}My Groups{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">My Groups</h2>
+        <div>
+            <a href="{{ url_for('main.create_group') }}" class="btn btn-primary me-2">Create Group</a>
+            <a href="{{ url_for('main.join_group') }}" class="btn btn-success">Join Group</a>
+        </div>
+    </div>
+
+    {% if memberships %}
+        <div class="row">
+            {% for membership, group in memberships %}
+                <div class="col-md-6 col-lg-4 mb-3">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-body">
+                            <h5 class="card-title mb-1">{{ group.name }}</h5>
+                            <p class="text-muted mb-2">Slug: {{ group.slug }}</p>
+                            <p class="mb-2">Role: <strong>{{ membership.role|capitalize }}</strong></p>
+
+                            {% if group.id == active_group_id %}
+                                <span class="badge bg-success mb-3">Active Group</span>
+                            {% else %}
+                                <span class="badge bg-secondary mb-3">Inactive</span>
+                            {% endif %}
+
+                            <div class="d-flex gap-2">
+                                {% if group.id != active_group_id %}
+                                    <form method="POST" action="{{ url_for('main.switch_group', group_id=group.id) }}">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-outline-primary btn-sm">
+                                            Switch To Group
+                                        </button>
+                                    </form>
+                                {% else %}
+                                    <a href="{{ url_for('main.nfl_picks') }}" class="btn btn-outline-success btn-sm">
+                                        Open Picks
+                                    </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">No Groups Yet</h5>
+                <p class="card-text">
+                    You are not currently part of any group. Create one or join an existing group to get started.
+                </p>
+                <a href="{{ url_for('main.create_group') }}" class="btn btn-primary me-2">Create Group</a>
+                <a href="{{ url_for('main.join_group') }}" class="btn btn-success">Join Group</a>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

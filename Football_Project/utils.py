@@ -1,11 +1,13 @@
 from datetime import datetime
 import pytz
 import platform
-from .models import db, Game, Pick, UserScore
+from .models import db, Game, Pick, UserScore, Settings, User, PoolGroup
+from Football_Project.services.group_service import get_active_group_id
 from Football_Project.services.season import get_current_week
 from football_scores import save_scores_to_db, get_football_scores
 import requests
 from flask import render_template, current_app, request, session
+from flask_login import current_user
 from pytz import timezone  # Add this
 import logging  # Ensure logging is imported at the top
 import os
@@ -353,8 +355,34 @@ def calculate_user_scores(
     )
     db.session.commit()
 
-    # ⚠️ UserScore is not group-scoped yet, so do not persist ambiguous totals
     if write_final_only:
+        for user_id, score in final_total_by_user.items():
+            row = (
+                UserScore.query
+                .filter_by(
+                    user_id=user_id,
+                    week=week,
+                    season_year=season_year,
+                    season_type=season_type,
+                    group_id=group_id,
+                )
+                .first()
+            )
+            if row:
+                row.score = int(score or 0)
+                row.calculated_at = datetime.utcnow()
+            else:
+                db.session.add(UserScore(
+                    user_id=user_id,
+                    week=week,
+                    season_year=season_year,
+                    season_type=season_type,
+                    group_id=group_id,
+                    score=int(score or 0),
+                    calculated_at=datetime.utcnow(),
+                ))
+
+        db.session.commit()
         return dict(final_total_by_user)
 
     return dict(live_total_by_user)
@@ -395,8 +423,10 @@ def auto_fetch_scores():
         for wk in sorted(weeks_to_update):
             result = save_week_scores_to_db(season_year, season_type, wk)
             print(f"[SCORES] save_week_scores_to_db week={wk} -> {result}")
-
-            calculate_user_scores(wk, season_year, season_type)
+            groups = PoolGroup.query.filter_by(is_active=True).all()
+            for group in groups:
+                print(f"[SCORES] Calculating scores for group_id={group.id}, slug={group.slug}, week={wk}")
+                calculate_user_scores(wk, season_year, season_type, group.id)
             print(f"[SCORES] calculated user scores for week={wk}")
 
     except Exception:
@@ -435,7 +465,13 @@ def save_user_scores_to_db(user_scores, week):
     if isinstance(user_scores, dict):
         for user_id, score in user_scores.items():
             # Check if the user already has a score entry for the given week
-            score_record = UserScore.query.filter_by(user_id=user_id, week=week).first()
+            score_record = UserScore.query.filter_by(
+                user_id=user_id,
+                week=week,
+                season_year=season_year,
+                season_type=season_type,
+                group_id=group_id,
+            ).first()
             if score_record:
                 # Update existing score record
                 score_record.score = score
