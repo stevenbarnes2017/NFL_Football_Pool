@@ -21,6 +21,7 @@ from Football_Project.services.odds_care import attempt_import_odds, is_week_odd
 from Football_Project.services.settings_sync import sync_settings_current_week
 from prometheus_client import Gauge
 from .services.odds_care import games_count_for_week
+from prometheus_flask_exporter import PrometheusMetrics
 
 
 load_dotenv()
@@ -238,6 +239,7 @@ def update_metrics_with_context(app):
             db.session.remove()
 def create_app():
     app = Flask(__name__)
+    metrics = PrometheusMetrics(app)
     @app.route("/health")
     def health():
         return {"status": "ok"}, 200

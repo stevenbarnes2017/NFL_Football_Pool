@@ -49,3 +49,9 @@ def picks_locked(game):
     Returns True if picks should be locked for this game
     """
     return datetime.utcnow() >= game.kickoff
+
+def get_current_week_metric():
+    s = Settings.query.first()
+    if not s:
+        return 0
+    return s.current_week or 0
