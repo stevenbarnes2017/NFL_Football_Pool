@@ -238,6 +238,9 @@ def update_metrics_with_context(app):
             db.session.remove()
 def create_app():
     app = Flask(__name__)
+    @app.route("/health")
+    def health():
+        return {"status": "ok"}, 200
 
     db_url = os.getenv("DATABASE_URL", "sqlite:///picks.db")
     if db_url.startswith("postgres://"):
