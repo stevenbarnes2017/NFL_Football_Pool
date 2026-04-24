@@ -1,7 +1,7 @@
 # Football_Project/__init__.py
 import os
 import atexit
-from flask import Flask, session
+from flask import Flask, session, request
 from flask_login import LoginManager, current_user
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
