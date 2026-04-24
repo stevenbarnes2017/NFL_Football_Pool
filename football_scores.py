@@ -89,9 +89,7 @@ def main():
     filename = f"football_scores_week{weeknum}.csv"
     save_scores_to_csv(football_scores, filename)
 
-def save_scores_to_db(games, weeknum):
-    from .extensions import db
-    from .models import Game
+def save_scores_to_db(games, weeknum):    
 
     matched = updated = 0
 

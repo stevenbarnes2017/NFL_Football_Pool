@@ -19,7 +19,7 @@ class PoolGroup(db.Model):
 
     members = db.relationship("GroupMember", back_populates="group", cascade="all, delete-orphan")
     picks = db.relationship("Pick", back_populates="group")
-
+    scores = db.relationship("UserScore", back_populates="group", cascade="all, delete-orphan")
 
 class GroupMember(db.Model):
     __tablename__ = "group_member"
@@ -34,6 +34,10 @@ class GroupMember(db.Model):
 
     group = db.relationship("PoolGroup", back_populates="members")
     user = db.relationship("User", back_populates="group_memberships")
+
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "group_id", name="uq_group_member_user_group"),
+    )
 # ----------------------------
 # User Model
 # ----------------------------
@@ -64,6 +68,7 @@ class User(db.Model, UserMixin):
     password = db.Column(db.String(255), nullable=False)  # 255 is safe for hashes
     is_admin = db.Column(db.Boolean, default=False)
     sms_opt_in = db.Column(db.Boolean, nullable=False, default=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
 
 
     # Remove the duplicated relationship; you had 'scores' twice
@@ -119,6 +124,10 @@ class Pick(db.Model):
     is_overridden = db.Column(db.Boolean, default=False)
     group_id = db.Column(db.Integer, db.ForeignKey("pool_group.id"), nullable=False)
     group = db.relationship("PoolGroup", back_populates="picks")
+
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "game_id", "group_id", name="uq_pick_user_game_group"),
+    )
 
     # ✅ ADD THIS:
     #user = db.relationship('User', backref='picks', lazy=True)
@@ -179,21 +188,28 @@ class UserScore(db.Model):
     __tablename__ = "user_score"
 
     id = db.Column(db.Integer, primary_key=True)
-
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
-
     week = db.Column(db.Integer, nullable=False)
-
     season_year = db.Column(db.Integer, nullable=False)
     season_type = db.Column(db.String(10), nullable=False)
-
     score = db.Column(db.Integer, nullable=False, default=0)
     calculated_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    user = db.relationship("User", back_populates="scores")
+    group_id = db.Column(db.Integer, db.ForeignKey("pool_group.id"), nullable=False, index=True)
 
-    group_id = db.Column(db.Integer, db.ForeignKey("pool_group.id"), nullable=True, index=True)
-    group = db.relationship("PoolGroup")
+    user = db.relationship("User", back_populates="scores")
+    group = db.relationship("PoolGroup", back_populates="scores")
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "user_id",
+            "week",
+            "season_year",
+            "season_type",
+            "group_id",
+            name="uq_user_score_user_week_season_group",
+        ),
+    )
 #------------------------------
 # Announcements and Message Board
 #------------------------------
@@ -222,24 +238,25 @@ class BoardThread(db.Model):
     __tablename__ = "board_thread"
     id = db.Column(db.Integer, primary_key=True)
 
+    group_id = db.Column(db.Integer, db.ForeignKey("pool_group.id"), nullable=True, index=True)
+
     title = db.Column(db.String(180), nullable=False)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
 
-    # optional context (handy for “Week 1 trash talk”, etc.)
     season_year = db.Column(db.Integer, nullable=True)
     season_type = db.Column(db.String(20), nullable=True)
     week = db.Column(db.Integer, nullable=True)
 
     pinned = db.Column(db.Boolean, default=False, nullable=False)
-    locked = db.Column(db.Boolean, default=False, nullable=False)   # admin can lock a thread
-    is_active = db.Column(db.Boolean, default=True, nullable=False) # soft delete
+    locked = db.Column(db.Boolean, default=False, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
 
     last_activity_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     created_by = db.relationship("User", backref=db.backref("board_threads", lazy=True))
-
+    group = db.relationship("PoolGroup", backref=db.backref("board_threads", lazy=True))
 
 class BoardPost(db.Model):
     __tablename__ = "board_post"
@@ -256,3 +273,20 @@ class BoardPost(db.Model):
 
     thread = db.relationship("BoardThread", backref=db.backref("posts", lazy=True, order_by="BoardPost.created_at"))
     author = db.relationship("User", backref=db.backref("board_posts", lazy=True))
+
+class GroupInvite(db.Model):
+    __tablename__ = "group_invite"
+
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(db.Integer, db.ForeignKey("pool_group.id"), nullable=False, index=True)
+    token = db.Column(db.String(64), unique=True, nullable=False, index=True)
+
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    group = db.relationship("PoolGroup", backref=db.backref("invites", lazy=True))
+    created_by = db.relationship("User", backref=db.backref("created_invites", lazy=True))
+
+

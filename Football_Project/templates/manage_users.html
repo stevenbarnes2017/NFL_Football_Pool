@@ -4,13 +4,19 @@
 
 {% block content %}
 <div class="container mx-auto mt-4">
-    <div class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow-lg">
+    <div class="max-w-6xl mx-auto bg-white p-6 rounded-lg shadow-lg">
 
-        <h2 class="text-3xl font-extrabold mb-4 text-center text-gray-900 tracking-tight">
+        <h2 class="text-3xl font-extrabold mb-2 text-center text-gray-900 tracking-tight">
             Manage Users
         </h2>
 
-        <!-- View As User (Admin only) -->
+        {% if active_group %}
+        <p class="text-center text-gray-600 mb-6">
+            Managing users for:
+            <span class="font-semibold">{{ active_group.name }}</span>
+        </p>
+        {% endif %}
+
         {% if current_user.is_admin %}
         <form method="post"
               action="{{ url_for('admin.view_as_user') }}"
@@ -19,8 +25,8 @@
             <label for="user_id" class="font-semibold">View as user</label>
             <select name="user_id" id="user_id" required class="border rounded px-2 py-1">
                 <option value="" disabled selected>Select a user</option>
-                {% for u in users %}
-                    <option value="{{ u.id }}">{{ u.username }}</option>
+                {% for row in user_rows %}
+                    <option value="{{ row.user.id }}">{{ row.user.username }}</option>
                 {% endfor %}
             </select>
             <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded">
@@ -29,23 +35,28 @@
         </form>
         {% endif %}
 
-        <!-- Table to display all users -->
         <table class="min-w-full bg-white border border-gray-300">
             <thead>
                 <tr>
-                    <th class="py-2 px-4 border-b">Username</th>
-                    <th class="py-2 px-4 border-b">Email</th>
-                    <th class="py-2 px-4 border-b">Admin</th>
-                    <th class="py-2 px-4 border-b">Actions</th>
+                    <th class="py-2 px-4 border-b text-left">Username</th>
+                    <th class="py-2 px-4 border-b text-left">Email</th>
+
+                    {% if current_user.is_admin %}
+                    <th class="py-2 px-4 border-b text-center">Global Admin</th>
+                    {% endif %}
+
+                    <th class="py-2 px-4 border-b text-center">Group Admin</th>
+                    <th class="py-2 px-4 border-b text-left">Actions</th>
                 </tr>
             </thead>
             <tbody>
-                {% for user in users %}
+                {% for row in user_rows %}
+                {% set user = row.user %}
                 <tr>
                     <td class="py-2 px-4 border-b">{{ user.username }}</td>
                     <td class="py-2 px-4 border-b">{{ user.email }}</td>
 
-                    <!-- Admin toggle -->
+                    {% if current_user.is_admin %}
                     <td class="py-2 px-4 border-b text-center">
                         <form method="POST"
                               action="{{ url_for('admin.update_admin_status', user_id=user.id) }}">
@@ -58,34 +69,61 @@
                                    onchange="this.form.submit()">
                         </form>
                     </td>
+                    {% endif %}
 
-                    <!-- Edit / Delete actions -->
+                    <td class="py-2 px-4 border-b text-center">
+                        <form method="POST"
+                              action="{{ url_for('admin.update_group_admin_status', user_id=user.id) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="is_group_admin" value="0">
+                            <input type="checkbox"
+                                   name="is_group_admin"
+                                   value="1"
+                                   {% if row.is_group_admin %}checked{% endif %}
+                                   onchange="this.form.submit()">
+                        </form>
+                    </td>
+
                     <td class="py-2 px-4 border-b">
+                        <form method="POST"
+                              action="{{ url_for('admin.remove_user_from_group', user_id=user.id) }}"
+                              style="display:inline;"
+                              onsubmit="return confirm('Remove this user from the active group?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="text-red-500 hover:underline">
+                                Remove from Group
+                            </button>
+                        </form>
+
+                        {% if current_user.is_admin %}
+                        |
                         <a href="{{ url_for('admin.edit_user', user_id=user.id) }}"
                            class="text-blue-500 hover:underline">Edit</a>
                         |
                         <form method="POST"
                               action="{{ url_for('admin.delete_user', user_id=user.id) }}"
                               style="display:inline;"
-                              onsubmit="return confirm('Delete this user?');">
+                              onsubmit="return confirm('Delete this user account entirely? This affects all groups.');">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="text-red-500 hover:underline">
-                                Delete
+                            <button type="submit" class="text-red-700 hover:underline">
+                                Delete User
                             </button>
                         </form>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
 
-        <!-- Add new user button -->
+        {% if current_user.is_admin %}
         <div class="mt-4 text-center">
             <a href="{{ url_for('admin.add_user') }}"
                class="bg-green-500 hover:bg-green-600 text-white py-2 px-3 rounded-lg">
                 Add New User
             </a>
         </div>
+        {% endif %}
 
     </div>
 </div>

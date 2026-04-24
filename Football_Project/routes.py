@@ -23,19 +23,16 @@ from datetime import datetime
 from pytz import timezone  # Add this
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from .extensions import db
-from .models import Game, Pick, User, Settings, UserScore, Announcement, BoardThread, BoardPost, GroupMember, PoolGroup
+from .models import Game, Pick, User, Settings, UserScore, Announcement, BoardThread, BoardPost, GroupMember, PoolGroup, GroupInvite
 #from flask_mail import Message  # if you use Flask-Mail
 from .utils import generate_token, verify_token
 from .services.leaderboard import get_season_leaderboard, get_weekly_leaderboard
 from .services.auth_context import get_effective_user_id
 from Football_Project.services.season import get_current_season_context
-<<<<<<< HEAD
 from .services.group_service import get_active_group_id
-=======
 from Football_Retry.Football_Project.services.group_service import get_active_group_id
 from slugify import slugify
 
->>>>>>> 48d0bb5 (scoping users view throughout admin routes)
 
 
 main_bp = Blueprint('main', __name__)
@@ -247,8 +244,6 @@ def update_sms_settings():
     return redirect(url_for("main.profile"))
 
 
-
-
 @main_bp.route("/login")
 def legacy_login():
     return redirect(url_for("auth.login"))
@@ -260,11 +255,26 @@ def legacy_logout():
 @main_bp.route('/dashboard')
 @login_required
 def dashboard():
-    # If admin is NOT viewing as a user, go to admin dashboard
-    if current_user.is_admin and not session.get("admin_view_as_user_id"):
+    from .services.permissions import can_manage_group
+
+    active_group_id = session.get("active_group_id")
+
+    print("DASH current_user.is_admin:", current_user.is_admin)
+    print("DASH active_group_id:", active_group_id)
+    print("DASH can_manage_group:", can_manage_group(current_user, active_group_id))
+    print("DASH view_as_user_id:", session.get("view_as_user_id"))
+    print("DASH admin_view_as_user_id:", session.get("admin_view_as_user_id"))
+
+    if (
+        active_group_id
+        and can_manage_group(current_user, active_group_id)
+        and not session.get("admin_view_as_user_id")
+        and not session.get("view_as_user_id")
+    ):
+        print("DASH redirecting to admin dashboard")
         return redirect(url_for('admin.admin_dashboard'))
 
-    # Otherwise, render user dashboard (normal user OR admin view-as)
+    print("DASH rendering user dashboard")
     return render_template(
         'user_dashboard.html',
         name=current_user.username,
@@ -571,21 +581,43 @@ def results():
 @main_bp.route('/user_scores/<int:week>', methods=['GET'])
 @login_required
 def user_scores(week):
-    from .models import Settings  # adjust import path if needed
+    from .models import Settings
+
+    active_group_id = session.get("active_group_id")
+    if not active_group_id:
+        flash("No active group selected.", "warning")
+        return redirect(url_for("main.groups"))
+
+    membership = GroupMember.query.filter_by(
+        user_id=current_user.id,
+        group_id=active_group_id,
+        is_active=True,
+    ).first()
+
+    if not membership:
+        flash("You do not have access to that group.", "danger")
+        return redirect(url_for("main.groups"))
 
     settings = Settings.query.first()
-    if not settings:
-        # If settings missing, just use the week from the URL
-        pass
+    season_year = settings.season_year if settings else datetime.utcnow().year
+    season_type = settings.season_type if settings else "REG"
 
-    # ✅ week comes from the URL; no get_current_week() call
     current_user_score_row = UserScore.query.filter_by(
         user_id=current_user.id,
-        week=week
+        week=week,
+        season_year=season_year,
+        season_type=season_type,
+        group_id=active_group_id,
     ).first()
+
     current_user_score = current_user_score_row.score if current_user_score_row else 0
 
-    all_scores = UserScore.query.filter_by(week=week).all()
+    all_scores = UserScore.query.filter_by(
+        week=week,
+        season_year=season_year,
+        season_type=season_type,
+        group_id=active_group_id,
+    ).all()
 
     all_user_scores = {
         score.user_id: {
@@ -1392,34 +1424,76 @@ def leaderboard():
         season_type=season_type,
     )
 
-@main_bp.route("/board")
+@main_bp.route("/board", methods=["GET"])
 @login_required
-def board_threads():
+def board():
+    active_group_id = session.get("active_group_id")
+    if not active_group_id:
+        flash("No active group selected.", "warning")
+        return redirect(url_for("main.groups"))
+
+    membership = GroupMember.query.filter_by(
+        user_id=current_user.id,
+        group_id=active_group_id,
+        is_active=True,
+    ).first()
+
+    if not membership and not current_user.is_admin:
+        flash("You do not have access to this board.", "danger")
+        return redirect(url_for("main.groups"))
+
     page = request.args.get("page", 1, type=int)
 
     threads = (
         BoardThread.query
-        .filter(BoardThread.is_active.is_(True))
-        .order_by(
-            BoardThread.pinned.desc(),
-            BoardThread.last_activity_at.desc(),
-            BoardThread.created_at.desc(),
-        )
-        .paginate(page=page, per_page=25, error_out=False)
+        .filter_by(group_id=active_group_id, is_active=True)
+        .order_by(BoardThread.pinned.desc(), BoardThread.last_activity_at.desc())
+        .paginate(page=page, per_page=20, error_out=False)
     )
 
-    return render_template("board_threads.html", threads=threads)
+    active_group = PoolGroup.query.filter_by(id=active_group_id, is_active=True).first()
+
+    return render_template(
+        "board_threads.html",
+        threads=threads,
+        active_group=active_group,
+    )
+
 @main_bp.route("/board/thread/<int:thread_id>", methods=["GET", "POST"])
 @login_required
 def view_thread(thread_id):
+    active_group_id = session.get("active_group_id")
+    if not active_group_id:
+        flash("No active group selected.", "warning")
+        return redirect(url_for("main.groups"))
+
+    active_group = PoolGroup.query.filter_by(id=active_group_id, is_active=True).first()
+    if not active_group:
+        flash("Active group not found.", "danger")
+        return redirect(url_for("main.groups"))
+
     thread = BoardThread.query.get_or_404(thread_id)
+
+    if thread.group_id != active_group_id:
+        flash("You do not have access to that thread.", "danger")
+        return redirect(url_for("main.board"))
+
+    membership = GroupMember.query.filter_by(
+        user_id=current_user.id,
+        group_id=active_group_id,
+        is_active=True,
+    ).first()
+
+    if not membership and not current_user.is_admin:
+        flash("You do not have access to this board.", "danger")
+        return redirect(url_for("main.groups"))
 
     if request.method == "POST":
         if thread.locked:
             flash("Thread is locked.", "warning")
             return redirect(url_for("main.view_thread", thread_id=thread.id))
 
-        body = request.form.get("body")
+        body = (request.form.get("body") or "").strip()
 
         if not body:
             flash("Post cannot be empty.", "danger")
@@ -1432,7 +1506,6 @@ def view_thread(thread_id):
             db.session.add(post)
 
             thread.last_activity_at = datetime.utcnow()
-
             db.session.commit()
 
             return redirect(url_for("main.view_thread", thread_id=thread.id))
@@ -1444,24 +1517,50 @@ def view_thread(thread_id):
         .all()
     )
 
-    return render_template("thread.html", thread=thread, posts=posts)
+    return render_template(
+        "thread.html",
+        thread=thread,
+        posts=posts,
+        active_group=active_group,
+    )
 
 @main_bp.route("/board/new", methods=["GET", "POST"])
 @login_required
 def new_thread():
+    active_group_id = session.get("active_group_id")
+    if not active_group_id:
+        flash("No active group selected.", "warning")
+        return redirect(url_for("main.groups"))
+
+    active_group = PoolGroup.query.filter_by(id=active_group_id, is_active=True).first()
+    if not active_group:
+        flash("Active group not found.", "danger")
+        return redirect(url_for("main.groups"))
+
+    membership = GroupMember.query.filter_by(
+        user_id=current_user.id,
+        group_id=active_group_id,
+        is_active=True,
+    ).first()
+
+    if not membership and not current_user.is_admin:
+        flash("You do not have access to this board.", "danger")
+        return redirect(url_for("main.groups"))
+
     if request.method == "POST":
-        title = request.form.get("title")
-        body = request.form.get("body")
+        title = (request.form.get("title") or "").strip()
+        body = (request.form.get("body") or "").strip()
 
         if not title or not body:
             flash("Title and body required.", "danger")
         else:
             thread = BoardThread(
                 title=title,
+                group_id=active_group_id,
                 created_by_user_id=current_user.id
             )
             db.session.add(thread)
-            db.session.flush()  # get thread.id
+            db.session.flush()
 
             first_post = BoardPost(
                 thread_id=thread.id,
@@ -1474,7 +1573,7 @@ def new_thread():
 
             return redirect(url_for("main.view_thread", thread_id=thread.id))
 
-    return render_template("new_thread.html")
+    return render_template("new_thread.html", active_group=active_group)
 
 @main_bp.route("/groups/create", methods=["GET", "POST"])
 @login_required
@@ -1504,7 +1603,7 @@ def create_group():
         membership = GroupMember(
             user_id=current_user.id,
             group_id=group.id,
-            role="commissioner",
+            role="group_admin",
             is_active=True,
         )
         db.session.add(membership)
@@ -1519,15 +1618,23 @@ def create_group():
 @main_bp.route("/groups/switch/<int:group_id>", methods=["POST"])
 @login_required
 def switch_group(group_id):
-    membership = GroupMember.query.filter_by(
-        user_id=current_user.id,
-        group_id=group_id,
-        is_active=True,
-    ).first()
+    group = PoolGroup.query.filter_by(id=group_id, is_active=True).first()
 
-    if not membership:
-        flash("You do not have access to that group.", "danger")
+    if not group:
+        flash("That group does not exist or is inactive.", "danger")
         return redirect(url_for("main.groups"))
+
+    # Global admins can switch to any active group
+    if not current_user.is_admin:
+        membership = GroupMember.query.filter_by(
+            user_id=current_user.id,
+            group_id=group_id,
+            is_active=True,
+        ).first()
+
+        if not membership:
+            flash("You do not have access to that group.", "danger")
+            return redirect(url_for("main.groups"))
 
     session["active_group_id"] = group_id
     flash("Active group updated.", "success")
@@ -1582,27 +1689,72 @@ def join_group():
 @login_required
 def groups():
     from Football_Project.services.group_service import get_active_group_id
-
+ 
     active_group_id = get_active_group_id()
-
-    memberships = (
-        db.session.query(GroupMember, PoolGroup)
-        .join(PoolGroup, GroupMember.group_id == PoolGroup.id)
-        .filter(
-            GroupMember.user_id == current_user.id,
-            GroupMember.is_active == True,
-            PoolGroup.is_active == True,
+ 
+    if current_user.is_admin:
+        groups = (
+            PoolGroup.query
+            .filter(PoolGroup.is_active == True)
+            .order_by(PoolGroup.name.asc())
+            .all()
         )
-        .order_by(PoolGroup.name.asc())
-        .all()
-    )
-
+ 
+        memberships = []
+        for group in groups:
+            membership = GroupMember.query.filter_by(
+                user_id=current_user.id,
+                group_id=group.id,
+                is_active=True,
+            ).first()
+            memberships.append((membership, group))
+    else:
+        memberships = (
+            db.session.query(GroupMember, PoolGroup)
+            .join(PoolGroup, GroupMember.group_id == PoolGroup.id)
+            .filter(
+                GroupMember.user_id == current_user.id,
+                GroupMember.is_active == True,
+                PoolGroup.is_active == True,
+            )
+            .order_by(PoolGroup.name.asc())
+            .all()
+        )
+ 
+    # ── Stats ──────────────────────────────────────────────────────────────
+    season_year, season_type = get_current_season_context()
+    current_week = get_current_week(season_year, season_type)
+ 
+    group_stats = {}
+    for membership, group in memberships:
+        # Member count
+        member_count = GroupMember.query.filter_by(
+            group_id=group.id,
+            is_active=True,
+        ).count()
+ 
+        # Weekly rank for current user — only meaningful if they have a membership
+        rank = None
+        if current_week and membership:
+            _, rows = get_weekly_leaderboard(current_week, season_year, season_type, group.id)
+            for row in rows:
+                if row["user_id"] == current_user.id:
+                    rank = row["rank"]
+                    break
+ 
+        group_stats[group.id] = {
+            "member_count": member_count,
+            "current_week": current_week,
+            "rank": rank,
+        }
+    # ───────────────────────────────────────────────────────────────────────
+ 
     return render_template(
         "groups.html",
         memberships=memberships,
         active_group_id=active_group_id,
+        group_stats=group_stats,
     )
-
 
 @main_bp.app_context_processor
 def inject_active_group():
@@ -1627,7 +1779,152 @@ def inject_active_group():
             ).first()
             print(f"[CTX] active_membership={active_membership}")
 
+            if current_user.is_admin and active_membership is None:
+                print("[CTX] global admin viewing group without membership")
+
     return dict(
         active_group=active_group,
         active_membership=active_membership,
     )
+
+
+@main_bp.route("/invite/<token>", methods=["GET"])
+def accept_invite(token):
+    invite = GroupInvite.query.filter_by(token=token, is_active=True).first()
+
+    if not invite or not invite.group or not invite.group.is_active:
+        flash("That invite is invalid or inactive.", "danger")
+        return redirect(url_for("auth.login"))
+
+    if not current_user.is_authenticated:
+        session["pending_invite_token"] = token
+        flash(
+            f"You've been invited to join {invite.group.name}. Please sign in or create an account.",
+            "info",
+        )
+        return redirect(url_for("auth.login"))
+
+    membership = GroupMember.query.filter_by(
+        user_id=current_user.id,
+        group_id=invite.group_id,
+        is_active=True,
+    ).first()
+
+    if not membership:
+        membership = GroupMember(
+            user_id=current_user.id,
+            group_id=invite.group_id,
+            role="member",
+            is_active=True,
+        )
+        db.session.add(membership)
+        db.session.commit()
+        flash(f"You joined {invite.group.name}.", "success")
+    else:
+        flash(f"You already belong to {invite.group.name}.", "info")
+
+    session["active_group_id"] = invite.group_id
+    return redirect(url_for("main.dashboard"))
+
+@main_bp.route("/groups/invite", methods=["POST"])
+@login_required
+def create_group_invite():
+    from Football_Project.services.permissions import can_manage_group
+    import secrets
+
+    # Accept group_id from the form, fall back to session
+    group_id = request.form.get("group_id", type=int) or session.get("active_group_id")
+
+    if not group_id:
+        flash("No active group selected.", "warning")
+        return redirect(url_for("main.groups"))
+
+    if not can_manage_group(current_user, group_id):
+        flash("You do not have permission to create invites for this group.", "danger")
+        return redirect(url_for("main.groups"))
+
+    # Reuse existing invite if it exists
+    invite = GroupInvite.query.filter_by(
+        group_id=group_id,
+        is_active=True,
+    ).first()
+
+    if not invite:
+        invite = GroupInvite(
+            group_id=group_id,
+            token=secrets.token_urlsafe(24),
+            created_by_user_id=current_user.id,
+            is_active=True,
+        )
+        db.session.add(invite)
+        db.session.commit()
+
+    invite_url = url_for("main.accept_invite", token=invite.token, _external=True)
+
+    return render_template(
+        "invite_created.html",
+        invite_url=invite_url,
+    )
+
+@main_bp.route("/get-started", methods=["GET"])
+@login_required
+def post_auth_group_choice():
+    existing_membership = GroupMember.query.filter_by(
+        user_id=current_user.id,
+        is_active=True,
+    ).first()
+
+    if existing_membership:
+        return redirect(url_for("main.groups"))
+
+    return render_template("post_auth_group_choice.html")
+
+@main_bp.route("/groups/delete/<int:group_id>", methods=["POST"])
+@login_required
+def delete_group(group_id):
+    from Football_Project.services.permissions import can_manage_group
+
+    group = PoolGroup.query.filter_by(id=group_id, is_active=True).first()
+    if not group:
+        flash("Group not found or already inactive.", "warning")
+        return redirect(url_for("main.groups"))
+
+    if not can_manage_group(current_user, group_id):
+        flash("You do not have permission to delete that group.", "danger")
+        return redirect(url_for("main.groups"))
+
+    try:
+        # Soft delete the group
+        group.is_active = False
+
+        # Deactivate memberships
+        GroupMember.query.filter_by(group_id=group_id, is_active=True).update(
+            {"is_active": False},
+            synchronize_session=False
+        )
+
+        # Deactivate invites
+        GroupInvite.query.filter_by(group_id=group_id, is_active=True).update(
+            {"is_active": False},
+            synchronize_session=False
+        )
+
+        # Optional: deactivate board threads
+        BoardThread.query.filter_by(group_id=group_id, is_active=True).update(
+            {"is_active": False},
+            synchronize_session=False
+        )
+
+        db.session.commit()
+
+        # If the deleted group was active in session, clear it
+        if session.get("active_group_id") == group_id:
+            session.pop("active_group_id", None)
+
+        flash(f'Group "{group.name}" has been deleted.', "success")
+        return redirect(url_for("main.groups"))
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Failed to delete group: {e}", "danger")
+        return redirect(url_for("main.groups"))

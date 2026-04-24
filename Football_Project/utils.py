@@ -81,10 +81,13 @@ def send_picks_email(recipient_email, user_picks):
 
     # Email content with the formatted picks
     email_data = {
-        "sender": {"name": "NFL Football Pool", "email": "lines31@hotmail.com"},
+        "sender": {"name": "Sunday Pickems", "email": "noreply@sundaypickems.com"},
         "to": [{"email": recipient_email}],
         "subject": "Your Weekly Picks",
-        "htmlContent": f"<pre>{picks_body}</pre>"
+        "htmlContent": f"""
+        <h2>Your Weekly Picks</h2>
+        <pre style="font-family: monospace;">{picks_body}</pre>
+        """
     }
 
     # Send the email using a POST request
@@ -123,7 +126,7 @@ def send_password_reset_email(recipient_email, reset_url):
     """
 
     email_data = {
-        "sender": {"name": "NFL Football Pool", "email": "lines31@hotmail.com"},
+        "sender": {"name": "Sunday Pickems", "email": "noreply@sundaypickems.com"},
         "to": [{"email": recipient_email}],
         "subject": "Reset Your Password",
         "htmlContent": html_content

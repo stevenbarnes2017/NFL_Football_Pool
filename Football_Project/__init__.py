@@ -12,13 +12,15 @@ from Football_Project.time_utils import fmt_mt
 from sqlalchemy.exc import OperationalError  # ✅ NEW
 import sys
 from .extensions import db
-from .models import User, JobRun
+from .models import User, JobRun, Settings
 from .utils import auto_fetch_scores, fetch_and_cache_scores
 from .services import attempt_import_odds, is_week_odds_complete, send_admin_email
 from Football_Project.services.season import get_current_week
 from .services.sms_helpers import sms_week_reminder_job, schedule_first_kick_sms_for_week
 from Football_Project.services.odds_care import attempt_import_odds, is_week_odds_complete
 from Football_Project.services.settings_sync import sync_settings_current_week
+from prometheus_client import Gauge
+from .services.odds_care import games_count_for_week
 
 
 load_dotenv()
@@ -27,6 +29,11 @@ load_dotenv()
 scheduler = BackgroundScheduler(timezone=timezone("US/Mountain"))
 migrate = Migrate()
 csrf = CSRFProtect()
+
+football_current_nfl_week = Gauge(
+    "football_current_nfl_week",
+    "Current NFL week from Settings.current_week"
+)
 
 from Football_Project.services.season import get_current_season_context
 from Football_Project.services.schedule_service import update_schedule
@@ -217,7 +224,18 @@ def odds_escalation_job_with_context(app):
         finally:
             db.session.remove()
 
+def update_metrics_with_context(app):
+    from Football_Project.models import Settings
 
+    with app.app_context():
+        try:
+            settings = Settings.query.first()
+            current_week = settings.current_week if settings else 0
+            football_current_nfl_week.set(current_week or 0)
+        except Exception as e:
+            app.logger.warning(f"[METRICS] Failed to update metrics: {e}")
+        finally:
+            db.session.remove()
 def create_app():
     app = Flask(__name__)
 
@@ -326,7 +344,7 @@ def create_app():
             and not scheduler.running
             and (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true")
 )
-
+        
         if should_start_scheduler:
             scheduler.remove_all_jobs(jobstore="default")
 
@@ -425,6 +443,17 @@ def create_app():
                 id="sync_current_week",
                 replace_existing=True,
             )
+
+            scheduler.add_job(
+                func=update_metrics_with_context,
+                trigger="interval",
+                args=[app],
+                minutes=1,
+                id="update_metrics",
+                replace_existing=True,
+            )
+            
+            update_metrics_with_context(app)
 
             # ✅ SMS scheduling should NOT run during migrations
             if not _is_migration_command():

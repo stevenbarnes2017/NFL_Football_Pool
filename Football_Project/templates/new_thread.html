@@ -4,6 +4,12 @@
 {% block content %}
 <h2>Start a New Thread</h2>
 
+{% if active_group %}
+<p class="text-muted">
+  Posting in <strong>{{ active_group.name }}</strong>
+</p>
+{% endif %}
+
 <form method="POST">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -16,6 +22,7 @@
   <button type="submit">Create Thread</button>
 </form>
 
-<a href="{{ url_for('main.board_threads') }}">Cancel</a>
+<br>
+<a href="{{ url_for('main.board') }}">Cancel</a>
 
 {% endblock %}

@@ -10,13 +10,13 @@ from zoneinfo import ZoneInfo
 # Data / services
 from Football_Project.get_the_odds import get_nfl_spreads, save_spreads_to_db, save_to_csv
 from football_scores import get_football_scores, save_scores_to_csv  # NOTE: don't import save_scores_to_db here
-from Football_Project.models import db, Game, Settings, User, UserScore, Pick, JobRun, Announcement, GroupMember
+from Football_Project.models import db, Game, Settings, User, UserScore, Pick, JobRun, Announcement, GroupMember, PoolGroup
 from Football_Project.utils import calculate_user_scores, save_game_scores_to_db  # keep the utils version
 from werkzeug.security import generate_password_hash
 from Football_Project.services.sms_helpers import sms_week_reminder_job
 from Football_Project.services.season import get_current_season_context, get_current_week
 from Football_Project.services.schedule_service import update_schedule
-
+from Football_Project.services.group_service import get_active_group_id
 
 
 #--------------------------
@@ -26,13 +26,25 @@ from Football_Project.services.schedule_service import update_schedule
 @admin_bp.route("/board", methods=["GET"])
 @login_required
 def admin_board():
-    # placeholder for later moderation UI
+    from ..services.permissions import can_manage_group
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
     return render_template("admin_board.html")
 
 
 @admin_bp.route("/announcements", methods=["GET"])
 @login_required
 def admin_announcements():
+    from ..services.permissions import can_manage_group
+
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
     # optional: prefill season context defaults
     season_year, season_type = get_current_season_context()
 
@@ -54,6 +66,13 @@ def admin_announcements():
 @admin_bp.route("/announcements/new", methods=["POST"])
 @login_required
 def admin_announcement_new():
+    from ..services.permissions import can_manage_group
+
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
     title = (request.form.get("title") or "").strip()
     body = (request.form.get("body") or "").strip()
 
@@ -92,6 +111,13 @@ def admin_announcement_new():
 @admin_bp.route("/announcements/<int:ann_id>/toggle_pin", methods=["POST"])
 @login_required
 def admin_toggle_announcement_pin(ann_id):
+    from ..services.permissions import can_manage_group
+
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
     ann = Announcement.query.get_or_404(ann_id)
 
     try:
@@ -108,6 +134,13 @@ def admin_toggle_announcement_pin(ann_id):
 @admin_bp.route("/announcements/<int:ann_id>/delete", methods=["POST"])
 @login_required
 def admin_delete_announcement(ann_id):
+    from ..services.permissions import can_manage_group
+
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
     ann = Announcement.query.get_or_404(ann_id)
 
     try:
@@ -136,6 +169,13 @@ def admin_update_schedule():
     from Football_Project.models import JobRun
     from Football_Project.services.schedule_service import update_schedule
     from Football_Project.services.season import get_current_season_context
+    from ..services.permissions import can_manage_group
+
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
 
     # single source of truth
     season_year, season_type_label = get_current_season_context()
@@ -211,10 +251,14 @@ def admin_update_schedule():
 @admin_bp.route("/view_as_user", methods=["POST"])
 @login_required
 def view_as_user():
-    if not current_user.is_admin:
-        flash("Not authorized.", "danger")
-        return redirect(url_for("admin.manage_users"))
+    from ..services.permissions import can_manage_group
 
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
+    
     user_id = request.form.get("user_id", type=int)
     if not user_id:
         flash("Please select a user.", "warning")
@@ -230,10 +274,14 @@ def view_as_user():
 @admin_bp.route("/exit_view_as_user", methods=["POST"])
 @login_required
 def exit_view_as_user():
-    if not current_user.is_admin:
-        flash("Not authorized.", "danger")
-        return redirect(url_for("admin.manage_users"))
+    from ..services.permissions import can_manage_group
 
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
+    
     session.pop("view_as_user_id", None)
     session.modified = True
 
@@ -243,8 +291,14 @@ def exit_view_as_user():
 @admin_bp.route("/force_exit_view_as", methods=["GET"])
 @login_required
 def force_exit_view_as():
-    if not current_user.is_admin:
-        return "Not authorized", 403
+    from ..services.permissions import can_manage_group
+
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
+    
 
     session.pop("view_as_user_id", None)
     session.pop("admin_view_as_user_id", None)
@@ -254,14 +308,28 @@ def force_exit_view_as():
 @admin_bp.route("/debug_session", methods=["GET"])
 @login_required
 def debug_session():
-    if not current_user.is_admin:
-        return "Not authorized", 403
+    from ..services.permissions import can_manage_group
+
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
+    
     return f"session={dict(session)}"
 
 
 
 @admin_bp.route("/test_sms/<int:week>")
+@login_required
 def test_sms_week(week):
+    from ..services.permissions import can_manage_group
+
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
     """Manually trigger the SMS reminder job for a given week."""
     try:
         sms_week_reminder_job(current_app, week)
@@ -277,12 +345,19 @@ def test_sms_week(week):
 
 @admin_bp.before_request
 def admin_guard():
-    # This runs for every admin blueprint request.
+    from ..services.permissions import can_manage_group
+
     if not current_user.is_authenticated:
-        return redirect(url_for('auth.login'))
-    if not current_user.is_admin:
-        flash("Admins only.", "danger")
-        return redirect(url_for('main.index'))
+        return redirect(url_for("auth.login"))
+
+    active_group_id = session.get("active_group_id")
+    if not active_group_id:
+        flash("No active group selected.", "warning")
+        return redirect(url_for("main.groups"))
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
 
 # -------------------------
 # User management
@@ -291,13 +366,26 @@ def admin_guard():
 @admin_bp.route('/manage_users')
 @login_required
 def manage_users():
+    from ..services.permissions import can_manage_group
+
     active_group_id = session.get("active_group_id")
 
     if not active_group_id:
         flash("No active group selected.", "warning")
         return redirect(url_for("main.user_dashboard"))
 
-    memberships = GroupMember.query.filter_by(group_id=active_group_id).all()
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
+
+    active_group = PoolGroup.query.get(active_group_id)
+
+    memberships = (
+        GroupMember.query
+        .filter_by(group_id=active_group_id, is_active=True)
+        .all()
+    )
+
     user_ids = [m.user_id for m in memberships]
 
     users = (
@@ -307,11 +395,34 @@ def manage_users():
         .all()
     ) if user_ids else []
 
-    return render_template('manage_users.html', users=users)
+    membership_by_user_id = {m.user_id: m for m in memberships}
+
+    user_rows = []
+    for user in users:
+        membership = membership_by_user_id.get(user.id)
+
+        user_rows.append({
+            "user": user,
+            "membership": membership,
+            "is_group_admin": bool(
+                membership
+                and (membership.role or "").strip().lower() == "group_admin"
+            ),
+        })
+
+    return render_template(
+        'manage_users.html',
+        user_rows=user_rows,
+        active_group=active_group,
+    )
 
 @admin_bp.route('/edit_user/<int:user_id>', methods=['GET', 'POST'])
 @login_required
 def edit_user(user_id):
+    if not current_user.is_admin:
+        flash("Only global admins can edit user accounts.", "danger")
+        return redirect(url_for('admin.manage_users'))
+
     user = User.query.get_or_404(user_id)
 
     if request.method == 'POST':
@@ -335,46 +446,64 @@ def edit_user(user_id):
 @admin_bp.route('/update_admin_status/<int:user_id>', methods=['POST'])
 @login_required
 def update_admin_status(user_id):
+    if not current_user.is_admin:
+        flash("Only global admins can change global admin status.", "danger")
+        return redirect(url_for('admin.manage_users'))
+
     user = User.query.get_or_404(user_id)
 
-    # handle multiple values from hidden + checkbox
     vals = [v.strip().lower() for v in request.form.getlist('is_admin')]
     new_is_admin = any(v in ('1', 'true', 'on', 'yes') for v in vals)
 
-    # prevent demoting self and ensure at least one admin
     if user.id == current_user.id and not new_is_admin:
         flash("You can’t remove your own admin rights.", "warning")
         return redirect(url_for('admin.manage_users'))
+
     if not new_is_admin and User.query.filter_by(is_admin=True).count() <= 1:
-        flash("At least one admin is required.", "warning")
+        flash("At least one global admin is required.", "warning")
         return redirect(url_for('admin.manage_users'))
 
     user.is_admin = new_is_admin
     db.session.commit()
-    flash("Admin status updated.", "success")
+    flash("Global admin status updated.", "success")
     return redirect(url_for('admin.manage_users'))
 
 
 @admin_bp.route('/delete_user/<int:user_id>', methods=['POST'])
 @login_required
 def delete_user(user_id):
+    if not current_user.is_admin:
+        flash("Only global admins can deactivate user accounts.", "danger")
+        return redirect(url_for('admin.manage_users'))
+
     user = User.query.get_or_404(user_id)
 
     if user.id == current_user.id:
-        flash("You can’t delete your own account.", "warning")
-        return redirect(url_for('admin.manage_users'))
-    if user.is_admin and User.query.filter_by(is_admin=True).count() <= 1:
-        flash("You can’t delete the last admin.", "warning")
+        flash("You can’t deactivate your own account.", "warning")
         return redirect(url_for('admin.manage_users'))
 
-    db.session.delete(user)
+    if user.is_admin and User.query.filter_by(is_admin=True, is_active=True).count() <= 1:
+        flash("You can’t deactivate the last global admin.", "warning")
+        return redirect(url_for('admin.manage_users'))
+
+    user.is_active = False
+
+    GroupMember.query.filter_by(user_id=user.id, is_active=True).update(
+        {"is_active": False},
+        synchronize_session=False
+    )
+
     db.session.commit()
-    flash('User deleted successfully!', 'success')
+    flash('User deactivated successfully.', 'success')
     return redirect(url_for('admin.manage_users'))
 
 @admin_bp.route('/add_user', methods=['GET', 'POST'])
 @login_required
 def add_user():
+    if not current_user.is_admin:
+        flash("Only global admins can add users.", "danger")
+        return redirect(url_for('admin.manage_users'))
+
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         email = request.form.get('email', '').strip()
@@ -405,6 +534,7 @@ def add_user():
     return render_template('add_user.html')
 
 def _last_odds_fetch_for_week(week: int):
+    
     ts = db.session.query(func.max(Game.saved_at)).filter(Game.week == week).scalar()
     if not ts:
         return None
@@ -414,6 +544,7 @@ def _last_odds_fetch_for_week(week: int):
     return ts.astimezone(ZoneInfo("US/Mountain")).strftime("%Y-%m-%d %I:%M %p %Z")
 
 def _settings_to_espn_seasontype(settings) -> int:
+    
     if not settings or not settings.season_type:
         return 2
 
@@ -428,14 +559,26 @@ def _settings_to_espn_seasontype(settings) -> int:
     return 2
 
 def in_view_as_mode():
+    
     return bool(session.get("view_as_user_id") or session.get("admin_view_as_user_id"))
 
 @admin_bp.route('/admin_dashboard')
 @login_required
 def admin_dashboard():
+    session.pop("view_as_user_id", None)
+    session.pop("admin_view_as_user_id", None)
+    session.modified = True
+    from ..services.permissions import can_manage_group
+
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
     print("ADMIN_DASH session keys:", dict(session))  # TEMP DEBUG
 
     if in_view_as_mode():
+        flash("View-as mode is active.", "warning")
         return redirect(url_for("main.user_dashboard"))
 
     settings = Settings.query.first()
@@ -535,6 +678,13 @@ def admin_dashboard():
 @admin_bp.route('/fetch_odds', methods=['POST'])
 @login_required
 def fetch_odds():
+    from ..services.permissions import can_manage_group
+
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
     try:
         settings = Settings.query.first()
         if not settings:
@@ -580,6 +730,13 @@ def fetch_odds():
 @admin_bp.route('/save_odds', methods=['POST'])
 @login_required
 def save_odds():
+    from ..services.permissions import can_manage_group
+
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
     try:
         settings = Settings.query.first()
         if not settings:
@@ -624,6 +781,13 @@ def save_odds():
 @admin_bp.route('/display_odds')
 @login_required
 def display_odds():
+    from ..services.permissions import can_manage_group
+
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
     settings = Settings.query.first()
     current_week = settings.current_week
     games = Game.query.filter_by(week=current_week).all()
@@ -636,6 +800,13 @@ def display_odds():
 @admin_bp.route('/fetch_scores', methods=['POST'])
 @login_required
 def fetch_scores():
+    from ..services.permissions import can_manage_group
+
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
     # year, season type, week from form
     settings = Settings.query.first()
     year = int(request.form.get("year") or settings.season_year)
@@ -668,6 +839,13 @@ def fetch_scores():
 @admin_bp.route('/admin_scores', methods=['GET'])
 @login_required
 def admin_scores():
+    from ..services.permissions import can_manage_group
+
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
     selected_week = request.args.get("week", "all")
     selected_user = request.args.get("user", "all")
 
@@ -781,6 +959,7 @@ def admin_scores():
         picks_by_game[p.game_id].append(p)
 
     def winner_for(g: Game):
+        
         if g.home_team_score is None or g.away_team_score is None:
             return None
         if g.home_team_score > g.away_team_score:
@@ -882,6 +1061,14 @@ def admin_scores():
 @admin_bp.route("/admin_calculate_scores", methods=["POST"])
 @login_required
 def admin_calculate_scores():
+
+    from ..services.permissions import can_manage_group
+
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
     if not getattr(current_user, "is_admin", False):
         flash("Not authorized.", "danger")
         return redirect(url_for("main.user_dashboard"))
@@ -971,7 +1158,13 @@ def admin_calculate_scores():
 @login_required
 def admin_override_score():
     from Football_Project.services.group_service import get_active_group_id
+    from ..services.permissions import can_manage_group
 
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
     user_id = request.form.get('user_id', type=int)
     week = request.form.get('week', type=int)
     game_id = request.form.get('game_id', type=int)
@@ -1024,6 +1217,13 @@ def admin_override_score():
 @admin_bp.route('/process_user_scores', methods=['POST'])
 @login_required
 def process_user_scores():
+    from ..services.permissions import can_manage_group
+
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
     try:
         settings = Settings.query.first()
         season_year = settings.season_year
@@ -1076,6 +1276,7 @@ def _total_games_for_week(week: int) -> int:
     return db.session.query(func.count(Game.id)).filter(Game.week == week).scalar() or 0
 
 def _user_pick_aggregate_for_week(week: int):
+    
     """
     Returns a query with per-user aggregates for the given week:
       - picks_made (count)
@@ -1198,7 +1399,13 @@ def _missing_counts_for_week(
 @admin_bp.route('/missing_picks', methods=['GET'])
 @login_required
 def missing_picks():
+    from ..services.permissions import can_manage_group
 
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
     settings = Settings.query.first()
     if not settings:
         flash("Settings not found. Please initialize Settings first.", "danger")
@@ -1268,11 +1475,14 @@ def missing_picks():
 @admin_bp.route('/user_picks/<int:user_id>', methods=['GET'], endpoint='view_user_picks')
 @login_required
 def view_user_picks(user_id: int):
-    if not current_user.is_admin:
-        flash("You do not have permission to access this page.", "danger")
-        return redirect(url_for('main.index'))
+    from ..services.permissions import can_manage_group
 
-    from .models import Settings  # adjust import path if needed
+    active_group_id = session.get("active_group_id")
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("main.user_dashboard"))
+    
 
     settings = Settings.query.first()
     if not settings:
@@ -1397,3 +1607,110 @@ def view_user_picks(user_id: int):
         rows=view_rows,
     )
 
+@admin_bp.route('/update_group_admin_status/<int:user_id>', methods=['POST'])
+@login_required
+def update_group_admin_status(user_id):
+    from ..services.permissions import can_manage_group, is_global_admin
+
+    active_group_id = session.get("active_group_id")
+    if not active_group_id:
+        flash("No active group selected.", "warning")
+        return redirect(url_for("main.user_dashboard"))
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to manage this group.", "danger")
+        return redirect(url_for("main.user_dashboard"))
+
+    membership = GroupMember.query.filter_by(
+        user_id=user_id,
+        group_id=active_group_id,
+        is_active=True,
+    ).first()
+
+    if not membership:
+        flash("Group membership not found.", "danger")
+        return redirect(url_for("admin.manage_users"))
+
+    vals = [v.strip().lower() for v in request.form.getlist('is_group_admin')]
+    new_is_group_admin = any(v in ('1', 'true', 'on', 'yes') for v in vals)
+
+    current_role = (membership.role or "").strip().lower()
+    new_role = "group_admin" if new_is_group_admin else "member"
+
+    # Prevent removing the last group admin
+    if current_role == "group_admin" and new_role != "group_admin":
+        active_admin_count = GroupMember.query.filter_by(
+            group_id=active_group_id,
+            is_active=True,
+            role="group_admin",
+        ).count()
+
+        if active_admin_count <= 1:
+            flash("Each group must have at least one group admin.", "warning")
+            return redirect(url_for("admin.manage_users"))
+
+    # Prevent group admin from removing their own group-admin access
+    # unless they are also a global admin
+    if (
+        membership.user_id == current_user.id
+        and current_role == "group_admin"
+        and new_role != "group_admin"
+        and not is_global_admin(current_user)
+    ):
+        flash("You cannot remove your own group admin access.", "warning")
+        return redirect(url_for("admin.manage_users"))
+
+    membership.role = new_role
+    db.session.commit()
+
+    flash("Group admin status updated.", "success")
+    return redirect(url_for("admin.manage_users"))
+
+@admin_bp.route('/remove_user_from_group/<int:user_id>', methods=['POST'])
+@login_required
+def remove_user_from_group(user_id):
+    from ..services.permissions import can_manage_group, is_global_admin
+
+    active_group_id = session.get("active_group_id")
+    if not active_group_id:
+        flash("No active group selected.", "warning")
+        return redirect(url_for("main.user_dashboard"))
+
+    if not can_manage_group(current_user, active_group_id):
+        flash("You do not have permission to manage this group.", "danger")
+        return redirect(url_for("main.user_dashboard"))
+
+    membership = GroupMember.query.filter_by(
+        user_id=user_id,
+        group_id=active_group_id,
+        is_active=True,
+    ).first()
+
+    if not membership:
+        flash("User is not an active member of this group.", "danger")
+        return redirect(url_for("admin.manage_users"))
+
+    role = (membership.role or "").strip().lower()
+
+    # Prevent removing the last group admin
+    if role == "group_admin":
+        active_admin_count = GroupMember.query.filter_by(
+            group_id=active_group_id,
+            is_active=True,
+            role="group_admin",
+        ).count()
+
+        if active_admin_count <= 1:
+            flash("You cannot remove the last group admin from the group.", "warning")
+            return redirect(url_for("admin.manage_users"))
+
+    # Prevent group admin from removing themselves unless global admin
+    if membership.user_id == current_user.id and not is_global_admin(current_user):
+        flash("You cannot remove yourself from the active group.", "warning")
+        return redirect(url_for("admin.manage_users"))
+
+    membership.is_active = False
+    db.session.commit()
+
+    flash("User removed from the active group.", "success")
+    return redirect(url_for("admin.manage_users"))

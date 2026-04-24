@@ -2,7 +2,7 @@ import requests
 import pandas as pd
 from datetime import datetime, timedelta
 import pytz
-from Football_Project.models import db, Game
+from Football_Project.models import db, Game, Settings
 
 
 

@@ -1,8 +1,8 @@
 # Football_Project/auth/forms.py
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, BooleanField, SubmitField
+from wtforms import StringField, PasswordField, BooleanField, SubmitField, SelectField
 from wtforms.validators import (
-    DataRequired, Email, Length, EqualTo, Regexp, ValidationError
+    DataRequired, Email, Length, EqualTo, Regexp, ValidationError, Optional
 )
 from sqlalchemy import func
 
@@ -45,30 +45,21 @@ class RegisterForm(FlaskForm):
         "Confirm Password",
         validators=[DataRequired(), EqualTo("password", message="Passwords must match.")],
     )
+    group_id = SelectField("Join a Group", coerce=int, validators=[Optional()])
+    create_group = BooleanField("Create a New Group")
+    new_group_name = StringField("New Group Name", validators=[Optional()])
     submit = SubmitField("Create account")
 
     # Server-side uniqueness & reserved checks (case-insensitive) — no DB changes required
-    def validate_username(self, field):
-        uname = field.data
-        if uname.lower() in RESERVED_USERNAMES:
-            raise ValidationError("That username is reserved.")
-        exists = (
-            db.session.query(User.id)
-            .filter(func.lower(User.username) == uname.lower())
-            .first()
-        )
-        if exists:
-            raise ValidationError("That username is taken.")
+    def validate_username(self, username):
+        user = User.query.filter_by(username=username.data, is_active=True).first()
+        if user:
+            raise ValidationError("That username is taken. Please choose a different one.")
 
-    def validate_email(self, field):
-        exists = (
-            db.session.query(User.id)
-            .filter(func.lower(User.email) == field.data.lower())
-            .first()
-        )
-        if exists:
-            raise ValidationError("An account already exists for that email.")
-
+    def validate_email(self, email):
+        user = User.query.filter_by(email=email.data, is_active=True).first()
+        if user:
+            raise ValidationError("That email is taken. Please choose a different one.")
 
 class LoginForm(FlaskForm):
     # Allow username OR email in one field

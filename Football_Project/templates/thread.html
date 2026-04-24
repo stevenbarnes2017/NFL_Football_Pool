@@ -2,36 +2,71 @@
 {% block title %}{{ thread.title }}{% endblock %}
 
 {% block content %}
-<h2>{{ thread.title }}</h2>
+<div class="container mt-4">
+    <div class="mb-3">
+        <h2 class="mb-1">{{ thread.title }}</h2>
 
-{% if thread.locked %}
-  <p><strong>🔒 This thread is locked.</strong></p>
-{% endif %}
+        {% if active_group %}
+        <p class="text-muted mb-2">
+            Board: <strong>{{ active_group.name }}</strong>
+        </p>
+        {% endif %}
 
-<hr>
-
-{% for post in posts %}
-  <div class="post-card">
-    <div class="post-meta">
-      <strong>{{ post.author.username }}</strong>
-      • {{ post.created_at.strftime("%Y-%m-%d %H:%M") }}
+        <div class="text-muted">
+            Started by {{ thread.created_by.username }}
+            • {{ thread.created_at.strftime("%Y-%m-%d %H:%M") }}
+            {% if thread.week %}
+                • Week {{ thread.week }}
+            {% endif %}
+            {% if thread.pinned %}
+                • 📌 Pinned
+            {% endif %}
+        </div>
     </div>
 
-    <div class="post-body">
-      {{ post.body | e | replace('\n', '<br>') | safe }}
+    {% if thread.locked %}
+        <div class="alert alert-warning">
+            <strong>🔒 This thread is locked.</strong>
+        </div>
+    {% endif %}
+
+    <hr>
+
+    {% for post in posts %}
+        <div class="post-card mb-3 p-3 border rounded bg-white">
+            <div class="post-meta text-muted mb-2">
+                <strong>{{ post.author.username }}</strong>
+                • {{ post.created_at.strftime("%Y-%m-%d %H:%M") }}
+                {% if post.edited_at %}
+                    • edited {{ post.edited_at.strftime("%Y-%m-%d %H:%M") }}
+                {% endif %}
+            </div>
+
+            <div class="post-body">
+                {{ post.body | e | replace('\n', '<br>') | safe }}
+            </div>
+        </div>
+    {% else %}
+        <p>No posts yet.</p>
+    {% endfor %}
+
+    {% if not thread.locked %}
+    <div class="mt-4">
+        <h5>Reply</h5>
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="mb-3">
+                <textarea name="body" rows="4" class="form-control" required></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Reply</button>
+        </form>
     </div>
-  </div>
-  <hr>
-{% endfor %}
+    {% endif %}
 
-{% if not thread.locked %}
-<form method="POST">
-  <textarea name="body" rows="4" required></textarea>
-  <br>
-  <button type="submit">Reply</button>
-</form>
-{% endif %}
-
-<a href="{{ url_for('main.board_threads') }}">← Back to board</a>
-
+    <div class="mt-4">
+        <a href="{{ url_for('main.board') }}" class="btn btn-outline-secondary">
+            ← Back to board
+        </a>
+    </div>
+</div>
 {% endblock %}
