@@ -30,7 +30,7 @@ from .services.leaderboard import get_season_leaderboard, get_weekly_leaderboard
 from .services.auth_context import get_effective_user_id
 from Football_Project.services.season import get_current_season_context
 from .services.group_service import get_active_group_id
-from Football_Retry.Football_Project.services.group_service import get_active_group_id
+from Football_Project.services.group_service import get_active_group_id
 from slugify import slugify
 
 
