@@ -18,6 +18,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Verify secrets exist
+        run: |
+          [ -n "${{ secrets.HARBOR_REGISTRY }}" ] && echo "HARBOR_REGISTRY set" || (echo "HARBOR_REGISTRY missing" && exit 1)
+          [ -n "${{ secrets.HARBOR_USERNAME }}" ] && echo "HARBOR_USERNAME set" || (echo "HARBOR_USERNAME missing" && exit 1)
+          [ -n "${{ secrets.HARBOR_PASSWORD }}" ] && echo "HARBOR_PASSWORD set" || (echo "HARBOR_PASSWORD missing" && exit 1)
+
       - name: Log in to Harbor
         uses: docker/login-action@v3
         with:
