@@ -240,6 +240,12 @@ def update_metrics_with_context(app):
 def create_app():
     app = Flask(__name__)
     metrics = PrometheusMetrics(app)
+
+    @app.before_request
+    def update_metrics_on_scrape():
+        if request.path == "/metrics":
+            update_metrics_with_context(app)
+
     @app.route("/health")
     def health():
         return {"status": "ok"}, 200
@@ -344,140 +350,140 @@ def create_app():
             finally:
                 db.session.remove()
 
-        should_start_scheduler = (
-            not disable_sched
-            and not scheduler.running
-            and (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true")
+    should_start_scheduler = (
+        not disable_sched
+        and not scheduler.running
+        and (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true")
 )
+    
+    if should_start_scheduler:
+        scheduler.remove_all_jobs(jobstore="default")
+
+        # Scores recurring jobs
+        scheduler.add_job(
+            auto_fetch_scores_with_context,
+            "cron",
+            args=[app],
+            day_of_week="mon,tue,wed,thu,fri,sat,sun",
+            hour="0-23",
+            minute="*/5",
+            id="auto_fetch_scores_job",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            fetch_and_cache_scores_with_context,
+            "cron",
+            args=[app],
+            day_of_week="mon,tue,wed,thu,fri,sat,sun",
+            hour="0-23",
+            minute="*/5",
+            id="fetch_and_cache_scores_job",
+            replace_existing=True,
+        )
+
+        # Odds retry windows
+        scheduler.add_job(
+            odds_window_job_with_context,
+            "cron",
+            args=[app, "TueAM"],
+            day_of_week="tue",
+            hour=7,
+            minute=0,
+            id="odds_tue_am",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            odds_window_job_with_context,
+            "cron",
+            args=[app, "TuePM"],
+            day_of_week="tue",
+            hour=19,
+            minute=0,
+            id="odds_tue_pm",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            odds_window_job_with_context,
+            "cron",
+            args=[app, "WedAM"],
+            day_of_week="wed",
+            hour=7,
+            minute=0,
+            id="odds_wed_am",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            odds_window_job_with_context,
+            "cron",
+            args=[app, "WedPM"],
+            day_of_week="wed",
+            hour=19,
+            minute=0,
+            id="odds_wed_pm",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            odds_escalation_job_with_context,
+            "cron",
+            args=[app],
+            day_of_week="thu",
+            hour=7,
+            minute=0,
+            id="odds_escalation",
+            replace_existing=True,
+        )
+
+        # Schedule updater (weekly)
+        scheduler.add_job(
+            func=lambda: schedule_update_job_with_context(app),
+            trigger="cron",
+            day_of_week="tue",
+            hour=6,
+            minute=20,
+            id="schedule_update_tue_am",
+            replace_existing=True,
+        )
+        # Scheduled job to check the current week in Settings
+        scheduler.add_job(
+            func=sync_settings_current_week_with_context,
+            trigger="cron",
+            args=[app],
+            day_of_week="mon,tue,wed,thu,fri,sat,sun",
+            hour="0-23",
+            minute="*/15",
+            id="sync_current_week",
+            replace_existing=True,
+        )
+
+        scheduler.add_job(
+            func=update_metrics_with_context,
+            trigger="interval",
+            args=[app],
+            minutes=1,
+            id="update_metrics",
+            replace_existing=True,
+        )
         
-        if should_start_scheduler:
-            scheduler.remove_all_jobs(jobstore="default")
+        update_metrics_with_context(app)
 
-            # Scores recurring jobs
-            scheduler.add_job(
-                auto_fetch_scores_with_context,
-                "cron",
-                args=[app],
-                day_of_week="mon,tue,wed,thu,fri,sat,sun",
-                hour="0-23",
-                minute="*/5",
-                id="auto_fetch_scores_job",
-                replace_existing=True,
-            )
-            scheduler.add_job(
-                fetch_and_cache_scores_with_context,
-                "cron",
-                args=[app],
-                day_of_week="mon,tue,wed,thu,fri,sat,sun",
-                hour="0-23",
-                minute="*/5",
-                id="fetch_and_cache_scores_job",
-                replace_existing=True,
-            )
+        # ✅ SMS scheduling should NOT run during migrations
+        if not _is_migration_command():
+            # Run once at startup
+            reschedule_current_week_sms(app)
 
-            # Odds retry windows
+            # Re-evaluate each morning
             scheduler.add_job(
-                odds_window_job_with_context,
-                "cron",
-                args=[app, "TueAM"],
-                day_of_week="tue",
-                hour=7,
-                minute=0,
-                id="odds_tue_am",
-                replace_existing=True,
-            )
-            scheduler.add_job(
-                odds_window_job_with_context,
-                "cron",
-                args=[app, "TuePM"],
-                day_of_week="tue",
-                hour=19,
-                minute=0,
-                id="odds_tue_pm",
-                replace_existing=True,
-            )
-            scheduler.add_job(
-                odds_window_job_with_context,
-                "cron",
-                args=[app, "WedAM"],
-                day_of_week="wed",
-                hour=7,
-                minute=0,
-                id="odds_wed_am",
-                replace_existing=True,
-            )
-            scheduler.add_job(
-                odds_window_job_with_context,
-                "cron",
-                args=[app, "WedPM"],
-                day_of_week="wed",
-                hour=19,
-                minute=0,
-                id="odds_wed_pm",
-                replace_existing=True,
-            )
-            scheduler.add_job(
-                odds_escalation_job_with_context,
-                "cron",
-                args=[app],
-                day_of_week="thu",
-                hour=7,
-                minute=0,
-                id="odds_escalation",
-                replace_existing=True,
-            )
-
-            # Schedule updater (weekly)
-            scheduler.add_job(
-                func=lambda: schedule_update_job_with_context(app),
+                func=lambda: reschedule_current_week_sms(app),
                 trigger="cron",
-                day_of_week="tue",
-                hour=6,
-                minute=20,
-                id="schedule_update_tue_am",
+                hour=3,
+                minute=5,
+                id="sms_rescheduler_daily",
                 replace_existing=True,
             )
-            # Scheduled job to check the current week in Settings
-            scheduler.add_job(
-                func=sync_settings_current_week_with_context,
-                trigger="cron",
-                args=[app],
-                day_of_week="mon,tue,wed,thu,fri,sat,sun",
-                hour="0-23",
-                minute="*/15",
-                id="sync_current_week",
-                replace_existing=True,
-            )
+        else:
+            app.logger.info("[INIT] Skipping SMS scheduling during migrations.")
 
-            scheduler.add_job(
-                func=update_metrics_with_context,
-                trigger="interval",
-                args=[app],
-                minutes=1,
-                id="update_metrics",
-                replace_existing=True,
-            )
-            
-            update_metrics_with_context(app)
-
-            # ✅ SMS scheduling should NOT run during migrations
-            if not _is_migration_command():
-                # Run once at startup
-                reschedule_current_week_sms(app)
-
-                # Re-evaluate each morning
-                scheduler.add_job(
-                    func=lambda: reschedule_current_week_sms(app),
-                    trigger="cron",
-                    hour=3,
-                    minute=5,
-                    id="sms_rescheduler_daily",
-                    replace_existing=True,
-                )
-            else:
-                app.logger.info("[INIT] Skipping SMS scheduling during migrations.")
-
-            scheduler.start()
+        scheduler.start()
 
 
     atexit.register(lambda: scheduler.shutdown(wait=False) if scheduler.running else None)
