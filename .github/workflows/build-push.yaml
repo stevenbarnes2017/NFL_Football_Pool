@@ -12,7 +12,7 @@ env:
 
 jobs:
   build-and-push:
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted]
 
     steps:
       - name: Checkout repository
@@ -41,3 +41,12 @@ jobs:
         run: |
           docker push ${{ secrets.HARBOR_REGISTRY }}/football/football-app:${{ github.sha }}
           docker push ${{ secrets.HARBOR_REGISTRY }}/football/football-app:latest
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+
+      - name: Restart deployment
+        run: |
+          kubectl rollout restart deployment football-web -n default
+          kubectl rollout status deployment football-web -n default --timeout=180s
