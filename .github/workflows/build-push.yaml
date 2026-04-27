@@ -43,9 +43,7 @@ jobs:
           docker push ${{ secrets.HARBOR_REGISTRY }}/football/football-app:latest
       - name: Configure kubeconfig
         run: |
-          mkdir -p ~/.kube
-          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-
+          kubectl get nodes
       - name: Restart deployment
         run: |
           kubectl rollout restart deployment football-web -n default
