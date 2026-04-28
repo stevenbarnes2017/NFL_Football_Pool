@@ -119,8 +119,7 @@ def odds_window_job_with_context(app, label: str):
         is_week_odds_complete,
         attempt_import_odds,
     )
-    from .services import send_admin_email
-
+    
     with app.app_context():
         try:
             settings = Settings.query.first()
