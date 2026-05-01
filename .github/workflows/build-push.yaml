@@ -9,6 +9,7 @@ on:
 
 env:
   IMAGE_NAME: football-app
+  IMAGE_TAG: ${{ github.sha }}
 
 jobs:
   build-and-push:
@@ -23,6 +24,7 @@ jobs:
           [ -n "${{ secrets.HARBOR_REGISTRY }}" ] && echo "HARBOR_REGISTRY set" || (echo "HARBOR_REGISTRY missing" && exit 1)
           [ -n "${{ secrets.HARBOR_USERNAME }}" ] && echo "HARBOR_USERNAME set" || (echo "HARBOR_USERNAME missing" && exit 1)
           [ -n "${{ secrets.HARBOR_PASSWORD }}" ] && echo "HARBOR_PASSWORD set" || (echo "HARBOR_PASSWORD missing" && exit 1)
+          [ -n "${{ secrets.GITOPS_DEPLOY_KEY }}" ] && echo "GITOPS_DEPLOY_KEY set" || (echo "GITOPS_DEPLOY_KEY missing" && exit 1)
 
       - name: Log in to Harbor
         uses: docker/login-action@v3
@@ -34,17 +36,32 @@ jobs:
       - name: Build Docker image
         run: |
           docker build \
-            -t ${{ secrets.HARBOR_REGISTRY }}/football/football-app:${{ github.sha }} \
+            -t ${{ secrets.HARBOR_REGISTRY }}/football/football-app:${IMAGE_TAG} \
             -t ${{ secrets.HARBOR_REGISTRY }}/football/football-app:latest .
 
       - name: Push Docker image
         run: |
-          docker push ${{ secrets.HARBOR_REGISTRY }}/football/football-app:${{ github.sha }}
+          docker push ${{ secrets.HARBOR_REGISTRY }}/football/football-app:${IMAGE_TAG}
           docker push ${{ secrets.HARBOR_REGISTRY }}/football/football-app:latest
-      - name: Configure kubeconfig
+
+      - name: Checkout GitOps repo
+        uses: actions/checkout@v4
+        with:
+          repository: stevenbarnes2017/k3s-proxmox-gitops
+          path: k3s-proxmox-gitops
+          ssh-key: ${{ secrets.GITOPS_DEPLOY_KEY }}
+
+      - name: Update GitOps image tags
         run: |
-          kubectl get nodes
-      - name: Restart deployment
-        run: |
-          kubectl rollout restart deployment football-web -n default
-          kubectl rollout status deployment football-web -n default --timeout=180s
+          cd k3s-proxmox-gitops
+
+          sed -i "s#hub.lab.local/football/football-app:[^\" ]*#${{ secrets.HARBOR_REGISTRY }}/football/football-app:${IMAGE_TAG}#g" \
+            kubernetes/football-web-deployment.yaml \
+            kubernetes/football-scheduler-deployment.yaml
+
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add kubernetes/football-web-deployment.yaml kubernetes/football-scheduler-deployment.yaml
+          git commit -m "deploy: football-app ${IMAGE_TAG}" || echo "No changes to commit"
+          git push
