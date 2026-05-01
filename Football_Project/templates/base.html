@@ -16,7 +16,14 @@
   <div class="topbar-inner">
 
     <div class="brand-group-wrap">
-      <a class="brand" href="{{ url_for('main.dashboard') }}">NFL Picks</a>
+      <a class="brand" href="{{ url_for('main.dashboard') }}" style="display: flex; align-items: center;">
+        <img
+          src="{{ url_for('static', filename='images/logo.png') }}"
+          alt="Sunday Pickem's logo"
+          style="height: 55px; width: auto; margin-right: 12px;"
+        >
+        Sunday Pickem's
+      </a>
 
       {% if current_user.is_authenticated and active_group %}
         <span class="active-group-pill">
