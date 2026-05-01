@@ -1,22 +1,44 @@
-import requests
-import os
-from dotenv import load_dotenv
 
-load_dotenv()
-api_key = os.getenv("BREVO_API_KEY")
+from Football_Project.services.email_helpers import send_admin_email, send_all_users_email, send_user_email, send_group_email, send_group_missing_picks_email
+from Football_Project import create_app
 
-headers = {
-    "accept": "application/json",
-    "api-key": api_key,
-    "content-type": "application/json"
-}
+app = create_app()
 
-data = {
-    "sender": {"name": "Test App", "email": "youremail@example.com"},
-    "to": [{"email": "youremail@example.com"}],
-    "subject": "Test email from Brevo",
-    "htmlContent": "<p>This is a test email from Brevo.</p>"
-}
+with app.app_context():
+    print("=== TEST: admin ===")
+    send_admin_email(
+        subject="[TEST] Admin Email",
+        html="<p>Admin test</p>"
+    )
 
-response = requests.post("https://api.brevo.com/v3/smtp/email", json=data, headers=headers)
-print(response.status_code, response.text)
+    print("=== TEST: user ===")
+    send_user_email(
+        to_email="fakeuser@example.com",
+        subject="[TEST] User Email",
+        html="<p>User test</p>"
+    )
+
+    print("=== TEST: all users ===")
+    send_all_users_email(
+        subject="[TEST] All Users Email",
+        html="<p>All users test</p>"
+    )
+
+    print("=== TEST: group ===")
+    send_group_email(
+        group_id=1,
+        subject="[TEST] Group Email",
+        html="<p>Group test</p>"
+    )
+
+    print("=== TEST: missing picks ===")
+    send_group_missing_picks_email(
+        group_id=1,
+        season_year=2026,
+        season_type="PRE",
+        week=1,
+        subject="[TEST] Missing Picks",
+        html="<p>Missing picks test</p>"
+    )
+
+    print("=== DONE ===")

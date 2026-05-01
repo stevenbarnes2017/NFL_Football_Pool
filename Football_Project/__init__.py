@@ -14,7 +14,8 @@ import sys
 from .extensions import db
 from .models import User, JobRun, Settings
 from .utils import auto_fetch_scores, fetch_and_cache_scores
-from .services import attempt_import_odds, is_week_odds_complete, send_admin_email
+from .services import attempt_import_odds, is_week_odds_complete
+from .services.email_helpers import send_admin_email, send_all_users_email
 from Football_Project.services.season import get_current_week
 from .services.sms_helpers import sms_week_reminder_job, schedule_first_kick_sms_for_week
 from Football_Project.services.odds_care import attempt_import_odds, is_week_odds_complete
@@ -22,6 +23,7 @@ from Football_Project.services.settings_sync import sync_settings_current_week
 from prometheus_client import Gauge
 from .services.odds_care import games_count_for_week
 from prometheus_flask_exporter import PrometheusMetrics
+from .services.reminders import plan_current_week_reminders
 
 
 load_dotenv()
@@ -156,17 +158,23 @@ def odds_window_job_with_context(app, label: str):
             subject_prefix = f"[Odds] {season_type} {season_year} Week {week}"
 
             if status == "success":
-                send_admin_email(
-                    subject=f"{subject_prefix} SUCCESS ({label})",
-                    html=f"<p>Imported spreads for {season_type} {season_year} week {week}.</p><pre>{details}</pre>",
+                send_all_users_email(
+                    subject=f"{subject_prefix} SPREADS POSTED ({label})",
+                    html=f"""
+                        <p>Spreads have been posted for {season_type} {season_year} week {week}.</p>
+                        <p>You can now review the lines and make or update your picks.</p>
+                        <pre>{details}</pre>
+                    """,
                     attachment_bytes=csv_bytes,
                     filename=f"odds_{season_type.lower()}_{season_year}_week_{week}.csv"
                 )
+
             elif status == "not_ready":
                 send_admin_email(
                     subject=f"{subject_prefix} NOT READY ({label})",
                     html=f"<pre>{details}</pre>"
                 )
+
             else:
                 send_admin_email(
                     subject=f"{subject_prefix} ERROR ({label})",
@@ -236,6 +244,19 @@ def update_metrics_with_context(app):
             app.logger.warning(f"[METRICS] Failed to update metrics: {e}")
         finally:
             db.session.remove()
+
+def plan_current_week_reminders_with_context(app):
+    with app.app_context():
+        try:
+            plan_current_week_reminders()
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f"[REMINDERS] planning failed: {e}")
+            raise
+        finally:
+            db.session.remove()
+
 def create_app():
     app = Flask(__name__)
     metrics = PrometheusMetrics(app)
@@ -359,6 +380,15 @@ def create_app():
         scheduler.remove_all_jobs(jobstore="default")
 
         # Scores recurring jobs
+        scheduler.add_job(
+            func=plan_current_week_reminders_with_context,
+            trigger="cron",
+            args=[app],
+            hour=3,
+            minute=10,
+            id="plan_current_week_reminders",
+            replace_existing=True,
+        )
         scheduler.add_job(
             auto_fetch_scores_with_context,
             "cron",

@@ -289,4 +289,32 @@ class GroupInvite(db.Model):
     group = db.relationship("PoolGroup", backref=db.backref("invites", lazy=True))
     created_by = db.relationship("User", backref=db.backref("created_invites", lazy=True))
 
+class ReminderJob(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+
+    group_id = db.Column(db.Integer, db.ForeignKey("pool_group.id"), nullable=False)
+    season_year = db.Column(db.Integer, nullable=False)
+    season_type = db.Column(db.String(10), nullable=False)
+    week = db.Column(db.Integer, nullable=False)
+
+    reminder_type = db.Column(db.String(50), nullable=False)
+    channel = db.Column(db.String(20), nullable=False)  # email, sms
+    scheduled_for = db.Column(db.DateTime(timezone=True), nullable=False)
+
+    sent_at = db.Column(db.DateTime(timezone=True))
+    status = db.Column(db.String(20), default="pending")  # pending, sent, skipped, failed
+    details = db.Column(db.Text)
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "group_id",
+            "season_year",
+            "season_type",
+            "week",
+            "reminder_type",
+            "channel",
+            name="uq_reminder_once"
+        ),
+    )
+
 
