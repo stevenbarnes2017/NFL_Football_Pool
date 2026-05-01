@@ -50,18 +50,22 @@ jobs:
           repository: stevenbarnes2017/k3s-proxmox-gitops
           path: k3s-proxmox-gitops
           ssh-key: ${{ secrets.GITOPS_DEPLOY_KEY }}
-
       - name: Update GitOps image tags
         run: |
           cd k3s-proxmox-gitops
 
-          sed -i "s#hub.lab.local/football/football-app:[^\" ]*#${{ secrets.HARBOR_REGISTRY }}/football/football-app:${IMAGE_TAG}#g" \
+          echo "BEFORE:"
+          grep -R "football-app" -n kubernetes/
+
+          sed -i "s|image: .*football-app:.*|image: hub.lab.local/football/football-app:${IMAGE_TAG}|" \
             kubernetes/football-web-deployment.yaml \
             kubernetes/football-scheduler-deployment.yaml
+          echo "AFTER:"
+          grep -R "football-app" -n kubernetes/
 
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-          git add kubernetes/football-web-deployment.yaml kubernetes/football-scheduler-deployment.yaml
+          git add .
           git commit -m "deploy: football-app ${IMAGE_TAG}" || echo "No changes to commit"
           git push
