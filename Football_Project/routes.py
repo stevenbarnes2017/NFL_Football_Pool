@@ -258,23 +258,17 @@ def dashboard():
     from .services.permissions import can_manage_group
 
     active_group_id = session.get("active_group_id")
-
-    print("DASH current_user.is_admin:", current_user.is_admin)
-    print("DASH active_group_id:", active_group_id)
-    print("DASH can_manage_group:", can_manage_group(current_user, active_group_id))
-    print("DASH view_as_user_id:", session.get("view_as_user_id"))
-    print("DASH admin_view_as_user_id:", session.get("admin_view_as_user_id"))
+    force_user_view = request.args.get("view") == "user"
 
     if (
-        active_group_id
+        not force_user_view
+        and active_group_id
         and can_manage_group(current_user, active_group_id)
         and not session.get("admin_view_as_user_id")
         and not session.get("view_as_user_id")
     ):
-        print("DASH redirecting to admin dashboard")
         return redirect(url_for('admin.admin_dashboard'))
 
-    print("DASH rendering user dashboard")
     return render_template(
         'user_dashboard.html',
         name=current_user.username,
