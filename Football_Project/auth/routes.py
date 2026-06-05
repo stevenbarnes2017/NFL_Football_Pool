@@ -111,7 +111,10 @@ def login():
             if not has_groups:
                 return redirect(url_for("main.post_auth_group_choice"))
 
-            return redirect(request.args.get("next") or url_for("main.index"))
+            if not session.get("active_group_id"):
+                session["active_group_id"] = has_groups.group_id
+
+            return redirect(request.args.get("next") or url_for("main.dashboard"))
 
         flash("Invalid credentials.", "danger")
 

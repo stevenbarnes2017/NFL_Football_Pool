@@ -99,6 +99,7 @@
 <!-- Quick actions -->
 <h2>Quick Actions</h2>
 <div class="buttons">
+  <a class="btn" href="{{ url_for('main.dashboard') }}">User Dashboard</a>
   <a class="btn btn-primary" href="{{ url_for('admin.admin_scores', week=stats.current_week) }}">Game Results / Scores</a>
   <a class="btn" href="{{ url_for('main.leaderboard', tab='weekly', week=stats.current_week) }}">Weekly Leaderboard</a>
   <a class="btn" href="{{ url_for('main.leaderboard', tab='season') }}">Season Leaderboard</a>
