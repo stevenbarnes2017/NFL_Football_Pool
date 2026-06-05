@@ -251,11 +251,7 @@ body.no-scroll{ overflow: hidden; }
   top: var(--topbar-h);
 }
 
-/* Responsive behavior */
-@media (max-width: 768px) {
-  .nav-desktop { display: none; }
-  .nav-toggle { display: inline-flex; }
-}
+
 
 /* ================================
    SCOREBOARD / GAME CARDS
@@ -645,27 +641,26 @@ footer{
   .game-card{ width: calc(50% - 20px); }
 }
 
-@media (max-width: 768px){
-  .game-card{ width: 100%; }
-
-  .scoreboard-grid{
+@media (max-width: 768px) {
+  .nav-desktop { display: none; }
+  .nav-toggle { display: inline-flex; }
+  .game-card { width: 100%; }
+  .scoreboard-grid {
     padding: 10px;
     justify-content: center;
   }
-
-  .floating-box{
+  .floating-box {
     position: static;
     width: 100%;
     margin-top: 20px;
   }
-
-  .team-logo img{
+  .team-logo img {
     width: 40px;
     height: 40px;
   }
-
-  .score{ font-size: 1.2rem; }
+  .score { font-size: 1.2rem; }
 }
+
 
 .brand-group-wrap {
   display: flex;
