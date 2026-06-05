@@ -641,9 +641,11 @@ footer{
   .game-card{ width: calc(50% - 20px); }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .nav-desktop { display: none; }
   .nav-toggle { display: inline-flex; }
+  .active-group-pill { display: none; }
+  .brand span, .brand-text { display: none; }
   .game-card { width: 100%; }
   .scoreboard-grid {
     padding: 10px;
