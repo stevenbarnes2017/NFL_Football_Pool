@@ -270,7 +270,7 @@
     }
   }
 
-  const initialView = {{ (view or 'snapshot')|tojson }};
+  const initialView = "{{ view if view else 'snapshot' }}";
   showTab(initialView);
 
   function buildCharts() {
@@ -348,13 +348,14 @@
   }
 
   .tabs-row{
-    display: flex;
-    justify-content: center;
-    gap: 8px;
-    border-bottom: 1px solid #e5e7eb;
-    padding-bottom: 8px;
-    overflow-x: auto;
-  }
+  display: flex;
+  justify-content: flex-start;  /* change from center */
+  gap: 8px;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;  /* add this for smooth iOS scrolling */
+}
 
   .tab-btn {
     padding: .6rem 1rem;
