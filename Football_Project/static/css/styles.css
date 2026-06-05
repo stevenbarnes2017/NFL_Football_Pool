@@ -43,7 +43,7 @@ body.no-scroll{ overflow: hidden; }
   left: 0;
   right: 0;
   height: var(--topbar-h);
-  background: #333;
+  background: #1a1a1a; /* darker */
   z-index: 2000;
   display: flex;
   justify-content: center; /* centers the inner content area */
@@ -179,6 +179,7 @@ body.no-scroll{ overflow: hidden; }
   display: flex;
   flex-direction: column;
   gap: 12px;
+  padding-top: calc(14px + var(--topbar-h));
 }
 
 .drawer.open{ transform: translateX(0); }
@@ -247,12 +248,13 @@ body.no-scroll{ overflow: hidden; }
   inset: 0;
   background: rgba(0,0,0,.45);
   z-index: 2050;
+  top: var(--topbar-h);
 }
 
 /* Responsive behavior */
-@media (max-width: 1100px){
-  .nav-desktop{ display: none; }
-  .nav-toggle{ display: inline-flex; }
+@media (max-width: 768px) {
+  .nav-desktop { display: none; }
+  .nav-toggle { display: inline-flex; }
 }
 
 /* ================================

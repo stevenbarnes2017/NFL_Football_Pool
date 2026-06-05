@@ -52,7 +52,7 @@ def schedule_update_job_with_context(app):
             st_int = {"PRE": 1, "REG": 2, "POST": 3}.get(st_upper, 2)
 
             # sensible week ranges
-            week_end = 5 if st_upper == "POST" else (4 if st_upper == "PRE" else 18)
+            week_end = 5 if st_upper in ("PRE", "POST") else 18
 
             result = update_schedule(
                 season_year=season_year,

@@ -1,6 +1,7 @@
 # preload_schedule.py
+import re
 import requests
-from typing import List, Dict
+from typing import List, Dict, Any
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 
@@ -10,15 +11,14 @@ from Football_Project.models import Game
 
 SEASON_YEAR = 2026
 SEASON_TYPE = 1  # 1 = preseason, 2 = regular, 3 = postseason
-WEEK_START = 1
-WEEK_END = 5
 
 MT = ZoneInfo("America/Denver")
 TOLERANCE = timedelta(minutes=1)
 
+TEAM_CACHE: dict[str, str] = {}
+
 
 def season_type_label(season_type: int) -> str:
-    """If your DB stores season_type as string."""
     if season_type == 1:
         return "PRE"
     if season_type == 2:
@@ -28,41 +28,84 @@ def season_type_label(season_type: int) -> str:
     return "REG"
 
 
+def fetch_json(url: str) -> Dict[str, Any]:
+    url = url.replace("http://", "https://")
+    resp = requests.get(url, timeout=30)
+    resp.raise_for_status()
+    return resp.json()
+
+
 def _espn_iso_to_mt(iso_str: str) -> datetime:
     if not iso_str:
         raise ValueError("missing kickoff date")
 
     s = iso_str.replace("Z", "+00:00")
     dt_utc = datetime.fromisoformat(s)
+
     if dt_utc.tzinfo is None:
         dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+
     return dt_utc.astimezone(MT)
 
 
+def parse_week_from_ref(week_ref: str) -> int:
+    match = re.search(r"/weeks/(\d+)", week_ref or "")
+    if not match:
+        raise ValueError(f"Could not parse week from ref: {week_ref}")
+    return int(match.group(1))
+
+
 def generate_game_id(event_id: str, week: int) -> str:
-    """
-    Make game_id unique and stable even for TBD/TBD placeholders.
-    ESPN event_id is unique per matchup slot.
-    """
     return f"{SEASON_YEAR}-S{SEASON_TYPE}-W{week}-E{event_id}"
 
 
-def fetch_games_by_week(week: int) -> List[Dict]:
-    url = (
-        "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
-        f"?seasontype={SEASON_TYPE}&year={SEASON_YEAR}&week={week}"
+def get_team_display_name(team_ref: str) -> str:
+    team_ref = team_ref.replace("http://", "https://")
+
+    if team_ref in TEAM_CACHE:
+        return TEAM_CACHE[team_ref]
+
+    team = fetch_json(team_ref)
+
+    name = (
+        team.get("displayName")
+        or team.get("name")
+        or team.get("shortDisplayName")
+        or team.get("abbreviation")
     )
-    resp = requests.get(url, timeout=30)
-    resp.raise_for_status()
-    data = resp.json()
+
+    if not name:
+        raise ValueError(f"Could not find team name from {team_ref}")
+
+    TEAM_CACHE[team_ref] = name
+    return name
+
+
+def fetch_all_games() -> List[Dict]:
+    url = (
+        f"https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/"
+        f"seasons/{SEASON_YEAR}/types/{SEASON_TYPE}/events?limit=1000"
+    )
+
+    data = fetch_json(url)
+    print(f"📡 ESPN Core API returned {data.get('count', 0)} event refs")
 
     games: List[Dict] = []
-    for event in data.get("events", []):
+
+    for item in data.get("items", []):
+        ref = item.get("$ref")
+        if not ref:
+            continue
+
         try:
+            event = fetch_json(ref)
+
             event_id = str(event.get("id") or "")
             if not event_id:
-                # Very rare, but don’t crash if missing
+                print("⚠️  Skipping event with missing id")
                 continue
+
+            week = parse_week_from_ref(event.get("week", {}).get("$ref", ""))
 
             comp = event["competitions"][0]
             competitors = comp["competitors"]
@@ -70,28 +113,38 @@ def fetch_games_by_week(week: int) -> List[Dict]:
             home = next(c for c in competitors if c.get("homeAway") == "home")
             away = next(c for c in competitors if c.get("homeAway") == "away")
 
-            home_team = home["team"]["displayName"]
-            away_team = away["team"]["displayName"]
+            home_team = get_team_display_name(home["team"]["$ref"])
+            away_team = get_team_display_name(away["team"]["$ref"])
 
             kickoff_iso = event.get("date") or comp.get("date")
             kickoff_mt = _espn_iso_to_mt(kickoff_iso)
+
+            if kickoff_mt.year != SEASON_YEAR:
+                print(
+                    f"⚠️  Skipping stale ESPN event: {event_id} "
+                    f"{away_team} @ {home_team} kickoff={kickoff_mt}"
+                )
+                continue
 
             games.append(
                 {
                     "game_id": generate_game_id(event_id, week),
                     "season_year": SEASON_YEAR,
-                    "season_type": season_type_label(SEASON_TYPE),  # if int column, use SEASON_TYPE
-                    "week": week,  # ✅ ESPN week (no mapping)
+                    "season_type": season_type_label(SEASON_TYPE),
+                    "week": week,
                     "week_label": None,
                     "home_team": home_team,
                     "away_team": away_team,
                     "commence_time_mt": kickoff_mt,
+                    "event_id": event_id,
                 }
             )
+
         except Exception as e:
             print(f"⚠️  Skipping one event due to parse error: {e}")
             continue
 
+    games.sort(key=lambda g: (g["week"], g["commence_time_mt"], g["game_id"]))
     return games
 
 
@@ -112,7 +165,6 @@ def preload_schedule():
     grand_inserted = 0
     grand_updated = 0
     grand_unchanged = 0
-    grand_weeks_failed = 0
 
     with app.app_context():
         try:
@@ -120,92 +172,110 @@ def preload_schedule():
         except Exception as e:
             print(f"⚠️  Could not print DB URL: {e}")
 
-        for week in range(WEEK_START, WEEK_END + 1):
+        games = fetch_all_games()
+
+        if not games:
+            print("⚠️  No games returned from ESPN Core API")
+            return
+
+        weeks = sorted(set(g["week"] for g in games))
+
+        for week in weeks:
+            week_games = [g for g in games if g["week"] == week]
+
             week_inserted = 0
             week_updated = 0
             week_unchanged = 0
 
-            try:
-                games = fetch_games_by_week(week)
-                print(f"\n📅 ESPN Week {week}: found {len(games)} games")
-                if not games:
-                    continue
+            print(f"\n📅 ESPN Core Week {week}: found {len(week_games)} games")
 
-                for g in games:
-                    with db.session.no_autoflush:
-                        row = Game.query.filter_by(game_id=g["game_id"]).first()
-
-                    if row:
-                        changed_meta = False
-
-                        # Ensure required metadata stays filled
-                        if getattr(row, "season_year", None) != g["season_year"]:
-                            row.season_year = g["season_year"]
-                            changed_meta = True
-                        if getattr(row, "season_type", None) != g["season_type"]:
-                            row.season_type = g["season_type"]
-                            changed_meta = True
-                        if getattr(row, "week", None) != g["week"]:
-                            row.week = g["week"]
-                            changed_meta = True
-
-                        # Update kickoff if missing or materially different
-                        if not getattr(row, "commence_time_mt", None):
-                            row.commence_time_mt = g["commence_time_mt"]
-                            week_updated += 1
-                            print(f"🕒 Backfilled kickoff: {g['game_id']} -> {row.commence_time_mt}")
-                        else:
-                            old = row.commence_time_mt
-                            new = g["commence_time_mt"]
-                            old_cmp, new_cmp = _normalize_for_compare(old, new)
-
-                            if old_cmp is None or abs(new_cmp - old_cmp) > TOLERANCE:
-                                row.commence_time_mt = new
-                                week_updated += 1
-                                print(f"🔁 Updated kickoff: {g['game_id']} {old} -> {new}")
-                            else:
-                                if changed_meta:
-                                    week_updated += 1
-                                    print(f"🧾 Updated metadata: {g['game_id']}")
-                                else:
-                                    week_unchanged += 1
-                                    print(f"⏭️  Exists (same kickoff): {g['game_id']}")
-                        continue
-
-                    new_game = Game(
-                        game_id=g["game_id"],
-                        season_year=g["season_year"],
-                        season_type=g["season_type"],   # if int column, use SEASON_TYPE
-                        week=g["week"],                 # ✅ ESPN week
-                        week_label=g.get("week_label"),
-                        home_team=g["home_team"],
-                        away_team=g["away_team"],
-                        commence_time_mt=g["commence_time_mt"],
-                    )
-                    db.session.add(new_game)
-                    week_inserted += 1
-                    print(f"✅ Added: {g['game_id']} @ {g['commence_time_mt']}")
-
-                db.session.commit()
-
-                grand_inserted += week_inserted
-                grand_updated += week_updated
-                grand_unchanged += week_unchanged
-
+            for g in week_games:
                 print(
-                    f"✅ Week {week} committed: inserted={week_inserted}, updated={week_updated}, unchanged={week_unchanged}"
+                    f"🔎 ESPN returned: {g['game_id']} | "
+                    f"W{g['week']} | {g['away_team']} @ {g['home_team']} | "
+                    f"{g['commence_time_mt']}"
                 )
 
-            except Exception as e:
-                db.session.rollback()
-                grand_weeks_failed += 1
-                print(f"❌ Failed week {week}: {e}")
+                with db.session.no_autoflush:
+                    row = Game.query.filter_by(game_id=g["game_id"]).first()
+
+                if row:
+                    changed = False
+
+                    fields_to_check = [
+                        "season_year",
+                        "season_type",
+                        "week",
+                        "week_label",
+                        "home_team",
+                        "away_team",
+                    ]
+
+                    for field in fields_to_check:
+                        if getattr(row, field, None) != g.get(field):
+                            setattr(row, field, g.get(field))
+                            changed = True
+
+                    old = getattr(row, "commence_time_mt", None)
+                    new = g["commence_time_mt"]
+
+                    if not old:
+                        row.commence_time_mt = new
+                        changed = True
+                        print(f"🕒 Backfilled kickoff: {g['game_id']} -> {new}")
+                    else:
+                        old_cmp, new_cmp = _normalize_for_compare(old, new)
+
+                        if old_cmp is None or abs(new_cmp - old_cmp) > TOLERANCE:
+                            row.commence_time_mt = new
+                            changed = True
+                            print(f"🔁 Updated kickoff: {g['game_id']} {old} -> {new}")
+
+                    if changed:
+                        week_updated += 1
+                        print(f"🧾 Updated: {g['game_id']}")
+                    else:
+                        week_unchanged += 1
+                        print(f"⏭️  Exists unchanged: {g['game_id']}")
+
+                    continue
+
+                new_game = Game(
+                    game_id=g["game_id"],
+                    season_year=g["season_year"],
+                    season_type=g["season_type"],
+                    week=g["week"],
+                    week_label=g.get("week_label"),
+                    home_team=g["home_team"],
+                    away_team=g["away_team"],
+                    commence_time_mt=g["commence_time_mt"],
+                )
+
+                db.session.add(new_game)
+                week_inserted += 1
+                print(
+                    f"✅ Added: {g['game_id']} | "
+                    f"{g['away_team']} @ {g['home_team']} | "
+                    f"{g['commence_time_mt']}"
+                )
+
+            db.session.commit()
+
+            grand_inserted += week_inserted
+            grand_updated += week_updated
+            grand_unchanged += week_unchanged
+
+            print(
+                f"✅ Week {week} committed: "
+                f"inserted={week_inserted}, "
+                f"updated={week_updated}, "
+                f"unchanged={week_unchanged}"
+            )
 
     print(
         f"\n✅ Done. Inserted {grand_inserted} new game(s), "
         f"updated {grand_updated} existing game(s), "
-        f"unchanged {grand_unchanged} game(s). "
-        f"Weeks failed: {grand_weeks_failed}"
+        f"unchanged {grand_unchanged} game(s)."
     )
 
 
