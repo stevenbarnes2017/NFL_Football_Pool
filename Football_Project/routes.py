@@ -1,8 +1,4 @@
-import sys
 import os
-
-# Add the parent directory of the current file to sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 import requests
 from flask import Blueprint, render_template, redirect, url_for, request, flash, send_file, Response
 from dateutil import parser
@@ -63,6 +59,9 @@ def my_picks():
     from Football_Project.services.group_service import get_active_group_id
 
     settings = Settings.query.first()
+    if not settings:
+        flash("App settings are not configured. Please contact an admin.", "danger")
+        return redirect(url_for("main.dashboard"))
     season_year = settings.season_year
     season_type = settings.season_type
     current_week = settings.current_week
@@ -352,6 +351,9 @@ def submit_picks():
     now_utc = datetime.now(utc)
 
     settings = Settings.query.first()
+    if not settings:
+        flash("App settings are not configured. Please contact an admin.", "danger")
+        return redirect(url_for("main.dashboard"))
     season_year = settings.season_year
     season_type = settings.season_type
 
@@ -534,8 +536,11 @@ def user_dashboard():
     group_id = get_active_group_id()
     lock_picks_for_commenced_games(current_user.id, group_id)
     settings = Settings.query.first()
-    current_week = settings.current_week if settings else 1
-    all_weeks = list(range(1, current_week ))  # List of all weeks up to the current week
+    if not settings:
+        flash("App settings are not configured. Please contact an admin.", "danger")
+        return redirect(url_for("main.dashboard"))
+    current_week = settings.current_week
+    all_weeks = list(range(1, current_week))  # List of all weeks up to the current week
 
     return render_template('user_dashboard.html', name=current_user.username, current_week=current_week, all_weeks=all_weeks, now=datetime.now())
 
@@ -593,8 +598,11 @@ def user_scores(week):
         return redirect(url_for("main.groups"))
 
     settings = Settings.query.first()
-    season_year = settings.season_year if settings else datetime.utcnow().year
-    season_type = settings.season_type if settings else "REG"
+    if not settings:
+        flash("App settings are not configured. Please contact an admin.", "danger")
+        return redirect(url_for("main.dashboard"))
+    season_year = settings.season_year
+    season_type = settings.season_type
 
     current_user_score_row = UserScore.query.filter_by(
         user_id=current_user.id,
@@ -637,6 +645,9 @@ def see_picks():
 
     # ✅ DB-driven season context (source of truth)
     settings = Settings.query.first()
+    if not settings:
+        flash("App settings are not configured. Please contact an admin.", "danger")
+        return redirect(url_for("main.dashboard"))
     season_year = settings.season_year
     season_type = settings.season_type
     current_week = settings.current_week
@@ -1118,6 +1129,9 @@ def nfl_picks():
 
     # ✅ DB is source of truth
     settings = Settings.query.first()
+    if not settings:
+        flash("App settings are not configured. Please contact an admin.", "danger")
+        return redirect(url_for("main.dashboard"))
     season_year = settings.season_year
     season_type = settings.season_type
     current_week = settings.current_week
@@ -1358,6 +1372,9 @@ def leaderboard():
         return redirect(url_for("main.groups"))
 
     settings = Settings.query.first()
+    if not settings:
+        flash("App settings are not configured. Please contact an admin.", "danger")
+        return redirect(url_for("main.dashboard"))
     season_year = settings.season_year
     season_type = settings.season_type
     current_week = settings.current_week

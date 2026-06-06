@@ -1,13 +1,5 @@
 from flask import session
 from flask_login import current_user
-from Football_Project.models import PoolGroup, GroupMember
-
-
-from flask import session
-from flask_login import current_user
-
-from flask import session
-from flask_login import current_user
 from Football_Project.models import GroupMember, PoolGroup
 
 

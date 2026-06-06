@@ -23,7 +23,7 @@ from Football_Project.services.settings_sync import sync_settings_current_week
 from prometheus_client import Gauge
 from .services.odds_care import games_count_for_week
 from prometheus_flask_exporter import PrometheusMetrics
-from .services.reminders import plan_current_week_reminders
+from .services.reminders import plan_current_week_reminders, dispatch_due_reminders
 
 
 load_dotenv()
@@ -205,6 +205,9 @@ def odds_escalation_job_with_context(app):
     with app.app_context():
         try:
             settings = Settings.query.first()
+            if not settings:
+                current_app.logger.warning("[odds] escalation: no Settings row found; skipping")
+                return
             week = settings.current_week
             season_year = settings.season_year
             season_type = settings.season_type
@@ -256,6 +259,20 @@ def plan_current_week_reminders_with_context(app):
             raise
         finally:
             db.session.remove()
+
+
+def dispatch_due_reminders_with_context(app):
+    with app.app_context():
+        try:
+            results = dispatch_due_reminders()
+            app.logger.info(f"[REMINDERS] dispatch results: {results}")
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f"[REMINDERS] dispatch failed: {e}")
+            raise
+        finally:
+            db.session.remove()
+
 
 def create_app():
     app = Flask(__name__)
@@ -387,6 +404,16 @@ def create_app():
             hour=3,
             minute=10,
             id="plan_current_week_reminders",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            func=dispatch_due_reminders_with_context,
+            trigger="cron",
+            args=[app],
+            day_of_week="mon,tue,wed,thu,fri,sat,sun",
+            hour="0-23",
+            minute="*/5",
+            id="dispatch_due_reminders",
             replace_existing=True,
         )
         scheduler.add_job(

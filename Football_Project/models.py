@@ -27,7 +27,6 @@ class GroupMember(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     group_id = db.Column(db.Integer, db.ForeignKey("pool_group.id"), nullable=False)
-    group = db.relationship("PoolGroup", back_populates="members")
     role = db.Column(db.String(20), nullable=False, default="member")
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     joined_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
@@ -91,15 +90,7 @@ class User(db.Model, UserMixin):
         self.password = generate_password_hash(plaintext, method=PREFERRED_PWHASH)
 
     def check_password(self, plaintext: str) -> bool:
-        """
-        Works for both hashed (any Werkzeug-supported scheme, e.g. pbkdf2, scrypt)
-        and legacy plaintext values.
-        """
-        try:
-            return check_password_hash(self.password, plaintext)
-        except Exception:
-            # Stored value isn't a recognized hash → treat as legacy plaintext
-            return self.password == plaintext
+        return check_password_hash(self.password, plaintext)
 
     def is_password_hashed(self) -> bool:
         """Optional helper; detect if the stored value looks like a hash."""
@@ -316,5 +307,3 @@ class ReminderJob(db.Model):
             name="uq_reminder_once"
         ),
     )
-
-

@@ -1,4 +1,4 @@
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 from zoneinfo import ZoneInfo
 
 from flask import current_app
@@ -6,7 +6,7 @@ from flask import current_app
 from Football_Project.extensions import db
 from Football_Project.models import Game, PoolGroup, GroupMember, ReminderJob, User, Settings
 from Football_Project.services.season import get_current_season_context
-from Football_Project.services.email_helpers import send_admin_email
+from Football_Project.services.email_helpers import send_user_email
 
 
 MT = ZoneInfo("America/Denver")
@@ -58,6 +58,112 @@ def upsert_reminder(group_id, season_year, season_type, week, reminder_type, cha
     return job
 
 
+def send_reminder_email(job):
+    group = PoolGroup.query.get(job.group_id)
+
+    if not group:
+        raise Exception(f"group_id={job.group_id} not found")
+
+    members = GroupMember.query.filter_by(group_id=group.id, is_active=True).all()
+
+    users = []
+    for m in members:
+        user = User.query.get(m.user_id)
+        if user and user.email:
+            users.append(user)
+
+    if not users:
+        raise Exception(f"No users found for group_id={group.id}")
+
+    if job.reminder_type == "weekly_make_picks":
+        subject = f"Week {job.week} - Make Your Picks"
+        body = f"""
+        <p>Week {job.week} games are coming up.</p>
+        <p>Make your picks before kickoff.</p>
+        """
+    elif job.reminder_type == "last_chance":
+        subject = f"Week {job.week} - Last Chance to Pick"
+        body = f"""
+        <p>Reminder: Week {job.week} locks soon.</p>
+        <p>Get your picks in before kickoff.</p>
+        """
+    else:
+        subject = f"Week {job.week} Reminder"
+        body = "<p>Reminder to check your picks.</p>"
+
+    sent_count = 0
+
+    for user in users:
+        try:
+            send_user_email(
+                to_email=user.email,
+                subject=subject,
+                html=body,
+            )
+            sent_count += 1
+        except Exception as e:
+            current_app.logger.warning(
+                f"[REMINDERS] Failed to send email to {user.email}: {e}"
+            )
+
+    current_app.logger.info(
+        f"[REMINDERS] Email sent job_id={job.id} group_id={group.id} users={sent_count}"
+    )
+
+
+def dispatch_due_reminders(limit: int = 25):
+    now = datetime.now(timezone.utc)
+
+    jobs = (
+        ReminderJob.query
+        .filter(ReminderJob.status == "pending")
+        .filter(ReminderJob.scheduled_for <= now)
+        .order_by(ReminderJob.scheduled_for.asc())
+        .limit(limit)
+        .all()
+    )
+
+    if not jobs:
+        current_app.logger.info("[REMINDERS] No due reminders found")
+        return {"sent": 0, "skipped": 0, "failed": 0}
+
+    results = {"sent": 0, "skipped": 0, "failed": 0}
+
+    for job in jobs:
+        try:
+            if job.channel == "email":
+                send_reminder_email(job)
+            elif job.channel == "sms":
+                current_app.logger.info(
+                    f"[REMINDERS] SMS reminder skipped for job_id={job.id}; SMS not enabled yet"
+                )
+                job.status = "skipped"
+                job.details = "SMS not enabled yet"
+                results["skipped"] += 1
+                continue
+            else:
+                job.status = "skipped"
+                job.details = f"Unknown channel: {job.channel}"
+                results["skipped"] += 1
+                continue
+
+            job.status = "sent"
+            job.sent_at = now
+            job.details = "sent successfully"
+            results["sent"] += 1
+
+        except Exception as e:
+            job.status = "failed"
+            job.details = str(e)[:500]
+            results["failed"] += 1
+            current_app.logger.exception(f"[REMINDERS] Failed job_id={job.id}")
+
+    db.session.commit()
+
+    current_app.logger.info(f"[REMINDERS] Dispatch complete {results}")
+    return results
+
+
 def plan_current_week_reminders():
     settings = Settings.query.first()
     if not settings:
@@ -74,11 +180,7 @@ def plan_current_week_reminders():
         current_app.logger.info(f"[REMINDERS] No games found for {season_type} {season_year} week={week}")
         return
 
-    # 👇 THIS LINE ALREADY EXISTS
     first_kickoff = games[0].commence_time_mt
-
-    # 👇 ADD THIS BLOCK RIGHT HERE
-    from datetime import datetime, timezone
 
     now = datetime.now(timezone.utc)
 
@@ -88,9 +190,8 @@ def plan_current_week_reminders():
         )
         return
 
-    # 👇 existing loop continues
     for group in active_groups():
-        # Main weekly email
+        # Main weekly email - 24 hours before first kickoff
         upsert_reminder(
             group_id=group.id,
             season_year=season_year,
@@ -101,7 +202,7 @@ def plan_current_week_reminders():
             scheduled_for=first_kickoff - timedelta(hours=24),
         )
 
-        # Last chance email
+        # Last chance email - 3 hours before first kickoff
         upsert_reminder(
             group_id=group.id,
             season_year=season_year,
@@ -112,7 +213,7 @@ def plan_current_week_reminders():
             scheduled_for=first_kickoff - timedelta(hours=3),
         )
 
-        # Later when Twilio is ready
+        # SMS - when Twilio is ready
         upsert_reminder(
             group_id=group.id,
             season_year=season_year,
@@ -128,108 +229,3 @@ def plan_current_week_reminders():
     current_app.logger.info(
         f"[REMINDERS] Planned reminders for {season_type} {season_year} week={week} groups={len(active_groups())}"
     )
-
-    def dispatch_due_reminders(limit: int = 25):
-        now = datetime.now(timezone.utc)
-
-        jobs = (
-            ReminderJob.query
-            .filter(ReminderJob.status == "pending")
-            .filter(ReminderJob.scheduled_for <= now)
-            .order_by(ReminderJob.scheduled_for.asc())
-            .limit(limit)
-            .all()
-        )
-
-        if not jobs:
-            current_app.logger.info("[REMINDERS] No due reminders found")
-            return {"sent": 0, "skipped": 0, "failed": 0}
-
-        results = {"sent": 0, "skipped": 0, "failed": 0}
-
-        for job in jobs:
-            try:
-                if job.channel == "email":
-                    send_reminder_email(job)
-                elif job.channel == "sms":
-                    current_app.logger.info(
-                        f"[REMINDERS] SMS reminder skipped for job_id={job.id}; SMS not enabled yet"
-                    )
-                    job.status = "skipped"
-                    job.details = "SMS not enabled yet"
-                    results["skipped"] += 1
-                    continue
-                else:
-                    job.status = "skipped"
-                    job.details = f"Unknown channel: {job.channel}"
-                    results["skipped"] += 1
-                    continue
-
-                job.status = "sent"
-                job.sent_at = now
-                job.details = "sent successfully"
-                results["sent"] += 1
-
-            except Exception as e:
-                job.status = "failed"
-                job.details = str(e)[:500]
-                results["failed"] += 1
-                current_app.logger.exception(f"[REMINDERS] Failed job_id={job.id}")
-
-        db.session.commit()
-
-        current_app.logger.info(f"[REMINDERS] Dispatch complete {results}")
-        return results
-    
-    def send_reminder_email(job):
-        group = PoolGroup.query.get(job.group_id)
-
-        if not group:
-            raise Exception(f"group_id={job.group_id} not found")
-
-        # Get users in group
-        members = GroupMember.query.filter_by(group_id=group.id, is_active=True).all()
-
-        users = []
-        for m in members:
-            user = User.query.get(m.user_id)
-            if user and user.email:
-                users.append(user)
-
-        if not users:
-            raise Exception(f"No users found for group_id={group.id}")
-
-        # Build message based on reminder type
-        if job.reminder_type == "weekly_make_picks":
-            subject = f"Week {job.week} - Make Your Picks"
-            body = f"""
-            <p>Week {job.week} games are coming up.</p>
-            <p>Make your picks before kickoff.</p>
-            """
-        elif job.reminder_type == "last_chance":
-            subject = f"Week {job.week} - Last Chance to Pick"
-            body = f"""
-            <p>Reminder: Week {job.week} locks soon.</p>
-            <p>Get your picks in before kickoff.</p>
-            """
-        else:
-            subject = f"Week {job.week} Reminder"
-            body = "<p>Reminder to check your picks.</p>"
-
-        sent_count = 0
-
-        for user in users:
-            try:
-                send_admin_email(  # you may want a send_user_email later
-                    subject=subject,
-                    html=body.replace("{email}", user.email)
-                )
-                sent_count += 1
-            except Exception as e:
-                current_app.logger.warning(
-                    f"[REMINDERS] Failed to send email to {user.email}: {e}"
-                )
-
-        current_app.logger.info(
-            f"[REMINDERS] Email sent job_id={job.id} group_id={group.id} users={sent_count}"
-        )
