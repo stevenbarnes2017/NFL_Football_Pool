@@ -247,13 +247,89 @@ def _apply_weekly_tiebreak(r):
 
 # ----------------------------- Public API ------------------------------------
 
+def _get_tiebreaker_scores(season_year: int, season_type: str, group_id: int) -> dict:
+    """
+    Returns {user_id: tiebreaker_score} for the tiebreaker game this season.
+    If no tiebreaker game is marked, returns empty dict.
+    Tiebreaker is the Pick.tiebreaker_score submitted for the is_tiebreaker game.
+    """
+    from ..models import Pick, Game
+
+    tiebreaker_game = (
+        db.session.query(Game)
+        .filter(
+            Game.season_year == season_year,
+            Game.season_type == season_type,
+            Game.is_tiebreaker.is_(True),
+        )
+        .first()
+    )
+
+    if not tiebreaker_game:
+        return {}
+
+    # Actual total score of the tiebreaker game (None if not final yet)
+    actual_total = None
+    if tiebreaker_game.home_team_score is not None and tiebreaker_game.away_team_score is not None:
+        actual_total = tiebreaker_game.home_team_score + tiebreaker_game.away_team_score
+
+    picks = (
+        db.session.query(Pick.user_id, Pick.tiebreaker_score)
+        .filter(
+            Pick.game_id == tiebreaker_game.id,
+            Pick.group_id == group_id,
+            Pick.tiebreaker_score.isnot(None),
+        )
+        .all()
+    )
+
+    if actual_total is None:
+        # Game not final yet — return raw guesses so admin can see them
+        return {p.user_id: {"guess": p.tiebreaker_score, "diff": None} for p in picks}
+
+    return {
+        p.user_id: {
+            "guess": p.tiebreaker_score,
+            "diff": abs(p.tiebreaker_score - actual_total),
+        }
+        for p in picks
+    }
+
+
 def get_season_leaderboard(current_week: int, season_year: int, season_type: str, group_id: int):
     rows = _season_user_rows(current_week, season_year, season_type, group_id)
-    rows.sort(key=_apply_season_tiebreak)
+
+    # Attach tiebreaker info to each row
+    tb_scores = _get_tiebreaker_scores(season_year, season_type, group_id)
+    for r in rows:
+        tb = tb_scores.get(r["user_id"])
+        r["tiebreaker_guess"] = tb["guess"] if tb else None
+        r["tiebreaker_diff"] = tb["diff"] if tb else None
+
+    def _season_sort_key(r):
+        # Primary: total points (desc)
+        # Secondary: correct picks (desc)
+        # Tertiary: tiebreaker diff (asc) — None (no guess) loses to any guess
+        # Quaternary: forfeits (asc), best week (desc), username (asc)
+        tb_diff = r["tiebreaker_diff"]
+        if tb_diff is None:
+            tb_sort = float("inf")  # no guess loses to any guess
+        else:
+            tb_sort = tb_diff
+        return (
+            -int(r.get("total_points", 0)),
+            -int(r.get("total_correct", 0)),
+            tb_sort,
+            int(r.get("total_forfeits", 0)),
+            -int(r.get("best_week_points", 0)),
+            str(r.get("username", "")).lower(),
+        )
+
+    rows.sort(key=_season_sort_key)
 
     rank, last_key = 0, None
     for r in rows:
-        key = _apply_season_tiebreak(r)
+        key = _season_sort_key(r)
         if key != last_key:
             rank += 1
             last_key = key
@@ -267,6 +343,7 @@ def get_season_leaderboard(current_week: int, season_year: int, season_type: str
         "avg_points": avg_points,
         "season_year": season_year,
         "season_type": season_type,
+        "has_tiebreaker": bool(tb_scores),
     }
     return header, rows
 

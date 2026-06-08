@@ -1,0 +1,55 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2>Set Tiebreaker Game</h2>
+  <p class="text-muted">
+    The tiebreaker is used to break ties at the end of the season. Users predict the
+    total combined score of this game. Closest guess wins. Only one game can be the
+    tiebreaker at a time.
+  </p>
+
+  {% if current_tiebreaker %}
+  <div class="alert alert-info">
+    <strong>Current tiebreaker:</strong>
+    Week {{ current_tiebreaker.week }} —
+    {{ current_tiebreaker.away_team }} @ {{ current_tiebreaker.home_team }}
+    {% if current_tiebreaker.home_team_score is not none %}
+      (Final: {{ current_tiebreaker.away_team_score }} – {{ current_tiebreaker.home_team_score }},
+      Total: {{ current_tiebreaker.away_team_score + current_tiebreaker.home_team_score }})
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="alert alert-warning">No tiebreaker game set for this season.</div>
+  {% endif %}
+
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="mb-3">
+      <label class="form-label fw-bold">Select Tiebreaker Game</label>
+      <select name="game_id" class="form-select">
+        <option value="">— Clear tiebreaker —</option>
+        {% set current_week = namespace(val=None) %}
+        {% for game in games %}
+          {% if game.week != current_week.val %}
+            {% if current_week.val is not none %}</optgroup>{% endif %}
+            <optgroup label="Week {{ game.week }}">
+            {% set current_week.val = game.week %}
+          {% endif %}
+          <option value="{{ game.id }}" {% if game.is_tiebreaker %}selected{% endif %}>
+            {{ game.away_team }} @ {{ game.home_team }}
+            {% if game.home_team_score is not none %}
+              (Final: {{ game.away_team_score }}–{{ game.home_team_score }})
+            {% endif %}
+          </option>
+        {% endfor %}
+        {% if games %}</optgroup>{% endif %}
+      </select>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Save Tiebreaker</button>
+    <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-secondary ms-2">Cancel</a>
+  </form>
+</div>
+{% endblock %}

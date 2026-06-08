@@ -113,6 +113,7 @@ class Pick(db.Model):
     week = db.Column(db.Integer, nullable=False)
     points_earned = db.Column(db.Integer, default=0)
     is_overridden = db.Column(db.Boolean, default=False)
+    tiebreaker_score = db.Column(db.Integer, nullable=True)
     group_id = db.Column(db.Integer, db.ForeignKey("pool_group.id"), nullable=False)
     group = db.relationship("PoolGroup", back_populates="picks")
 
@@ -168,6 +169,7 @@ class Game(db.Model):
     away_team_score = db.Column(db.Integer, nullable=True)
     status = db.Column(db.String(50), nullable=True)
 
+    is_tiebreaker = db.Column(db.Boolean, nullable=False, default=False)
     saved_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     picks = db.relationship('Pick', backref='game', lazy=True)

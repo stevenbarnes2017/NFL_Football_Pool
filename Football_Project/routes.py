@@ -483,6 +483,46 @@ def submit_picks():
             ))
             created += 1
 
+    # --- Tiebreaker ---
+    tiebreaker_game = Game.query.filter_by(
+        season_year=season_year,
+        season_type=season_type,
+        is_tiebreaker=True,
+    ).first()
+
+    if tiebreaker_game and tiebreaker_game.week == week:
+        tb_raw = (request.form.get("tiebreaker_score") or "").strip()
+        if tb_raw:
+            try:
+                tb_val = int(tb_raw)
+                if tb_val < 0:
+                    raise ValueError
+            except ValueError:
+                flash("Tiebreaker score must be a positive number.", "warning")
+                tb_val = None
+        else:
+            tb_val = None
+
+        if tb_val is not None:
+            tb_pick = Pick.query.filter_by(
+                user_id=effective_user_id,
+                game_id=tiebreaker_game.id,
+                group_id=group_id,
+            ).first()
+            if tb_pick:
+                tb_pick.tiebreaker_score = tb_val
+            else:
+                # Create a minimal pick row just to store the tiebreaker guess
+                db.session.add(Pick(
+                    user_id=effective_user_id,
+                    week=tiebreaker_game.week,
+                    game_id=tiebreaker_game.id,
+                    group_id=group_id,
+                    team_picked=None,
+                    tiebreaker_score=tb_val,
+                    pick_time=datetime.utcnow(),
+                ))
+
     try:
         db.session.commit()
     except Exception as e:
@@ -1233,6 +1273,22 @@ def nfl_picks():
 
     print("VIEW_AS:", session.get("view_as_user_id"), "CURRENT:", current_user.id, "EFFECTIVE:", effective_user_id, "USED:", used_confidence_points)
 
+    # Tiebreaker context for the picks page
+    tiebreaker_game = Game.query.filter_by(
+        season_year=season_year,
+        season_type=season_type,
+        is_tiebreaker=True,
+    ).first()
+
+    tiebreaker_guess = None
+    if tiebreaker_game:
+        tb_pick = Pick.query.filter_by(
+            user_id=effective_user_id,
+            game_id=tiebreaker_game.id,
+            group_id=group_id,
+        ).first()
+        tiebreaker_guess = tb_pick.tiebreaker_score if tb_pick else None
+
     return render_template(
         'nfl_picks.html',
         grouped_games=grouped_games,
@@ -1246,7 +1302,9 @@ def nfl_picks():
         season_year=season_year,
         season_type=season_type,
         effective_user_id=effective_user_id,
-        group_id=group_id
+        group_id=group_id,
+        tiebreaker_game=tiebreaker_game,
+        tiebreaker_guess=tiebreaker_guess,
     )
 
 import json

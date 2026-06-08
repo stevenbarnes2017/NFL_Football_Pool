@@ -1714,3 +1714,61 @@ def remove_user_from_group(user_id):
 
     flash("User removed from the active group.", "success")
     return redirect(url_for("admin.manage_users"))
+
+@admin_bp.route('/set_tiebreaker', methods=['GET', 'POST'])
+@login_required
+def set_tiebreaker():
+    """Let admin mark a single game as the season tiebreaker."""
+    from Football_Project.services.permissions import is_global_admin
+    if not is_global_admin(current_user):
+        flash("Access denied.", "danger")
+        return redirect(url_for("admin.admin_dashboard"))
+
+    settings = Settings.query.first()
+    if not settings:
+        flash("Settings not configured.", "danger")
+        return redirect(url_for("admin.admin_dashboard"))
+
+    if request.method == 'POST':
+        game_id = request.form.get('game_id', type=int)
+
+        # Clear any existing tiebreaker for this season
+        Game.query.filter_by(
+            season_year=settings.season_year,
+            season_type=settings.season_type,
+            is_tiebreaker=True,
+        ).update({"is_tiebreaker": False})
+
+        if game_id:
+            game = Game.query.get(game_id)
+            if game:
+                game.is_tiebreaker = True
+                db.session.commit()
+                flash(f"Tiebreaker set to {game.away_team} @ {game.home_team} (Week {game.week}).", "success")
+            else:
+                flash("Game not found.", "danger")
+        else:
+            db.session.commit()
+            flash("Tiebreaker cleared.", "success")
+
+        return redirect(url_for("admin.set_tiebreaker"))
+
+    # GET - show all games for current season, grouped by week
+    games = (
+        Game.query
+        .filter_by(
+            season_year=settings.season_year,
+            season_type=settings.season_type,
+        )
+        .order_by(Game.week.desc(), Game.commence_time_mt.desc())
+        .all()
+    )
+
+    current_tiebreaker = next((g for g in games if g.is_tiebreaker), None)
+
+    return render_template(
+        'admin/set_tiebreaker.html',
+        games=games,
+        current_tiebreaker=current_tiebreaker,
+        settings=settings,
+    )
