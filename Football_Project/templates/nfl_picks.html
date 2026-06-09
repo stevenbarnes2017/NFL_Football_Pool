@@ -13,12 +13,14 @@
 <div class="container">
     <div class="content-box">
         <h1 class="main-heading" style="margin-top: 50px;">
-            Set NFL Picks – {{ season_type }} {{ season_year }} – Week {{ selected_week }}
-        </h1>
+  Set NFL Picks – {{ season_type }} {{ season_year }} – Week {{ selected_week }}
+</h1>
+
 
         <!-- Week Selection -->
         <div class="dropdown-wrapper">
             <form method="POST" action="{{ url_for('main.nfl_picks') }}" class="dropdown-form">
+                <!-- CSRF for the week change POST -->
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                 <label for="week" class="text-lg font-semibold">Select Week:</label>
@@ -35,10 +37,12 @@
             <h3>Available Confidence Numbers</h3>
             <div id="available-numbers"></div>
         </div>
-        
+
         <!-- Picks Form -->
         <form action="{{ url_for('main.submit_picks') }}" method="POST">
+            <!-- CSRF for submitting picks -->
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
             <input type="hidden" name="num_of_games" value="{{ num_of_games }}">
             <input type="hidden" name="week" value="{{ selected_week }}">
 
@@ -72,6 +76,8 @@
                                         <td>{{ game.away_team }}</td>
                                         <td>{{ game.spread }}</td>
                                         <td class="favorite-team">{{ game.favorite_team }}</td>
+
+                                        {# ✅ FIX: always display Mountain time via your filter #}
                                         <td>{{ game.commence_time_mt | fmt_mt }}</td>
 
                                         {% if game.game_id in locked_ids %}
@@ -122,47 +128,46 @@
             {% endif %}
 
             {% if tiebreaker_game and tiebreaker_game.week == selected_week %}
-            <div class="card border-warning mt-4">
-              <div class="card-header bg-warning text-dark fw-bold">
-                🏆 Season Tiebreaker (optional)
-              </div>
-              <div class="card-body">
-                <p class="mb-1">
-                  Predict the <strong>total combined score</strong> of the final game of the season:
-                </p>
-                <p class="mb-3 text-muted">
-                  {{ tiebreaker_game.away_team }} @ {{ tiebreaker_game.home_team }}
-                </p>
-                <p class="small text-muted">
-                  Used only if you finish the season tied on points. Closest prediction wins.
-                  If you don't submit one and end up tied, you lose the tiebreaker.
-                </p>
-
-                <div class="row g-2 align-items-center">
-                  <div class="col-auto">
-                    <label for="tiebreaker_score" class="col-form-label fw-semibold">
-                      Predicted total score:
-                    </label>
-                  </div>
-                  <div class="col-auto">
-                    <input
-                      type="number"
-                      id="tiebreaker_score"
-                      name="tiebreaker_score"
-                      class="form-control"
-                      style="width: 100px;"
-                      min="0"
-                      max="999"
-                      placeholder="e.g. 47"
-                      value="{{ tiebreaker_guess if tiebreaker_guess is not none else '' }}"
-                    >
-                  </div>
+            <div class="card border-warning mt-4 mb-4">
+                <div class="card-header bg-warning text-dark fw-bold">
+                    🏆 Season Tiebreaker (optional)
                 </div>
-              </div>
+                <div class="card-body">
+                    <p class="mb-1">
+                        Predict the <strong>total combined score</strong> of the final game of the season:
+                    </p>
+                    <p class="mb-2 text-muted">
+                        {{ tiebreaker_game.away_team }} @ {{ tiebreaker_game.home_team }}
+                    </p>
+                    <p class="small text-muted mb-3">
+                        Only used if you finish the season tied on points. Closest prediction wins.
+                        If you don't submit one and end up tied, you lose the tiebreaker.
+                    </p>
+                    <div class="row g-2 align-items-center">
+                        <div class="col-auto">
+                            <label for="tiebreaker_score" class="col-form-label fw-semibold">
+                                Predicted total score:
+                            </label>
+                        </div>
+                        <div class="col-auto">
+                            <input
+                                type="number"
+                                id="tiebreaker_score"
+                                name="tiebreaker_score"
+                                class="form-control"
+                                style="width: 100px;"
+                                min="0"
+                                max="999"
+                                placeholder="e.g. 47"
+                                value="{{ tiebreaker_guess if tiebreaker_guess is not none else '' }}"
+                            >
+                        </div>
+                    </div>
+                </div>
             </div>
             {% endif %}
 
-            <div class="text-center mt-4">
+            <div class="text-center">
                 <button type="submit" class="submit-button">Submit Picks</button>
             </div>
         </form>
@@ -173,16 +178,19 @@
 document.addEventListener('DOMContentLoaded', function () {
   const numOfGames = parseInt("{{ num_of_games }}", 10);
 
+  // Seed from server (filter out nulls/invalids)
   const seedUsed = new Set(
     (JSON.parse('{{ used_confidence_points | tojson | safe }}') || [])
       .filter(n => Number.isInteger(n) && n >= 1 && n <= numOfGames)
   );
 
+  // Track "live" usage from committed inputs (not while typing)
   const usedNumbers = new Set(seedUsed);
 
   const inputs = Array.from(document.querySelectorAll('.confidence-input'));
   const availableNumbersBox = document.getElementById('available-numbers');
 
+  // Initialize prev values and merge into usedNumbers
   inputs.forEach(input => {
     const v = parseInt((input.value || '').trim(), 10);
     if (Number.isInteger(v) && v >= 1 && v <= numOfGames) {
@@ -208,6 +216,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const prevRaw = e.target.getAttribute('data-prev-value') || '';
     const prev = prevRaw === '' ? NaN : parseInt(prevRaw, 10);
 
+    // CLEAR: allow blank to clear, free previous
     if (raw === '') {
       if (Number.isInteger(prev)) usedNumbers.delete(prev);
       e.target.setAttribute('data-prev-value', '');
@@ -215,36 +224,43 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
 
+    // Parse and validate new value
     const val = parseInt(raw, 10);
     if (!Number.isInteger(val) || val < 1 || val > numOfGames) {
       alert(`Please choose a valid confidence number (1–${numOfGames}).`);
+      // Revert to previous visual value
       e.target.value = Number.isInteger(prev) ? String(prev) : '';
       updateAvailableNumbers();
       return;
     }
 
+    // No change — keep as is
     if (Number.isInteger(prev) && val === prev) return;
 
+    // Duplicate check: number already used elsewhere
     if (usedNumbers.has(val)) {
       alert(`Confidence number ${val} has already been used!`);
+      // Revert
       e.target.value = Number.isInteger(prev) ? String(prev) : '';
       updateAvailableNumbers();
       return;
     }
 
+    // Successful change: free previous, reserve new
     if (Number.isInteger(prev)) usedNumbers.delete(prev);
     usedNumbers.add(val);
     e.target.setAttribute('data-prev-value', String(val));
     updateAvailableNumbers();
   }
 
+  // Only validate on BLUR (cursor leaves) or when pressing Enter
   inputs.forEach(input => {
     input.addEventListener('blur', commitValue);
-    input.addEventListener('change', commitValue);
+    input.addEventListener('change', commitValue); // fallback for some browsers
     input.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter') {
         ev.preventDefault();
-        input.blur();
+        input.blur(); // triggers commitValue via 'blur'
       }
     });
   });
