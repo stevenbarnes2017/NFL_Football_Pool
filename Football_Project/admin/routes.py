@@ -1767,7 +1767,7 @@ def set_tiebreaker():
     current_tiebreaker = next((g for g in games if g.is_tiebreaker), None)
 
     return render_template(
-        'admin/set_tiebreaker.html',
+        'set_tiebreaker.html',
         games=games,
         current_tiebreaker=current_tiebreaker,
         settings=settings,
