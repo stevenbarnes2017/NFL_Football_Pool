@@ -490,9 +490,14 @@ def submit_picks():
         is_tiebreaker=True,
     ).first()
 
-    if tiebreaker_game and tiebreaker_game.week == week:
+    if tiebreaker_game:
+        # Respect the kickoff lock — don't accept submissions after the game starts
+        tb_game_locked = (
+            tiebreaker_game.commence_time_mt
+            and now_utc >= tiebreaker_game.commence_time_mt.astimezone(utc)
+        )
         tb_raw = (request.form.get("tiebreaker_score") or "").strip()
-        if tb_raw:
+        if tb_raw and not tb_game_locked:
             try:
                 tb_val = int(tb_raw)
                 if tb_val < 0:
@@ -1281,6 +1286,7 @@ def nfl_picks():
     ).first()
 
     tiebreaker_guess = None
+    tiebreaker_locked = False
     if tiebreaker_game:
         tb_pick = Pick.query.filter_by(
             user_id=effective_user_id,
@@ -1288,6 +1294,9 @@ def nfl_picks():
             group_id=group_id,
         ).first()
         tiebreaker_guess = tb_pick.tiebreaker_score if tb_pick else None
+        if tiebreaker_game.commence_time_mt:
+            import pytz
+            tiebreaker_locked = now_utc >= tiebreaker_game.commence_time_mt.astimezone(pytz.utc)
 
     return render_template(
         'nfl_picks.html',
@@ -1305,6 +1314,7 @@ def nfl_picks():
         group_id=group_id,
         tiebreaker_game=tiebreaker_game,
         tiebreaker_guess=tiebreaker_guess,
+        tiebreaker_locked=tiebreaker_locked,
     )
 
 import json

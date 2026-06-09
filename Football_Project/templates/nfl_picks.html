@@ -127,7 +127,7 @@
                 </div>
             {% endif %}
 
-            {% if tiebreaker_game and tiebreaker_game.week == selected_week %}
+            {% if tiebreaker_game %}
             <div class="card border-warning mt-4 mb-4">
                 <div class="card-header bg-warning text-dark fw-bold">
                     🏆 Season Tiebreaker (optional)
@@ -138,11 +138,23 @@
                     </p>
                     <p class="mb-2 text-muted">
                         {{ tiebreaker_game.away_team }} @ {{ tiebreaker_game.home_team }}
+                        &mdash; Week {{ tiebreaker_game.week }}
                     </p>
                     <p class="small text-muted mb-3">
-                        Only used if you finish the season tied on points. Closest prediction wins.
-                        If you don't submit one and end up tied, you lose the tiebreaker.
+                        Used to break ties at season end after all points are awarded.
+                        Closest prediction wins. You can update your guess any week until that game kicks off.
+                        No submission = automatic loss in a tiebreak.
                     </p>
+                    {% if tiebreaker_locked %}
+                    <div class="alert alert-secondary py-2 mb-0">
+                        🔒 Tiebreaker locked &mdash; game has started.
+                        {% if tiebreaker_guess is not none %}
+                            Your guess: <strong>{{ tiebreaker_guess }}</strong>
+                        {% else %}
+                            You did not submit a tiebreaker guess.
+                        {% endif %}
+                    </div>
+                    {% else %}
                     <div class="row g-2 align-items-center">
                         <div class="col-auto">
                             <label for="tiebreaker_score" class="col-form-label fw-semibold">
@@ -162,7 +174,13 @@
                                 value="{{ tiebreaker_guess if tiebreaker_guess is not none else '' }}"
                             >
                         </div>
+                        {% if tiebreaker_guess is not none %}
+                        <div class="col-auto text-muted small">
+                            Current guess: <strong>{{ tiebreaker_guess }}</strong> &mdash; update anytime before kickoff.
+                        </div>
+                        {% endif %}
                     </div>
+                    {% endif %}
                 </div>
             </div>
             {% endif %}
