@@ -121,7 +121,7 @@ def odds_window_job_with_context(app, label: str):
         is_week_odds_complete,
         attempt_import_odds,
     )
-    
+
     with app.app_context():
         try:
             settings = Settings.query.first()
@@ -342,7 +342,7 @@ def create_app():
             view_as_user = db.session.get(User, int(view_as_id))
 
         return {"view_as_user": view_as_user, "view_as_id": view_as_id}
-    
+
 
     # Blueprints
     from .admin import admin_bp
@@ -354,9 +354,11 @@ def create_app():
     from .routes import main_bp
     app.register_blueprint(main_bp)
 
-        # --- APScheduler wiring ---
-    disable_sched = os.environ.get("DISABLE_APSCHEDULER") == "1"
-    is_reloader_child = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+    # --- APScheduler wiring ---
+    # ✅ Opt-in: jobs only run where RUN_SCHEDULER=1 is explicitly set.
+    # Set RUN_SCHEDULER=1 on the football-scheduler deployment ONLY.
+    # Web pods, flask shells, migrations, and local dev stay job-free by default.
+    run_sched = os.environ.get("RUN_SCHEDULER") == "1"
 
     def _is_migration_command() -> bool:
         return (
@@ -364,7 +366,7 @@ def create_app():
             or "alembic" in sys.argv
             or os.getenv("SKIP_SCHEDULER") == "1"
         )
-    
+
     # SMS helper
     def reschedule_current_week_sms(app):
         """Schedules (or reschedules) the first-kickoff reminder for the current week."""
@@ -388,12 +390,13 @@ def create_app():
                 db.session.remove()
 
     should_start_scheduler = (
-        not disable_sched
+        run_sched
         and not scheduler.running
         and (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true")
-)
-    
+    )
+
     if should_start_scheduler:
+        app.logger.info("[INIT] RUN_SCHEDULER=1 — starting APScheduler in this process")
         scheduler.remove_all_jobs(jobstore="default")
 
         # Scores recurring jobs
@@ -519,7 +522,7 @@ def create_app():
             id="update_metrics",
             replace_existing=True,
         )
-        
+
         update_metrics_with_context(app)
 
         # ✅ SMS scheduling should NOT run during migrations

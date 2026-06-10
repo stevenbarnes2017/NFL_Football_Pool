@@ -1198,7 +1198,8 @@ def nfl_picks():
             db.session.query(Game.week)
             .filter(
                 Game.season_year == season_year,
-                Game.season_type == season_type
+                Game.season_type == season_type,
+                Game.week <= current_week,
             )
             .distinct()
             .order_by(Game.week.asc())
@@ -1213,7 +1214,7 @@ def nfl_picks():
 
     # Safety: prevent selecting a week that isn't in this season_type
     if all_weeks and selected_week not in all_weeks:
-        selected_week = all_weeks[0]
+        selected_week = all_weeks[-1]
 
     # ✅ Games for the week — filtered to season/year/type
     games = (
