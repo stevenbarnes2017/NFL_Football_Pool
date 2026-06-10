@@ -8,7 +8,7 @@ from Football_Project.models import Game, PoolGroup, GroupMember, ReminderJob, U
 from Football_Project.services.season import get_current_season_context
 from Football_Project.services.email_helpers import send_user_email
 
-
+MAX_REMINDER_LATENESS = timedelta(hours=6)
 MT = ZoneInfo("America/Denver")
 
 
@@ -125,11 +125,27 @@ def dispatch_due_reminders(limit: int = 25):
 
     if not jobs:
         current_app.logger.info("[REMINDERS] No due reminders found")
-        return {"sent": 0, "skipped": 0, "failed": 0}
+        return {"sent": 0, "skipped": 0, "failed": 0, "expired": 0}
 
-    results = {"sent": 0, "skipped": 0, "failed": 0}
+    results = {"sent": 0, "skipped": 0, "failed": 0, "expired": 0}
 
     for job in jobs:
+        # --- Staleness guard: never send reminders that are too far past due ---
+        scheduled = job.scheduled_for
+        if scheduled.tzinfo is None:
+            scheduled = scheduled.replace(tzinfo=timezone.utc)
+
+        if now - scheduled > MAX_REMINDER_LATENESS:
+            job.status = "expired"
+            job.details = f"expired: scheduled_for {scheduled.isoformat()} exceeded max lateness {MAX_REMINDER_LATENESS}"
+            results["expired"] += 1
+            current_app.logger.info(
+                f"[REMINDERS] Expired stale job_id={job.id} week={job.week} "
+                f"type={job.reminder_type} scheduled_for={scheduled.isoformat()}"
+            )
+            continue
+        # --- end guard ---
+
         try:
             if job.channel == "email":
                 send_reminder_email(job)
