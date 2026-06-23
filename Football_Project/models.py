@@ -165,23 +165,6 @@ class Group(db.Model):
     picks = db.relationship("Pick", back_populates="group")
 
 
-class GroupMember(db.Model):
-    __tablename__ = "group_member"
-
-    id = db.Column(db.Integer, primary_key=True)
-    group_id = db.Column(db.Integer, db.ForeignKey("group.id"), nullable=False, index=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
-    role = db.Column(db.String(20), nullable=False, default="member")
-    is_active = db.Column(db.Boolean, nullable=False, default=True)
-    joined_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-
-    group = db.relationship("Group", back_populates="members")
-    user = db.relationship("User", back_populates="group_memberships")
-
-    __table_args__ = (
-        db.UniqueConstraint("group_id", "user_id", name="uq_group_member_group_user"),
-    )
-
 class Game(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
