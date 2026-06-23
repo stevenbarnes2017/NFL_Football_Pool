@@ -46,8 +46,8 @@ def get_current_week():
         return upcoming.week
 
     # 3) Fallback (calendar math)
-    preseason_start = datetime(2025, 7, 31)
-    regular_start = datetime(2025, 9, 4)
+    preseason_start = datetime(2026, 8, 6)
+    regular_start = datetime(2026, 9, 10)
     now = datetime.utcnow()
 
     if now < regular_start:
