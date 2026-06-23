@@ -69,11 +69,6 @@ class User(db.Model, UserMixin):
     sms_opt_in = db.Column(db.Boolean, nullable=False, default=False)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
 
-    group_memberships = db.relationship(
-    "GroupMember",
-    back_populates="user",
-    cascade="all, delete-orphan"
-)
 
     # Remove the duplicated relationship; you had 'scores' twice
     picks = db.relationship('Pick', backref='user', lazy=True, cascade='all, delete-orphan')
@@ -126,9 +121,6 @@ class Pick(db.Model):
         db.UniqueConstraint("user_id", "game_id", "group_id", name="uq_pick_user_game_group"),
     )
 
-    group_id = db.Column(db.Integer, db.ForeignKey("group.id"), nullable=True, index=True)
-    group = db.relationship("Group", back_populates="picks")
-
     # ✅ ADD THIS:
     #user = db.relationship('User', backref='picks', lazy=True)
 
@@ -151,37 +143,6 @@ class Settings(db.Model):
 # ----------------------------
 # Game Model (now linked to Schedule)
 # ----------------------------
-class Group(db.Model):
-    __tablename__ = "group"
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(150), nullable=False, unique=True)
-    slug = db.Column(db.String(150), nullable=False, unique=True)
-    is_active = db.Column(db.Boolean, nullable=False, default=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
-
-    members = db.relationship("GroupMember", back_populates="group", cascade="all, delete-orphan")
-    picks = db.relationship("Pick", back_populates="group")
-
-
-class GroupMember(db.Model):
-    __tablename__ = "group_member"
-
-    id = db.Column(db.Integer, primary_key=True)
-    group_id = db.Column(db.Integer, db.ForeignKey("group.id"), nullable=False, index=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
-    role = db.Column(db.String(20), nullable=False, default="member")
-    is_active = db.Column(db.Boolean, nullable=False, default=True)
-    joined_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-
-    group = db.relationship("Group", back_populates="members")
-    user = db.relationship("User", back_populates="group_memberships")
-
-    __table_args__ = (
-        db.UniqueConstraint("group_id", "user_id", name="uq_group_member_group_user"),
-    )
-
 class Game(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
