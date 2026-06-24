@@ -135,7 +135,7 @@ class Settings(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     current_week = db.Column(db.Integer, nullable=False)
 
-    season_year = db.Column(db.Integer, nullable=False, default=2025)
+    season_year = db.Column(db.Integer, nullable=False, default=2026)
     season_type = db.Column(db.String(10), nullable=False, default="REG")  # REG / POST
     season_locked = db.Column(db.Boolean, nullable=False, default=True)
 

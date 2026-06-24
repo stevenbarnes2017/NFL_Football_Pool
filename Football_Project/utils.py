@@ -37,7 +37,7 @@ def get_effective_user_id():
 def get_settings() ->"Settings":
     s = Settings.query.first()
     if not s:
-        s = Settings(current_week=18, season_year=2025, season_type="REG", season_locked=True)
+        s = Settings(current_week=18, season_year=2026, season_type="REG", season_locked=True)
         db.session.add(s)
         db.session.commit()
     return s
@@ -1220,7 +1220,7 @@ def get_serializer():
     return URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
 
 def generate_game_id(home_abbr, away_abbr, kickoff_dt):
-    return f"2025-{home_abbr}-vs-{away_abbr}-{kickoff_dt.strftime('%Y%m%d')}"
+    return f"2026-{home_abbr}-vs-{away_abbr}-{kickoff_dt.strftime('%Y%m%d')}"
 
 def resolve_selected_week(default_week_provider):
     """
