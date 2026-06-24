@@ -472,30 +472,66 @@ def update_admin_status(user_id):
 @admin_bp.route('/delete_user/<int:user_id>', methods=['POST'])
 @login_required
 def delete_user(user_id):
-    if not current_user.is_admin:
-        flash("Only global admins can deactivate user accounts.", "danger")
+    active_group_id = session.get("active_group_id")
+
+    if not active_group_id:
+        flash("No active group selected.", "danger")
         return redirect(url_for('admin.manage_users'))
 
     user = User.query.get_or_404(user_id)
 
     if user.id == current_user.id:
-        flash("You can’t deactivate your own account.", "warning")
+        flash("You can’t remove yourself from the group.", "warning")
         return redirect(url_for('admin.manage_users'))
 
-    if user.is_admin and User.query.filter_by(is_admin=True, is_active=True).count() <= 1:
-        flash("You can’t deactivate the last global admin.", "warning")
+    current_membership = GroupMember.query.filter_by(
+        user_id=current_user.id,
+        group_id=active_group_id,
+        is_active=True
+    ).first()
+
+    is_group_admin = current_membership and current_membership.role == "group_admin"
+
+    if not current_user.is_admin and not is_group_admin:
+        flash("Only group admins can remove users from this group.", "danger")
         return redirect(url_for('admin.manage_users'))
 
-    user.is_active = False
+    membership = GroupMember.query.filter_by(
+        user_id=user.id,
+        group_id=active_group_id,
+        is_active=True
+    ).first()
 
-    GroupMember.query.filter_by(user_id=user.id, is_active=True).update(
-        {"is_active": False},
-        synchronize_session=False
-    )
+    if not membership:
+        flash("User is not an active member of this group.", "warning")
+        return redirect(url_for('admin.manage_users'))
+
+    if membership.role == "group_admin":
+        active_group_admins = GroupMember.query.filter_by(
+            group_id=active_group_id,
+            role="group_admin",
+            is_active=True
+        ).count()
+
+        if active_group_admins <= 1:
+            flash("You can’t remove the last group admin from this group.", "warning")
+            return redirect(url_for('admin.manage_users'))
+
+    membership.is_active = False
 
     db.session.commit()
-    flash('User deactivated successfully.', 'success')
+
+    flash("User removed from this group successfully.", "success")
     return redirect(url_for('admin.manage_users'))
+
+from datetime import datetime
+from flask import render_template, request, redirect, url_for, flash, session
+from flask_login import login_required, current_user
+from werkzeug.security import generate_password_hash
+
+from Football_Project import db
+from Football_Project.models import User, GroupMember, PoolGroup
+
 
 @admin_bp.route('/add_user', methods=['GET', 'POST'])
 @login_required
@@ -519,12 +555,41 @@ def add_user():
             return redirect(url_for('admin.add_user'))
 
         hashed = generate_password_hash(password, method='pbkdf2:sha256')
-        new_user = User(username=username, email=email, password=hashed, is_admin=is_admin)
+        new_user = User(
+            username=username,
+            email=email,
+            password=hashed,
+            is_admin=is_admin
+        )
 
         try:
             db.session.add(new_user)
+            db.session.flush()
+
+            active_group_id = session.get("active_group_id")
+
+            if active_group_id:
+                group = PoolGroup.query.get(active_group_id)
+
+                if group:
+                    existing_membership = GroupMember.query.filter_by(
+                        user_id=new_user.id,
+                        group_id=group.id
+                    ).first()
+
+                    if not existing_membership:
+                        membership = GroupMember(
+                            user_id=new_user.id,
+                            group_id=active_group_id,
+                            role="member",
+                            is_active=True,
+                            joined_at=datetime.utcnow()
+                        )
+                        db.session.add(membership)
+
             db.session.commit()
             flash("User added successfully!", "success")
+
         except Exception as e:
             db.session.rollback()
             flash(f"An error occurred: {str(e)}", "danger")
