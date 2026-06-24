@@ -797,8 +797,15 @@ def user_score_summary():
     # Effective user (admin view-as aware)
     user_id = get_effective_user_id()
 
+    # Active group (multi-group isolation) — all Pick aggregations below scope to this group
+    active_group_id = session.get("active_group_id")
+    if not active_group_id:
+        flash("No active group selected.", "warning")
+        return redirect(url_for("main.user_dashboard"))
+
     # ==========================================================
-    # Standings + totals (FIX: derive from Pick+Game, season-safe)
+    # Standings + totals (FIX: derive from Pick+Game, season-safe,
+    # group-isolated, active members only)
     # ==========================================================
     if selected_week == 'all':
         user_scores = (
@@ -807,9 +814,12 @@ def user_score_summary():
                 User.username,
                 func.coalesce(func.sum(Pick.points_earned), 0).label('total_score')
             )
-            .outerjoin(Pick, User.id == Pick.user_id)
+            .join(GroupMember, GroupMember.user_id == User.id)
+            .outerjoin(Pick, (User.id == Pick.user_id) & (Pick.group_id == active_group_id))
             .outerjoin(Game, Game.id == Pick.game_id)
             .filter(
+                GroupMember.group_id == active_group_id,
+                GroupMember.is_active.is_(True),
                 Game.season_year == season_year,
                 Game.season_type == season_type
             )
@@ -823,6 +833,7 @@ def user_score_summary():
             .join(Game, Game.id == Pick.game_id)
             .filter(
                 Pick.user_id == user_id,
+                Pick.group_id == active_group_id,
                 Game.season_year == season_year,
                 Game.season_type == season_type
             )
@@ -835,9 +846,12 @@ def user_score_summary():
                 User.username,
                 func.coalesce(func.sum(Pick.points_earned), 0).label('total_score')
             )
-            .outerjoin(Pick, (User.id == Pick.user_id) & (Pick.week == selected_week))
+            .join(GroupMember, GroupMember.user_id == User.id)
+            .outerjoin(Pick, (User.id == Pick.user_id) & (Pick.week == selected_week) & (Pick.group_id == active_group_id))
             .outerjoin(Game, Game.id == Pick.game_id)
             .filter(
+                GroupMember.group_id == active_group_id,
+                GroupMember.is_active.is_(True),
                 Game.season_year == season_year,
                 Game.season_type == season_type,
                 Game.week == selected_week
@@ -852,6 +866,7 @@ def user_score_summary():
             .join(Game, Game.id == Pick.game_id)
             .filter(
                 Pick.user_id == user_id,
+                Pick.group_id == active_group_id,
                 Game.season_year == season_year,
                 Game.season_type == season_type,
                 Game.week == selected_week
@@ -860,7 +875,7 @@ def user_score_summary():
         )
 
     # ==========================================================
-    # Games + Picks table (season-safe)
+    # Games + Picks table (season-safe, group-isolated)
     # ==========================================================
     games = []
     user_picks = []
@@ -883,6 +898,7 @@ def user_score_summary():
             .join(Game, Game.id == Pick.game_id)
             .filter(
                 Pick.user_id == user_id,
+                Pick.group_id == active_group_id,
                 Pick.week == selected_week,
                 Game.season_year == season_year,
                 Game.season_type == season_type
@@ -923,13 +939,14 @@ def user_score_summary():
     ]
 
     # ==========================================================
-    # Season-wide stats (FIX: weekly totals from Pick+Game)
+    # Season-wide stats (FIX: weekly totals from Pick+Game, group-isolated)
     # ==========================================================
     weekly_rows = (
         db.session.query(Game.week, func.coalesce(func.sum(Pick.points_earned), 0))
         .join(Game, Game.id == Pick.game_id)
         .filter(
             Pick.user_id == user_id,
+            Pick.group_id == active_group_id,
             Game.season_year == season_year,
             Game.season_type == season_type
         )
@@ -945,12 +962,13 @@ def user_score_summary():
     best_week = max(weekly_points, key=lambda r: r['points']) if weekly_points else None
     worst_week = min(weekly_points, key=lambda r: r['points']) if weekly_points else None
 
-    # Pick-level performance — FINAL only, season-safe
+    # Pick-level performance — FINAL only, season-safe, group-isolated
     final_picks = (
         db.session.query(Pick, Game)
         .join(Game, Game.id == Pick.game_id)
         .filter(
             Pick.user_id == user_id,
+            Pick.group_id == active_group_id,
             Game.season_year == season_year,
             Game.season_type == season_type,
             Game.status == 'STATUS_FINAL'
@@ -984,7 +1002,7 @@ def user_score_summary():
         'streak_at_or_above_avg': streak_weeks
     }
 
-    # Confidence trends (FINAL only + season filtered)
+    # Confidence trends (FINAL only + season filtered + group-isolated)
     conf_wins = defaultdict(int)
     conf_attempts = defaultdict(int)
 
@@ -993,6 +1011,7 @@ def user_score_summary():
         .join(Game, Game.id == Pick.game_id)
         .filter(
             Pick.user_id == user_id,
+            Pick.group_id == active_group_id,
             Pick.confidence.isnot(None),
             Game.season_year == season_year,
             Game.season_type == season_type,
@@ -1022,13 +1041,14 @@ def user_score_summary():
         'weekly_points': weekly_points
     }
 
-    # Team bias (season filtered by joining Game)
+    # Team bias (season filtered by joining Game, group-isolated)
     team_stats = defaultdict(lambda: {'picked_count': 0, 'wins': 0, 'losses': 0})
     team_rows = (
         db.session.query(Pick.team_picked, Pick.points_earned, Game.status)
         .join(Game, Game.id == Pick.game_id)
         .filter(
             Pick.user_id == user_id,
+            Pick.group_id == active_group_id,
             Game.season_year == season_year,
             Game.season_type == season_type
         )
@@ -1121,7 +1141,6 @@ def user_score_summary():
         season_type=season_type,
         effective_user_id=user_id,
     )
-
 
 
 

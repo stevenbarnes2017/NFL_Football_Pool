@@ -673,7 +673,9 @@ def admin_dashboard():
     users = (
         User.query
         .join(GroupMember, GroupMember.user_id == User.id)
-        .filter(GroupMember.group_id == active_group_id)
+        .filter(GroupMember.group_id == active_group_id,
+                GroupMember.is_active.is_(True),
+         )
         .order_by(User.username)
         .all()
     )
@@ -1409,7 +1411,9 @@ def _missing_counts_for_week(
     users = (
         db.session.query(User.id, User.username)
         .join(GroupMember, GroupMember.user_id == User.id)
-        .filter(GroupMember.group_id == group_id)
+        .filter(GroupMember.group_id == group_id,
+                GroupMember.is_active.is_(True),
+                )
         .order_by(User.username)
         .all()
     )
@@ -1481,7 +1485,12 @@ def missing_picks():
     filter_opt = request.args.get('filter', 'any')  # any | zero | complete | all
 
     # Core counts (unlocked-aware)
-    counts = _missing_counts_for_week(week)
+    counts = _missing_counts_for_week(
+        week=week,
+        group_id=active_group_id,
+        season_year=settings.season_year,
+        season_type=settings.season_type,
+    )
     total_games = counts.get('total_games', 0)
 
     # Summary tiles
