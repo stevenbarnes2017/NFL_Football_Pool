@@ -498,7 +498,7 @@ def create_app():
             trigger="cron",
             day_of_week="fri",
             hour=9,
-            minute=10,
+            minute=45,
             id="schedule_update_tue_am",
             replace_existing=True,
         )
