@@ -496,9 +496,9 @@ def create_app():
         scheduler.add_job(
             func=lambda: schedule_update_job_with_context(app),
             trigger="cron",
-            day_of_week="tue",
-            hour=6,
-            minute=0,
+            day_of_week="fri",
+            hour=9,
+            minute=10,
             id="schedule_update_tue_am",
             replace_existing=True,
         )
