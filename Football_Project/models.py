@@ -85,6 +85,13 @@ class User(db.Model, UserMixin):
         cascade="all, delete-orphan"
     )
 
+    notification_subscriptions = db.relationship(
+        "NotificationSubscription",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy=True,
+    )
+
     def set_password(self, plaintext: str) -> None:
         # Standardize what we write going forward (consistent format)
         self.password = generate_password_hash(plaintext, method=PREFERRED_PWHASH)
@@ -309,3 +316,45 @@ class ReminderJob(db.Model):
             name="uq_reminder_once"
         ),
     )
+
+class NotificationSubscription(db.Model):
+    __tablename__ = "notification_subscription"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id"),
+        nullable=False,
+        index=True,
+    )
+
+    endpoint = db.Column(db.Text, nullable=False)
+
+    p256dh = db.Column(db.Text, nullable=False)
+
+    auth = db.Column(db.Text, nullable=False)
+
+    active = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=True,
+    )
+
+    browser = db.Column(db.String(50))
+
+    created_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+    )
+
+    last_used = db.Column(db.DateTime)
+
+    user = db.relationship(
+        "User",
+        back_populates="notification_subscriptions",
+    )
+
+    def __repr__(self):
+        return f"<NotificationSubscription user={self.user_id} active={self.active}>"
