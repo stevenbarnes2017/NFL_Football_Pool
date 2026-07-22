@@ -90,7 +90,7 @@
                             <td class="table-cell text-gray-700">{{ game.away_team }}</td>
                             <td class="table-cell text-center">{{ game.spread }}</td>
                             <td class="table-cell text-center">{{ game.favorite_team }}</td>
-                            <td class="table-cell text-right">{{ game.commence_time_mt }}</td>
+                            <td class="table-cell text-right">{{ game.commence_time_mt | fmt_mt }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
