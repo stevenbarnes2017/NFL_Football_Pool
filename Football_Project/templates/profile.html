@@ -46,45 +46,39 @@
       </a>
     </div>
 
-    <!-- NEW: SMS Reminders card -->
+    <!-- Mobile Device Reminders card -->
     <div class="profile-card">
-      <h2>SMS Reminders</h2>
-      <p class="subtitle">Get a text 2 hours before the first game each week.</p>
+      <h2>Mobile Device Reminders</h2>
+      <p class="subtitle">Get reminders on your mobile device.</p>
 
-      <form method="post" action="{{ url_for('main.update_sms_settings') }}" class="sms-form">
+      <form method="post" action="{{ url_for('main.update_notification_settings') }}" class="sms-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        
-
-        <div class="profile-field">
-          <label for="phone_input">Mobile Numbe</label>
-          <input id="phone_input"
-                 type="tel"
-                 name="phone"
-                 value="{{ user.phone or '' }}"
-                 placeholder="+17205551234"
-                 class="input">
-        </div>
 
         <div class="profile-field">
           <label class="checkbox">
-            <input type="checkbox" name="sms_opt_in" value="1"
-                   {% if user.sms_opt_in %}checked{% endif %}>
-            <span>Text me week-start reminders</span>
+            <input type="checkbox" name="notification_enabled" value="1"
+                   {% if user.notification_enabled %}checked{% endif %}>
+            <span>Remind me on my mobile device for week-start reminders</span>
           </label>
         </div>
 
-        <p class="fineprint">
-          By enabling SMS, you agree to receive transactional reminders about pick deadlines.
-          Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help. Frequency: 1–4 msgs/week.
-          See our <a href="/terms">Terms</a> &amp; <a href="/privacy">Privacy</a>.
-        </p>
-
         <div class="profile-actions">
-          <button type="submit" class="save-button">Save SMS Settings</button>
+          <button type="submit" class="save-button">
+            Save Notification Settings
+          </button>
         </div>
       </form>
     </div>
-    <!-- /SMS Reminders card -->
+
   </div>
 </div>
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+    window.VAPID_PUBLIC_KEY = "{{ vapid_public_key }}";
+</script>
+
+<script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
 {% endblock %}

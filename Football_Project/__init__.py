@@ -275,15 +275,15 @@ def dispatch_due_reminders_with_context(app):
 
 
 def create_app():
-    app = Flask(__name__)
-    metrics = PrometheusMetrics(app)
+    notifications = Flask(__name__)
+    metrics = PrometheusMetrics(notifications)
 
-    @app.before_request
+    @notifications.before_request
     def update_metrics_on_scrape():
         if request.path == "/metrics":
-            update_metrics_with_context(app)
+            update_metrics_with_context(notifications)
 
-    @app.route("/health")
+    @notifications.route("/health")
     def health():
         return {"status": "ok"}, 200
 
@@ -292,17 +292,19 @@ def create_app():
         db_url = db_url.replace("postgres://", "postgresql://", 1)
 
     # Config
-    app.config["SQLALCHEMY_DATABASE_URI"] = db_url
-    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "password")
-    app.config["WTF_CSRF_SECRET_KEY"] = os.getenv("WTF_CSRF_SECRET_KEY", "csrf-key-value")
-
+    notifications.config["SQLALCHEMY_DATABASE_URI"] = db_url
+    notifications.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "password")
+    notifications.config["WTF_CSRF_SECRET_KEY"] = os.getenv("WTF_CSRF_SECRET_KEY", "csrf-key-value")
+    notifications.config["VAPID_PRIVATE_KEY"] = os.getenv("VAPID_PRIVATE_KEY")
+    notifications.config["VAPID_PUBLIC_KEY"] = os.getenv("VAPID_PUBLIC_KEY")
+    notifications.config["VAPID_CLAIM_EMAIL"] = os.getenv("VAPID_CLAIM_EMAIL", "mailto:admin@sundaypickems.com")
     #fix timezone
-    app.jinja_env.filters["fmt_mt"] = fmt_mt
+    notifications.jinja_env.filters["fmt_mt"] = fmt_mt
 
     # ✅ NEW: make Postgres on Render resilient to dropped SSL connections
     # Only apply when using Postgres; SQLite doesn't accept these engine options.
     if db_url.startswith("postgresql://"):
-        app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+        notifications.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
             "pool_pre_ping": True,
             "pool_recycle": 300,  # seconds
             "pool_size": 5,
@@ -311,16 +313,16 @@ def create_app():
         }
 
     # Init extensions
-    db.init_app(app)
-    csrf.init_app(app)
+    db.init_app(notifications)
+    csrf.init_app(notifications)
 
     # Init migrations (explicit directory to match your layout)
-    migrations_dir = os.path.join(app.root_path, "migrations")
-    migrate.init_app(app, db, directory=migrations_dir)
+    migrations_dir = os.path.join(notifications.root_path, "migrations")
+    migrate.init_app(notifications, db, directory=migrations_dir)
 
     # Auth
     login_manager = LoginManager()
-    login_manager.init_app(app)
+    login_manager.init_app(notifications)
     login_manager.login_view = "auth.login"
     login_manager.login_message = "Please sign in to continue."
     login_manager.login_message_category = "warning"
@@ -333,7 +335,7 @@ def create_app():
             db.session.rollback()
             return None
 
-    @app.context_processor
+    @notifications.context_processor
     def inject_view_as_user():
         view_as_id = session.get("view_as_user_id") or session.get("admin_view_as_user_id")
         view_as_user = None
@@ -346,13 +348,17 @@ def create_app():
 
     # Blueprints
     from .admin import admin_bp
-    app.register_blueprint(admin_bp)
+    notifications.register_blueprint(admin_bp)
 
     from .auth import auth_bp
-    app.register_blueprint(auth_bp)
+    notifications.register_blueprint(auth_bp)
 
     from .routes import main_bp
-    app.register_blueprint(main_bp)
+    notifications.register_blueprint(main_bp)
+
+    from .notifications import notifications_bp
+    notifications.register_blueprint(notifications_bp)
+
 
     # --- APScheduler wiring ---
     # ✅ Opt-in: jobs only run where RUN_SCHEDULER=1 is explicitly set.
@@ -392,18 +398,18 @@ def create_app():
     should_start_scheduler = (
         run_sched
         and not scheduler.running
-        and (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true")
+        and (not notifications.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true")
     )
 
     if should_start_scheduler:
-        app.logger.info("[INIT] RUN_SCHEDULER=1 — starting APScheduler in this process")
+        notifications.logger.info("[INIT] RUN_SCHEDULER=1 — starting APScheduler in this process")
         scheduler.remove_all_jobs(jobstore="default")
 
         # Scores recurring jobs
         scheduler.add_job(
             func=plan_current_week_reminders_with_context,
             trigger="cron",
-            args=[app],
+            args=[notifications],
             hour=3,
             minute=10,
             id="plan_current_week_reminders",
@@ -412,7 +418,7 @@ def create_app():
         scheduler.add_job(
             func=dispatch_due_reminders_with_context,
             trigger="cron",
-            args=[app],
+            args=[notifications],
             day_of_week="mon,tue,wed,thu,fri,sat,sun",
             hour="0-23",
             minute="*/5",
@@ -422,7 +428,7 @@ def create_app():
         scheduler.add_job(
             auto_fetch_scores_with_context,
             "cron",
-            args=[app],
+            args=[notifications],
             day_of_week="mon,tue,wed,thu,fri,sat,sun",
             hour="0-23",
             minute="*/5",
@@ -432,7 +438,7 @@ def create_app():
         scheduler.add_job(
             fetch_and_cache_scores_with_context,
             "cron",
-            args=[app],
+            args=[notifications],
             day_of_week="mon,tue,wed,thu,fri,sat,sun",
             hour="0-23",
             minute="*/5",
@@ -444,7 +450,7 @@ def create_app():
         scheduler.add_job(
             odds_window_job_with_context,
             "cron",
-            args=[app, "TueAM"],
+            args=[notifications, "TueAM"],
             day_of_week="tue",
             hour=7,
             minute=0,
@@ -454,7 +460,7 @@ def create_app():
         scheduler.add_job(
             odds_window_job_with_context,
             "cron",
-            args=[app, "TuePM"],
+            args=[notifications, "TuePM"],
             day_of_week="tue",
             hour=19,
             minute=0,
@@ -464,7 +470,7 @@ def create_app():
         scheduler.add_job(
             odds_window_job_with_context,
             "cron",
-            args=[app, "WedAM"],
+            args=[notifications, "WedAM"],
             day_of_week="wed",
             hour=7,
             minute=0,
@@ -474,7 +480,7 @@ def create_app():
         scheduler.add_job(
             odds_window_job_with_context,
             "cron",
-            args=[app, "WedPM"],
+            args=[notifications, "WedPM"],
             day_of_week="wed",
             hour=19,
             minute=0,
@@ -484,7 +490,7 @@ def create_app():
         scheduler.add_job(
             odds_escalation_job_with_context,
             "cron",
-            args=[app],
+            args=[notifications],
             day_of_week="thu",
             hour=7,
             minute=0,
@@ -494,7 +500,7 @@ def create_app():
 
         # Schedule updater (weekly)
         scheduler.add_job(
-            func=lambda: schedule_update_job_with_context(app),
+            func=lambda: schedule_update_job_with_context(notifications),
             trigger="cron",
             day_of_week="tue",
             hour=6,
@@ -506,7 +512,7 @@ def create_app():
         scheduler.add_job(
             func=sync_settings_current_week_with_context,
             trigger="cron",
-            args=[app],
+            args=[notifications],
             day_of_week="mon,tue,wed,thu,fri,sat,sun",
             hour="0-23",
             minute="*/15",
@@ -517,22 +523,22 @@ def create_app():
         scheduler.add_job(
             func=update_metrics_with_context,
             trigger="interval",
-            args=[app],
+            args=[notifications],
             minutes=1,
             id="update_metrics",
             replace_existing=True,
         )
 
-        update_metrics_with_context(app)
+        update_metrics_with_context(notifications)
 
         # ✅ SMS scheduling should NOT run during migrations
         if not _is_migration_command():
             # Run once at startup
-            reschedule_current_week_sms(app)
+            reschedule_current_week_sms(notifications)
 
             # Re-evaluate each morning
             scheduler.add_job(
-                func=lambda: reschedule_current_week_sms(app),
+                func=lambda: reschedule_current_week_sms(notifications),
                 trigger="cron",
                 hour=3,
                 minute=5,
@@ -540,10 +546,10 @@ def create_app():
                 replace_existing=True,
             )
         else:
-            app.logger.info("[INIT] Skipping SMS scheduling during migrations.")
+            notifications.logger.info("[INIT] Skipping SMS scheduling during migrations.")
 
         scheduler.start()
 
 
     atexit.register(lambda: scheduler.shutdown(wait=False) if scheduler.running else None)
-    return app
+    return notifications

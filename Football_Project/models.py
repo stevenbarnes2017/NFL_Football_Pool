@@ -68,7 +68,11 @@ class User(db.Model, UserMixin):
     is_admin = db.Column(db.Boolean, default=False)
     sms_opt_in = db.Column(db.Boolean, nullable=False, default=False)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
-
+    notification_enabled = db.Column(
+        db.Boolean,
+        default=False,
+        nullable=False
+    )
 
     # Remove the duplicated relationship; you had 'scores' twice
     picks = db.relationship('Pick', backref='user', lazy=True, cascade='all, delete-orphan')
@@ -319,6 +323,14 @@ class ReminderJob(db.Model):
 
 class NotificationSubscription(db.Model):
     __tablename__ = "notification_subscription"
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "user_id",
+            "endpoint",
+            name="uq_user_notification_endpoint",
+        ),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
 

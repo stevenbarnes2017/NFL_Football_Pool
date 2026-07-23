@@ -1,6 +1,6 @@
 # scripts/fix_naive_kickoffs.py
 import pytz
-from Football_Project.app import app
+from Football_Project.notifications import app
 from Football_Project.extensions import db
 from Football_Project.models import Game
 

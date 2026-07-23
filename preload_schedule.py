@@ -5,7 +5,7 @@ from typing import List, Dict, Any
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 
-from Football_Project.app import app
+from Football_Project.notifications import app
 from Football_Project.extensions import db
 from Football_Project.models import Game
 

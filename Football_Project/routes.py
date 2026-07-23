@@ -28,6 +28,7 @@ from Football_Project.services.season import get_current_season_context
 from .services.group_service import get_active_group_id
 from Football_Project.services.group_service import get_active_group_id
 from slugify import slugify
+from flask import current_app
 
 
 
@@ -116,10 +117,15 @@ def my_picks():
 def legacy_register():
     return redirect(url_for("auth.register"))
 
+
 @main_bp.route('/profile')
 @login_required
 def profile():
-    return render_template('profile.html', user=current_user)
+    return render_template(
+        "profile.html",
+        user=current_user,
+        vapid_public_key=current_app.config["VAPID_PUBLIC_KEY"],
+    )
 
 @main_bp.route('/profile/edit', methods=['GET', 'POST'])
 @login_required
@@ -176,70 +182,21 @@ def edit_profile():
 
     return render_template('edit_profile.html', user=current_user)
 
-@main_bp.route("/profile/sms", methods=["POST"])
+@main_bp.route("/profile/notifications", methods=["POST"])
 @login_required
-def update_sms_settings():
-    from . import db
-    from flask import current_app
-    import re
+def update_notification_settings():
 
-    raw_phone = (request.form.get("phone") or "").strip()
-    wants_sms = bool(request.form.get("sms_opt_in"))
+    current_user.notification_enabled = (
+        request.form.get("notification_enabled") == "1"
+    )
 
-    current_app.logger.info(f"[SMS] POST /profile/sms raw_phone={raw_phone!r} wants_sms={wants_sms}")
+    db.session.commit()
 
-    # Keep current phone unless user changed it
-    phone = current_user.phone
+    flash(
+        "Notification settings updated.",
+        "success"
+    )
 
-    # Normalize/validate to E.164. Accept 10-digit US or +E.164
-    if raw_phone != "":
-        try:
-            import phonenumbers
-            digits = re.sub(r"\D", "", raw_phone)
-            if len(digits) == 10:
-                num = phonenumbers.parse(digits, "US")
-            else:
-                num = phonenumbers.parse(raw_phone, None)
-
-            if not phonenumbers.is_valid_number(num):
-                raise ValueError("invalid")
-
-            phone = phonenumbers.format_number(num, phonenumbers.PhoneNumberFormat.E164)
-        except Exception as e:
-            current_app.logger.warning(f"[SMS] phone validation failed: {e}")
-            flash("Please enter a valid mobile number (e.g., 720-555-1234 or +17205551234).", "danger")
-            return redirect(url_for("main.profile"))
-    else:
-        # Explicitly cleared the field
-        phone = None
-
-    current_user.phone = phone
-
-    # Only enable if BOTH: checkbox ticked AND phone present
-    new_opt_in = bool(phone) and wants_sms
-    current_app.logger.info(f"[SMS] normalized_phone={phone!r} new_opt_in={new_opt_in}")
-
-    # If column doesn't exist, this would raise—so wrap/flash
-    try:
-        # Optional timestamp if you added the column:
-        try:
-            if new_opt_in and not current_user.sms_opt_in:
-                from datetime import datetime
-                current_user.sms_opt_in_at = datetime.utcnow()
-        except Exception as e:
-            current_app.logger.info(f"[SMS] sms_opt_in_at not present (ok): {e}")
-
-        current_user.sms_opt_in = new_opt_in
-        db.session.commit()
-        current_app.logger.info("[SMS] settings saved OK")
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.exception(f"[SMS] DB commit failed: {e}")
-        flash("Could not save your SMS settings. Please try again.", "danger")
-        return redirect(url_for("main.profile"))
-
-    flash("SMS reminders " + ("enabled." if current_user.sms_opt_in else "disabled."),
-          "success" if current_user.sms_opt_in else "info")
     return redirect(url_for("main.profile"))
 
 
@@ -2027,3 +1984,69 @@ def delete_group(group_id):
         db.session.rollback()
         flash(f"Failed to delete group: {e}", "danger")
         return redirect(url_for("main.groups"))
+    
+@main_bp.route("/profile/sms", methods=["POST"])
+@login_required
+def update_sms_settings():
+    from . import db
+    from flask import current_app
+    import re
+
+    raw_phone = (request.form.get("phone") or "").strip()
+    wants_sms = bool(request.form.get("sms_opt_in"))
+
+    current_app.logger.info(f"[SMS] POST /profile/sms raw_phone={raw_phone!r} wants_sms={wants_sms}")
+
+    # Keep current phone unless user changed it
+    phone = current_user.phone
+
+    # Normalize/validate to E.164. Accept 10-digit US or +E.164
+    if raw_phone != "":
+        try:
+            import phonenumbers
+            digits = re.sub(r"\D", "", raw_phone)
+            if len(digits) == 10:
+                num = phonenumbers.parse(digits, "US")
+            else:
+                num = phonenumbers.parse(raw_phone, None)
+
+            if not phonenumbers.is_valid_number(num):
+                raise ValueError("invalid")
+
+            phone = phonenumbers.format_number(num, phonenumbers.PhoneNumberFormat.E164)
+        except Exception as e:
+            current_app.logger.warning(f"[SMS] phone validation failed: {e}")
+            flash("Please enter a valid mobile number (e.g., 720-555-1234 or +17205551234).", "danger")
+            return redirect(url_for("main.profile"))
+    else:
+        # Explicitly cleared the field
+        phone = None
+
+    current_user.phone = phone
+
+    # Only enable if BOTH: checkbox ticked AND phone present
+    new_opt_in = bool(phone) and wants_sms
+    current_app.logger.info(f"[SMS] normalized_phone={phone!r} new_opt_in={new_opt_in}")
+
+    # If column doesn't exist, this would raise—so wrap/flash
+    try:
+        # Optional timestamp if you added the column:
+        try:
+            if new_opt_in and not current_user.sms_opt_in:
+                from datetime import datetime
+                current_user.sms_opt_in_at = datetime.utcnow()
+        except Exception as e:
+            current_app.logger.info(f"[SMS] sms_opt_in_at not present (ok): {e}")
+
+        current_user.sms_opt_in = new_opt_in
+        db.session.commit()
+        current_app.logger.info("[SMS] settings saved OK")
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception(f"[SMS] DB commit failed: {e}")
+        flash("Could not save your SMS settings. Please try again.", "danger")
+        return redirect(url_for("main.profile"))
+
+    flash("SMS reminders " + ("enabled." if current_user.sms_opt_in else "disabled."),
+          "success" if current_user.sms_opt_in else "info")
+    return redirect(url_for("main.profile"))
