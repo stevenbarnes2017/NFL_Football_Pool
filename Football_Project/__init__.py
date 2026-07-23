@@ -17,7 +17,7 @@ from .utils import auto_fetch_scores, fetch_and_cache_scores
 from .services import attempt_import_odds, is_week_odds_complete
 from .services.email_helpers import send_admin_email, send_all_users_email
 from Football_Project.services.season import get_current_week
-from .services.sms_helpers import sms_week_reminder_job, schedule_first_kick_sms_for_week
+from .services.push_helpers import schedule_first_kick_push_for_week
 from Football_Project.services.odds_care import attempt_import_odds, is_week_odds_complete
 from Football_Project.services.settings_sync import sync_settings_current_week
 from prometheus_client import Gauge
@@ -373,8 +373,8 @@ def create_app():
             or os.getenv("SKIP_SCHEDULER") == "1"
         )
 
-    # SMS helper
-    def reschedule_current_week_sms(app):
+    # Push notification helper
+    def reschedule_current_week_push(app):
         """Schedules (or reschedules) the first-kickoff reminder for the current week."""
         from Football_Project.models import Settings  # keep local to avoid import-order issues
 
@@ -382,11 +382,11 @@ def create_app():
             try:
                 settings = Settings.query.first()
                 if not settings:
-                    app.logger.warning("[SMS] Settings missing; skipping SMS reschedule.")
+                    app.logger.warning("[Push Notifications] Settings missing; skipping reschedule.")
                     return
 
                 week = get_current_week(settings.season_year, settings.season_type)
-                schedule_first_kick_sms_for_week(app, week, scheduler)
+                schedule_first_kick_push_for_week(app, week, scheduler)
                 db.session.commit()
 
             except Exception:
@@ -531,22 +531,26 @@ def create_app():
 
         update_metrics_with_context(notifications)
 
-        # ✅ SMS scheduling should NOT run during migrations
+        # ✅ Push notification scheduling should NOT run during migrations
         if not _is_migration_command():
+
             # Run once at startup
-            reschedule_current_week_sms(notifications)
+            reschedule_current_week_push(notifications)
 
             # Re-evaluate each morning
             scheduler.add_job(
-                func=lambda: reschedule_current_week_sms(notifications),
+                func=lambda: reschedule_current_week_push(notifications),
                 trigger="cron",
                 hour=3,
                 minute=5,
-                id="sms_rescheduler_daily",
+                id="push_rescheduler_daily",
                 replace_existing=True,
             )
+
         else:
-            notifications.logger.info("[INIT] Skipping SMS scheduling during migrations.")
+            notifications.logger.info(
+                "[INIT] Skipping push notification scheduling during migrations."
+            )
 
         scheduler.start()
 
