@@ -5,13 +5,13 @@ from sqlalchemy import func
 
 from Football_Project import db
 from Football_Project.models import Game
-from Football_Project.notifications.service import send_push_notification
+
 from Football_Project.models import User
 
 MT = ZoneInfo("America/Denver")
 
 
-def schedule_first_kick_sms_for_week(app, week: int, scheduler):
+def schedule_first_kick_push_for_week(app, week: int, scheduler):
     """
     Schedule a one-time job 2h before first kickoff of 'week'.
     """
@@ -50,6 +50,7 @@ def schedule_first_kick_sms_for_week(app, week: int, scheduler):
 
 
 def push_week_reminder_job(app):
+    from Football_Project.notifications.service import send_push_notification
     with app.app_context():
         users = User.query.all()
         for user in users:
