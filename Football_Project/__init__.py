@@ -17,7 +17,7 @@ from .utils import auto_fetch_scores, fetch_and_cache_scores
 from .services import attempt_import_odds, is_week_odds_complete
 from .services.email_helpers import send_admin_email, send_all_users_email
 from Football_Project.services.season import get_current_week
-from .services.push_helpers import schedule_first_kick_push_for_week
+from .services.push_helpers import schedule_first_kick_push_for_week #new
 from Football_Project.services.odds_care import attempt_import_odds, is_week_odds_complete
 from Football_Project.services.settings_sync import sync_settings_current_week
 from prometheus_client import Gauge
