@@ -46,12 +46,14 @@
       <a href="{{ url_for('main.see_picks') }}">See Picks</a>
       <a href="{{ url_for('main.groups') }}">My Groups</a>
 
-      <div class="dropdown-content">
-        <a href="{{ url_for('main.profile') }}">Profile</a>
-        <a href="{{ url_for('main.edit_profile') }}">Edit Profile</a>
-        <a href="mailto:support@sundaypickems.com">Contact Support</a>
-        <a href="{{ url_for('auth.logout') }}">Logout</a>
-      </div>
+      <div class="dropdown">
+        <button class="dropbtn" type="button">Settings ▾</button>
+        <div class="dropdown-content">
+          <a href="{{ url_for('main.profile') }}">Profile</a>
+          <a href="{{ url_for('main.edit_profile') }}">Edit Profile</a>
+          <a href="mailto:support@sundaypickems.com">Contact Support</a>
+          <a href="{{ url_for('auth.logout') }}">Logout</a>
+        </div>
       </div>
     </nav>
 
@@ -134,8 +136,8 @@
   </div>
 
   <footer class="footer">
-    <p>&copy; {{ current_year }} Sunday Pickem's - All rights reserved.</p>
     <p><a href="mailto:support@sundaypickems.com">Support</a></p>
+    <p>&copy; {{ current_year }} Sunday Pickem's - All rights reserved.</p>
   </footer>
 
   <!-- Drawer JS -->
