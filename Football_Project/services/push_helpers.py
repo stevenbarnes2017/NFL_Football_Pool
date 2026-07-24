@@ -49,7 +49,7 @@ def schedule_first_kick_push_for_week(app, week: int, scheduler):
         app.logger.info(f"[PUSH] Scheduled week {week} reminder at {run_dt_mtn.isoformat()} MT.")
 
 
-def push_week_reminder_job(app):
+def push_week_reminder_job(app, week):
     from Football_Project.notifications.service import send_push_notification
     with app.app_context():
         users = User.query.all()
@@ -58,5 +58,5 @@ def push_week_reminder_job(app):
                 send_push_notification(
                     subscription,
                     "Sunday Pickems Reminder",
-                    f"kickoff is in 2 hours. Make sure your picks are submitted!"
+                    f"Week {week} kickoff is in 2 hours. Make sure your picks are submitted!"
                 )

@@ -101,6 +101,15 @@ body.no-scroll{ overflow: hidden; }
   display: inline-flex;
 }
 
+.dropdown::after{
+  content: "";
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: 180px;   /* matches .dropdown-content min-width */
+  height: 8px;
+}
+
 .dropbtn{
   display: inline-flex;
   align-items: center;
