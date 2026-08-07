@@ -125,7 +125,20 @@ def send_all_users_email(
     attachment_bytes: bytes | None = None,
     filename: str | None = None,
 ):
-    users = User.query.filter(User.email.isnot(None)).all()
+    members = GroupMember.query.filter_by(
+        group_id=1,
+        is_active=True,
+    ).all()
+
+    user_ids = [m.user_id for m in members]
+
+    users = (
+        User.query
+        .filter(User.id.in_(user_ids))
+        .filter(User.email.isnot(None))
+        .all()
+    )
+
     recipients = [u.email for u in users if u.email]
 
     return send_email(
