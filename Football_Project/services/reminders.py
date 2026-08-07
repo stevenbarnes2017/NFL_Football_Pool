@@ -69,7 +69,7 @@ def send_reminder_email(job):
     users = []
     for m in members:
         user = User.query.get(m.user_id)
-        if user and user.email:
+        if user and user.email and user.is_active:
             users.append(user)
 
     if not users:

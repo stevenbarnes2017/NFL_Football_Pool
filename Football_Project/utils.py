@@ -457,10 +457,13 @@ def get_unpicked_games_for_week(user_picks, week, season_year, season_type):
 
     return query.order_by(Game.commence_time_mt.asc()).all()
 
-def save_user_scores_to_db(user_scores, week):
+def save_user_scores_to_db(user_scores, week, group_id):
     """
     Save or update user scores in the database for a specific week.
     """
+    settings = Settings.query.first()
+    season_year = settings.season_year
+    season_type = settings.season_type
     # Debug print to check the structure of user_scores
     print(f"user_scores structure: {user_scores}")
     
