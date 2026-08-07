@@ -97,7 +97,8 @@ def login():
                 user.set_password(pwd)
                 db.session.commit()
 
-            login_user(user, remember=form.remember.data, force=True)
+            result = login_user(user, remember=form.remember.data, force=True)
+            print(f"[LOGIN] result={result} is_active={user.is_active} authenticated={current_user.is_authenticated}")
 
             pending_token = session.pop("pending_invite_token", None)
             if pending_token:
