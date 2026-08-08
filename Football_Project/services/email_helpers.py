@@ -136,7 +136,8 @@ def send_all_users_email(
         User.query
         .filter(User.id.in_(user_ids))
         .filter(User.email.isnot(None))
-        .filter(User.is_active == True)   # <-- added
+        .filter(User.is_active == True)
+        .filter(User.email_notifications_enabled == True)
         .all()
     )
 
@@ -170,8 +171,10 @@ def send_group_email(
         .filter(User.id.in_(user_ids))
         .filter(User.email.isnot(None))
         .filter(User.is_active == True)
+        .filter(User.email_notifications_enabled == True)
         .all()
     )
+    
 
     recipients = [u.email for u in users if u.email]
 
@@ -214,6 +217,9 @@ def send_group_missing_picks_email(
             continue
 
         if not user.is_active:
+            continue
+
+        if not user.email_notifications_enabled:
             continue
 
         pick_count = (
