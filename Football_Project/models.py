@@ -68,6 +68,7 @@ class User(db.Model, UserMixin):
     is_admin = db.Column(db.Boolean, default=False)
     sms_opt_in = db.Column(db.Boolean, nullable=False, default=False)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
+    email_notifications_enabled = db.Column(db.Boolean, default=True, nullable=False)
     notification_enabled = db.Column(
         db.Boolean,
         default=False,
