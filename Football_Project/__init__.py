@@ -376,7 +376,7 @@ def create_app():
     # Push notification helper
     def reschedule_current_week_push(app):
         """Schedules (or reschedules) the first-kickoff reminder for the current week."""
-        from Football_Project.models import Settings  # keep local to avoid import-order issues
+        from Football_Project.models import Settings
 
         with app.app_context():
             try:
@@ -385,7 +385,11 @@ def create_app():
                     app.logger.warning("[Push Notifications] Settings missing; skipping reschedule.")
                     return
 
-                week = get_current_week(settings.season_year, settings.season_type)
+                week = settings.current_week
+                if not week:
+                    app.logger.warning("[Push Notifications] Settings.current_week not set; skipping reschedule.")
+                    return
+
                 schedule_first_kick_push_for_week(app, week, scheduler)
                 db.session.commit()
 
