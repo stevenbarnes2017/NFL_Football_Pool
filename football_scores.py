@@ -21,25 +21,23 @@ def convert_to_mountain_time(utc_time_str):
 
 # Function to get football scores from ESPN API based on the year, season type, and week number
 def get_football_scores(year, seasontype, weeknum):
-    # Construct the URL
-    url = f"https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates={year}&seasontype={seasontype}&week={weeknum}"
-    
-    # Fetch data from the ESPN API
+    season_type_map = {"PRE": 1, "REG": 2, "POST": 3}
+    seasontype_int = season_type_map.get(str(seasontype).upper(), seasontype)
+
+    url = f"https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates={year}&seasontype={seasontype_int}&week={weeknum}"
+
     response = requests.get(url)
-    
-    # Check if the response is OK
+
     if response.status_code != 200:
         print(f"Error fetching data: {response.status_code}")
         return None
-    
-    data = response.json()
 
-    # Parse the JSON data
+    data = response.json()
     games = []
     for event in data['events']:
         for competition in event['competitions']:
             game = {
-                "date": convert_to_mountain_time(event['date']),  # Convert date to Mountain Time
+                "date": convert_to_mountain_time(event['date']),
                 "home_team": competition['competitors'][0]['team']['displayName'],
                 "home_score": competition['competitors'][0]['score'],
                 "away_team": competition['competitors'][1]['team']['displayName'],
@@ -47,8 +45,7 @@ def get_football_scores(year, seasontype, weeknum):
                 "status": competition['status']['type']['name']
             }
             games.append(game)
-    
-    # Return the list of games
+
     return games
 
 # Function to save the scores to a CSV file
