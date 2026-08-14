@@ -1201,6 +1201,7 @@ def admin_calculate_scores():
                 week=w,
                 season_year=season_year,
                 season_type=season_type,
+                group_id=active_group_id,
                 write_final_only=True,   # only FINAL games contribute to UserScore
             )
             processed += 1
