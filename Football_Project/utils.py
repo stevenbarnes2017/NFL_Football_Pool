@@ -243,7 +243,7 @@ def norm_status(s: str | None) -> str:
 
 
 FINAL_STATUSES = {"STATUS_FINAL", "FINAL", "STATUS_GAME_OVER"}
-INPROG_STATUSES = {"STATUS_IN_PROGRESS", "IN_PROGRESS", "STATUS_HALFTIME"}  # add more if you store them
+INPROG_STATUSES = {"STATUS_IN_PROGRESS", "IN_PROGRESS", "STATUS_HALFTIME", "STATUS_END_PERIOD"}  # add more if you store them
 
 
 from collections import defaultdict

@@ -35,8 +35,10 @@ def get_football_scores(year, seasontype, weeknum):
     data = response.json()
     games = []
     for event in data['events']:
+        event_id = str(event.get('id') or "")
         for competition in event['competitions']:
             game = {
+                "game_id": f"{year}-S{seasontype_int}-W{weeknum}-E{event_id}",
                 "date": convert_to_mountain_time(event['date']),
                 "home_team": competition['competitors'][0]['team']['displayName'],
                 "home_score": competition['competitors'][0]['score'],
@@ -86,12 +88,11 @@ def main():
     filename = f"football_scores_week{weeknum}.csv"
     save_scores_to_csv(football_scores, filename)
 
-def save_scores_to_db(games, weeknum):    
-
+def save_scores_to_db(games, weeknum):
     matched = updated = 0
 
     for g in games:
-        espn_id = str(g.get("game_id") or g.get("id"))  # depends on your get_football_scores shape
+        espn_id = str(g.get("game_id") or g.get("id") or "")
         if not espn_id:
             continue
 
@@ -103,8 +104,8 @@ def save_scores_to_db(games, weeknum):
         matched += 1
 
         # update fields your UI reads
-        game.home_team_score = g.get("home_team_score")
-        game.away_team_score = g.get("away_team_score")
+        game.home_team_score = g.get("home_score")
+        game.away_team_score = g.get("away_score")
         game.status = g.get("status")
         # also make sure week/year/type are set correctly if needed
         updated += 1
