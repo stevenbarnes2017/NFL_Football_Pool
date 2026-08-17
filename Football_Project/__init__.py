@@ -121,6 +121,7 @@ def odds_window_job_with_context(app, label: str):
         is_week_odds_complete,
         attempt_import_odds,
     )
+    from .services.push_helpers import push_all_active_subscriptions
 
     with app.app_context():
         try:
@@ -167,6 +168,12 @@ def odds_window_job_with_context(app, label: str):
                     """,
                     attachment_bytes=csv_bytes,
                     filename=f"odds_{season_type.lower()}_{season_year}_week_{week}.csv"
+                )
+
+                push_all_active_subscriptions(
+                    app,
+                    title=f"{subject_prefix} — Spreads Posted",
+                    body=f"Spreads are up for {season_type} {season_year} Week {week}. Go make your picks!"
                 )
 
             elif status == "not_ready":
