@@ -550,11 +550,13 @@ def user_dashboard():
 @main_bp.route('/results', methods=['GET', 'POST'])
 @login_required
 def results():
-    
+
     if not current_user.is_admin:
         flash("You do not have permission to access this page.", "danger")
         return redirect(url_for('index'))
-    
+
+    season_year, season_type = get_current_season_context()
+
     if request.method == 'POST':
         # Get the selected week from the form
         selected_week = request.form.get('week')
@@ -565,18 +567,34 @@ def results():
                 flash("Invalid week selected.", "danger")
                 return redirect(url_for('results'))
             # Query games for the selected week
-            games = Game.query.filter_by(week=selected_week).order_by(Game.id).all()
+            games = Game.query.filter_by(
+                week=selected_week,
+                season_year=season_year,
+                season_type=season_type,
+            ).order_by(Game.id).all()
         else:
-            # If no week is selected, show all games
-            games = Game.query.order_by(Game.week, Game.id).all()
+            # If no week is selected, show all games for the current season
+            games = Game.query.filter_by(
+                season_year=season_year,
+                season_type=season_type,
+            ).order_by(Game.week, Game.id).all()
     else:
-        # For GET requests, display all games or set a default week
-        games = Game.query.order_by(Game.week, Game.id).all()
-    
-    # Get a list of distinct weeks for the dropdown
-    weeks = db.session.query(Game.week).distinct().order_by(Game.week).all()
+        # For GET requests, display all games for the current season
+        games = Game.query.filter_by(
+            season_year=season_year,
+            season_type=season_type,
+        ).order_by(Game.week, Game.id).all()
+
+    # Get a list of distinct weeks for the dropdown, scoped to the current season
+    weeks = (
+        db.session.query(Game.week)
+        .filter(Game.season_year == season_year, Game.season_type == season_type)
+        .distinct()
+        .order_by(Game.week)
+        .all()
+    )
     weeks = [week[0] for week in weeks]  # Extract week numbers from tuples
-    
+
     return render_template('results.html', games=games, weeks=weeks)
 
 @main_bp.route('/user_scores/<int:week>', methods=['GET'])

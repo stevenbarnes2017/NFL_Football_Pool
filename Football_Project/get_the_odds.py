@@ -170,6 +170,12 @@ def save_spreads_to_db(games_list, week: int):
     Update existing Game rows for the given week by (home_team, away_team, week).
     Assign tz-aware datetime to Game.commence_time_mt.
     """
+    from Football_Project.models import Settings
+
+    settings = Settings.query.first()
+    season_year = settings.season_year if settings else None
+    season_type = settings.season_type if settings else None
+
     updated = 0
     skipped = 0
 
@@ -179,6 +185,8 @@ def save_spreads_to_db(games_list, week: int):
                 home_team=game_data["home_team"],
                 away_team=game_data["away_team"],
                 week=week,
+                season_year=season_year,
+                season_type=season_type,
             ).first()
         )
 

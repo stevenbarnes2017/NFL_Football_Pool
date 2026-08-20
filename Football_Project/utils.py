@@ -547,10 +547,11 @@ def convert_to_utc(time_value):
     print(f"Converted time to UTC: {utc_time}")  # Debugging the result after conversion
     return utc_time
 
-
+from .services.season import get_current_season_context
 def highest_available_confidence(user_id: int, week: int, group_id: int) -> int | None:
     """Return the highest confidence number not yet used by this user in this week (group-scoped)."""
-
+    season_year, season_type = get_current_season_context()
+    total_games = Game.query.filter_by(week=week, season_year=season_year, season_type=season_type).count()
     # how many games this week = how many confidence points exist
     total_games = Game.query.filter_by(week=week).count()
 

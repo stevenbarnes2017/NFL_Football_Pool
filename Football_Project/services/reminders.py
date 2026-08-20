@@ -57,7 +57,6 @@ def upsert_reminder(group_id, season_year, season_type, week, reminder_type, cha
     db.session.add(job)
     return job
 
-
 def send_reminder_email(job):
     group = PoolGroup.query.get(job.group_id)
 
@@ -109,6 +108,45 @@ def send_reminder_email(job):
     current_app.logger.info(
         f"[REMINDERS] Email sent job_id={job.id} group_id={group.id} users={sent_count}"
     )
+def send_reminder_push(job):
+    from Football_Project.notifications.service import send_push_notification
+    from Football_Project.models import NotificationSubscription
+
+    group = PoolGroup.query.get(job.group_id)
+    if not group:
+        raise Exception(f"group_id={job.group_id} not found")
+
+    members = GroupMember.query.filter_by(group_id=group.id, is_active=True).all()
+    user_ids = [m.user_id for m in members]
+
+    subs = NotificationSubscription.query.filter(
+        NotificationSubscription.user_id.in_(user_ids),
+        NotificationSubscription.active == True,
+    ).all()
+
+    if not subs:
+        raise Exception(f"No active push subscriptions for group_id={group.id}")
+
+    if job.reminder_type == "weekly_make_picks":
+        title = f"Week {job.week} - Make Your Picks"
+        body = "Games are coming up. Make your picks before kickoff."
+    elif job.reminder_type == "last_chance":
+        title = f"Week {job.week} - Last Chance"
+        body = "Picks lock soon. Get them in before kickoff."
+    else:
+        title = f"Week {job.week} Reminder"
+        body = "Check your picks."
+
+    sent_count = 0
+    for sub in subs:
+        if send_push_notification(sub, title, body):
+            sent_count += 1
+
+    db.session.commit()
+
+    current_app.logger.info(
+        f"[REMINDERS] Push sent job_id={job.id} group_id={group.id} subs={sent_count}/{len(subs)}"
+    )
 
 
 def dispatch_due_reminders(limit: int = 25):
@@ -149,6 +187,8 @@ def dispatch_due_reminders(limit: int = 25):
         try:
             if job.channel == "email":
                 send_reminder_email(job)
+            elif job.channel == "push":
+                send_reminder_push(job)
             elif job.channel == "sms":
                 current_app.logger.info(
                     f"[REMINDERS] SMS reminder skipped for job_id={job.id}; SMS not enabled yet"
@@ -162,7 +202,6 @@ def dispatch_due_reminders(limit: int = 25):
                 job.details = f"Unknown channel: {job.channel}"
                 results["skipped"] += 1
                 continue
-
             job.status = "sent"
             job.sent_at = now
             job.details = "sent successfully"
@@ -218,6 +257,17 @@ def plan_current_week_reminders():
             scheduled_for=first_kickoff - timedelta(hours=24),
         )
 
+        # Main weekly push - same timing as email
+        upsert_reminder(
+            group_id=group.id,
+            season_year=season_year,
+            season_type=season_type,
+            week=week,
+            reminder_type="weekly_make_picks",
+            channel="push",
+            scheduled_for=first_kickoff - timedelta(hours=24),
+        )
+
         # Last chance email - 3 hours before first kickoff
         upsert_reminder(
             group_id=group.id,
@@ -226,6 +276,17 @@ def plan_current_week_reminders():
             week=week,
             reminder_type="last_chance",
             channel="email",
+            scheduled_for=first_kickoff - timedelta(hours=3),
+        )
+
+        # Last chance push - same timing as email
+        upsert_reminder(
+            group_id=group.id,
+            season_year=season_year,
+            season_type=season_type,
+            week=week,
+            reminder_type="last_chance",
+            channel="push",
             scheduled_for=first_kickoff - timedelta(hours=3),
         )
 

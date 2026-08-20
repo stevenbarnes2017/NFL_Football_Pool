@@ -857,7 +857,11 @@ def display_odds():
         return redirect(url_for("main.user_dashboard"))
     settings = Settings.query.first()
     current_week = settings.current_week
-    games = Game.query.filter_by(week=current_week).all()
+    games = Game.query.filter_by(
+        week=current_week,
+        season_year=settings.season_year,
+        season_type=settings.season_type,
+    ).all()
     return render_template('display_odds.html', games_list=games, week=current_week)
 
 # -------------------------
