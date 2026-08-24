@@ -662,28 +662,31 @@ def user_scores(week):
 @login_required
 def see_picks():
     from flask import session
+    from collections import defaultdict
 
-    # ✅ DB-driven season context (source of truth)
+    # DB-driven season context
     settings = Settings.query.first()
     if not settings:
         flash("App settings are not configured. Please contact an admin.", "danger")
         return redirect(url_for("main.dashboard"))
+
     season_year = settings.season_year
     season_type = settings.season_type
     current_week = settings.current_week
 
     group_id = get_active_group_id()
 
-    # ✅ View-as support: use effective_user_id for loading picks
+    # View-as support
     view_as_id = session.get("view_as_user_id") or session.get("admin_view_as_user_id")
     effective_user_id = current_user.id
+
     if view_as_id and getattr(current_user, "is_admin", False):
         try:
             effective_user_id = int(view_as_id)
         except (TypeError, ValueError):
             effective_user_id = current_user.id
 
-    # ✅ Weeks available for THIS season/year/type (prevents Week 18 leakage)
+    # Weeks available for current season/year/type
     all_weeks = [
         wk for (wk,) in (
             db.session.query(Game.week)
@@ -697,17 +700,16 @@ def see_picks():
         )
     ]
 
-    # Week selection (POST from dropdown or default)
+    # Selected week
     if request.method == 'POST':
         selected_week = request.form.get('week', type=int) or current_week
     else:
         selected_week = request.args.get('week', type=int) or current_week
 
-    # Safety: force selected_week to valid list
     if all_weeks and selected_week not in all_weeks:
         selected_week = all_weeks[0]
 
-    # ✅ User picks for ONLY games in this season/week/type/group (view-as aware)
+    # User picks
     user_picks = (
         Pick.query
         .join(Game, Pick.game_id == Game.id)
@@ -718,17 +720,66 @@ def see_picks():
             Game.season_type == season_type,
             Game.week == selected_week
         )
-        .order_by(Pick.confidence.desc().nullslast())
+        .order_by(
+            Game.commence_time_mt.asc(),
+            Pick.confidence.desc().nullslast()
+        )
         .all()
     )
 
-    # ✅ Unpicked games should also be season filtered and group-aware
+    # Unpicked games
     unpicked_games = get_unpicked_games_for_week(
         user_picks=user_picks,
         week=selected_week,
         season_year=season_year,
-        season_type=season_type,        
-        
+        season_type=season_type,
+    )
+
+    # ---------------------------------------------------------
+    # Group picked games by game date
+    # ---------------------------------------------------------
+    picked_by_date = defaultdict(list)
+
+    for pick in user_picks:
+        if pick.game.commence_time_mt:
+            game_date = pick.game.commence_time_mt.date()
+        else:
+            game_date = None
+
+        picked_by_date[game_date].append(pick)
+
+    # ---------------------------------------------------------
+    # Group unpicked games by game date
+    # ---------------------------------------------------------
+    unpicked_by_date = defaultdict(list)
+
+    for game in unpicked_games:
+        if game.commence_time_mt:
+            game_date = game.commence_time_mt.date()
+        else:
+            game_date = None
+
+        unpicked_by_date[game_date].append(game)
+
+    # Sort groups by date, with missing dates last
+    picked_by_date = dict(
+        sorted(
+            picked_by_date.items(),
+            key=lambda item: (
+                item[0] is None,
+                item[0] if item[0] is not None else date.max
+            )
+        )
+    )
+
+    unpicked_by_date = dict(
+        sorted(
+            unpicked_by_date.items(),
+            key=lambda item: (
+                item[0] is None,
+                item[0] if item[0] is not None else date.max
+            )
+        )
     )
 
     return render_template(
@@ -737,6 +788,8 @@ def see_picks():
         all_weeks=all_weeks,
         user_picks=user_picks,
         unpicked_games=unpicked_games,
+        picked_by_date=picked_by_date,
+        unpicked_by_date=unpicked_by_date,
         season_year=season_year,
         season_type=season_type,
         effective_user_id=effective_user_id

@@ -41,62 +41,146 @@
         <div class="bg-white shadow-lg rounded-lg overflow-hidden">
             <h2 class="text-3xl font-bold mb-4">Your Picks</h2>
             {% if user_picks %}
-                <table class="min-w-full table-auto mb-8">
-                    <thead class="table-header">
-                        <tr>
-                            <th class="table-cell">Home Team</th>
-                            <th class="table-cell">Away Team</th>
-                            <th class="table-cell">Spread</th>
-                            <th class="table-cell">Favorite Team</th>
-                            <th class="table-cell">Your Pick</th>
-                            <th class="table-cell">Confidence</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for pick in user_picks %}
-                        <tr class="table-row">
-                            <td class="table-cell font-semibold text-gray-800">{{ pick.game.home_team }}</td>
-                            <td class="table-cell text-gray-700">{{ pick.game.away_team }}</td>
-                            <td class="table-cell text-center">{{ pick.game.spread }}</td>
-                            <td class="table-cell text-center">{{ pick.game.favorite_team }}</td>
-                            <td class="table-cell text-right">{{ pick.team_picked }}</td>
-                            <td class="table-cell text-right">{{ pick.confidence }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+
+                {% for game_date, picks in picked_by_date.items() %}
+
+                    <div class="mb-8">
+
+                        <h3 class="text-2xl font-bold text-gray-700 bg-gray-100 px-4 py-3 border-b">
+                            {% if game_date %}
+                                {{ game_date.strftime('%A, %B %d') }}
+                            {% else %}
+                                Date TBD
+                            {% endif %}
+                        </h3>
+
+                        <table class="min-w-full table-auto">
+                            <thead class="table-header">
+                                <tr>
+                                    <th class="table-cell">Home Team</th>
+                                    <th class="table-cell">Away Team</th>
+                                    <th class="table-cell">Spread</th>
+                                    <th class="table-cell">Favorite Team</th>
+                                    <th class="table-cell">Your Pick</th>
+                                    <th class="table-cell">Confidence</th>
+                                    <th class="table-cell">Game Time</th>
+                                </tr>
+                            </thead>
+
+                            <tbody>
+                                {% for pick in picks %}
+                                    <tr class="table-row">
+                                        <td class="table-cell font-semibold text-gray-800">
+                                            {{ pick.game.home_team }}
+                                        </td>
+
+                                        <td class="table-cell text-gray-700">
+                                            {{ pick.game.away_team }}
+                                        </td>
+
+                                        <td class="table-cell text-center">
+                                            {{ pick.game.spread }}
+                                        </td>
+
+                                        <td class="table-cell text-center">
+                                            {{ pick.game.favorite_team }}
+                                        </td>
+
+                                        <td class="table-cell text-right">
+                                            {{ pick.team_picked }}
+                                        </td>
+
+                                        <td class="table-cell text-right">
+                                            {{ pick.confidence }}
+                                        </td>
+
+                                        <td class="table-cell text-right">
+                                            {{ pick.game.commence_time_mt | fmt_mt }}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+
+                    </div>
+
+                {% endfor %}
+
             {% else %}
-                <p class="text-xl text-red-500 font-semibold">No picks made for Week {{ selected_week }}.</p>
-            {% endif %}
+
+    <p class="text-xl text-red-500 font-semibold">
+        No picks made for Week {{ selected_week }}.
+    </p>
+
+{% endif %}
         </div>
 
         <div class="bg-white shadow-lg rounded-lg overflow-hidden mt-6">
             <h2 class="text-3xl font-bold mb-4">Games Left to Pick</h2>
             {% if unpicked_games %}
-                <table class="min-w-full table-auto mb-8">
-                    <thead class="table-header">
-                        <tr>
-                            <th class="table-cell">Home Team</th>
-                            <th class="table-cell">Away Team</th>
-                            <th class="table-cell">Spread</th>
-                            <th class="table-cell">Favorite Team</th>
-                            <th class="table-cell">Commence Time</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for game in unpicked_games %}
-                        <tr class="table-row">
-                            <td class="table-cell font-semibold text-gray-800">{{ game.home_team }}</td>
-                            <td class="table-cell text-gray-700">{{ game.away_team }}</td>
-                            <td class="table-cell text-center">{{ game.spread }}</td>
-                            <td class="table-cell text-center">{{ game.favorite_team }}</td>
-                            <td class="table-cell text-right">{{ game.commence_time_mt | fmt_mt }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+
+                {% for game_date, games in unpicked_by_date.items() %}
+
+                    <div class="mb-8">
+
+                        <h3 class="text-2xl font-bold text-gray-700 bg-gray-100 px-4 py-3 border-b">
+                            {% if game_date %}
+                                {{ game_date.strftime('%A, %B %d') }}
+                            {% else %}
+                                Date TBD
+                            {% endif %}
+                        </h3>
+
+                        <table class="min-w-full table-auto">
+                            <thead class="table-header">
+                                <tr>
+                                    <th class="table-cell">Home Team</th>
+                                    <th class="table-cell">Away Team</th>
+                                    <th class="table-cell">Spread</th>
+                                    <th class="table-cell">Favorite Team</th>
+                                    <th class="table-cell">Commence Time</th>
+                                </tr>
+                            </thead>
+
+                            <tbody>
+                                {% for game in games %}
+                                    <tr class="table-row">
+
+                                        <td class="table-cell font-semibold text-gray-800">
+                                            {{ game.home_team }}
+                                        </td>
+
+                                        <td class="table-cell text-gray-700">
+                                            {{ game.away_team }}
+                                        </td>
+
+                                        <td class="table-cell text-center">
+                                            {{ game.spread }}
+                                        </td>
+
+                                        <td class="table-cell text-center">
+                                            {{ game.favorite_team }}
+                                        </td>
+
+                                        <td class="table-cell text-right">
+                                            {{ game.commence_time_mt | fmt_mt }}
+                                        </td>
+
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+
+                    </div>
+
+                {% endfor %}
+
             {% else %}
-                <p class="text-xl text-red-500 font-semibold">No games left to pick for Week {{ selected_week }}.</p>
+
+                <p class="text-xl text-red-500 font-semibold">
+                    No games left to pick for Week {{ selected_week }}.
+                </p>
+
             {% endif %}
         </div>
     </div>
