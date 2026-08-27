@@ -173,7 +173,12 @@ def odds_window_job_with_context(app, label: str):
                 push_all_active_subscriptions(
                     app,
                     title=f"{subject_prefix} — Spreads Posted",
-                    body=f"Spreads are up for {season_type} {season_year} Week {week}. Go make your picks!"
+                    body=(
+                        f"Spreads are up for {season_type} {season_year} "
+                        f"Week {week}. Go make your picks!"
+                    ),
+                    ttl=3600,
+                    urgency="high",
                 )
 
             elif status == "not_ready":

@@ -139,13 +139,19 @@ def send_reminder_push(job):
 
     sent_count = 0
     for sub in subs:
-        if send_push_notification(sub, title, body):
+        if send_push_notification(
+            sub,
+            title,
+            body,
+            ttl=3600,
+            urgency="high",
+        ):
             sent_count += 1
 
     db.session.commit()
 
     current_app.logger.info(
-        f"[REMINDERS] Push sent job_id={job.id} group_id={group.id} subs={sent_count}/{len(subs)}"
+        f"[REMINDERS] Push provider accepted job_id={job.id} group_id={group.id} subs={sent_count}/{len(subs)}"
     )
 
 

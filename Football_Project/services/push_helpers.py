@@ -10,18 +10,39 @@ from Football_Project.models import User
 
 MT = ZoneInfo("America/Denver")
 
-def push_all_active_subscriptions(app, title, body):
+def push_all_active_subscriptions(
+    app,
+    title,
+    body,
+    *,
+    ttl=None,
+    urgency=None,
+):
     from Football_Project.notifications.service import send_push_notification
     from Football_Project.models import NotificationSubscription
 
     with app.app_context():
         subs = NotificationSubscription.query.filter_by(active=True).all()
+
         sent = 0
+
         for sub in subs:
-            if send_push_notification(sub, title, body):
+            if send_push_notification(
+                sub,
+                title,
+                body,
+                ttl=ttl,
+                urgency=urgency,
+            ):
                 sent += 1
+
         db.session.commit()
-        app.logger.info(f"[PUSH] Sent '{title}' to {sent}/{len(subs)} active subscriptions")
+
+        app.logger.info(
+            f"[PUSH] Provider accepted '{title}' for "
+            f"{sent}/{len(subs)} active subscriptions"
+        )
+
         return sent
 
 
@@ -82,5 +103,7 @@ def push_week_reminder_job(app, week):
                 send_push_notification(
                     subscription,
                     "Sunday Pickems Reminder",
-                    f"Week {week} kickoff is in 2 hours. Make sure your picks are submitted!"
+                    f"Week {week} kickoff is in 2 hours. Make sure your picks are submitted!",
+                    ttl=3600,
+                    urgency="high",
                 )
