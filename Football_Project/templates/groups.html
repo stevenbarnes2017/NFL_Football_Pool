@@ -181,6 +181,45 @@
   </div>
 
   <div id="challengesPanel" role="tabpanel" aria-labelledby="challengesTab" {% if initial_section != 'challenges' %}hidden{% endif %}>
+    {% if challenge_summaries %}
+    <div class="challenge-list-header">
+      <div>
+        <h3>Your Challenges</h3>
+        <p>Challenges you created, joined, or manage.</p>
+      </div>
+      {% if active_group_id and active_membership %}
+        <a href="{{ url_for('challenges.new_challenge', group_id=active_group_id) }}" class="action-btn btn-primary">
+          Create Challenge
+        </a>
+      {% endif %}
+    </div>
+
+    <div class="challenge-list">
+      {% for summary in challenge_summaries %}
+        {% set challenge = summary.challenge %}
+        <article class="challenge-card">
+          <div class="challenge-card-main">
+            <div class="challenge-card-heading">
+              <h4>{{ challenge.name }}</h4>
+              <span class="challenge-status challenge-status-{{ summary.status }}">
+                {{ summary.status|replace('_', ' ')|title }}
+              </span>
+            </div>
+            <div class="challenge-card-group">{{ challenge.group.name }} &middot; Week {{ challenge.week }}</div>
+            <div class="challenge-card-meta">
+              <span>{{ summary.participant_count }} participant{% if summary.participant_count != 1 %}s{% endif %}</span>
+              <span>{{ summary.game_count }} game{% if summary.game_count != 1 %}s{% endif %}</span>
+              <span>Created by {{ challenge.creator.full_name or challenge.creator.username }}</span>
+              <span>{{ challenge.created_at | fmt_mt }}</span>
+            </div>
+          </div>
+          <a href="{{ url_for('challenges.challenge_detail', challenge_id=challenge.id) }}" class="action-btn btn-outline">
+            Open Challenge
+          </a>
+        </article>
+      {% endfor %}
+    </div>
+    {% else %}
     <div class="empty-state challenges-empty-state">
       <h5>No challenges yet</h5>
       <p>Create a challenge with members of your active group.</p>
@@ -195,6 +234,7 @@
         <div class="coming-soon-note">Select a group where you are an active member first.</div>
       {% endif %}
     </div>
+    {% endif %}
   </div>
 
 </div>
@@ -449,6 +489,36 @@
   color: #6c757d;
   font-size: 12px;
 }
+.challenge-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.challenge-list-header h3 { margin: 0 0 3px; font-size: 18px; }
+.challenge-list-header p { margin: 0; color: #6c757d; font-size: 13px; }
+.challenge-list { display: grid; gap: 10px; }
+.challenge-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px;
+  border: 1px solid #dee2e6;
+  border-radius: 10px;
+  background: #fff;
+}
+.challenge-card-main { min-width: 0; flex: 1; }
+.challenge-card-heading { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.challenge-card-heading h4 { margin: 0; font-size: 17px; }
+.challenge-card-group { margin-top: 4px; color: #495057; font-size: 13px; }
+.challenge-card-meta { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 9px; color: #6c757d; font-size: 12px; }
+.challenge-status { padding: 3px 8px; border-radius: 99px; background: #e9ecef; color: #495057; font-size: 11px; font-weight: 600; }
+.challenge-status-open { background: #d1e7dd; color: #0f5132; }
+.challenge-status-in_progress { background: #cfe2ff; color: #084298; }
+.challenge-status-completed { background: #e2e3e5; color: #41464b; }
+.challenge-status-cancelled { background: #f8d7da; color: #842029; }
 
 @media (max-width: 640px) {
   .section-switch { width: 100%; }
@@ -456,6 +526,8 @@
   .groups-layout { flex-direction: column; }
   .groups-sidebar { width: 100%; border-right: none; border-bottom: 1px solid #dee2e6; }
   .stat-row { flex-wrap: wrap; }
+  .challenge-list-header, .challenge-card { align-items: stretch; flex-direction: column; }
+  .challenge-list-header .action-btn, .challenge-card > .action-btn { text-align: center; }
 }
 
 .btn-danger { background: #dc3545; border-color: #dc3545; color: #fff; }

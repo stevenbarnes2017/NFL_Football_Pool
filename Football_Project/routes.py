@@ -1816,6 +1816,9 @@ def join_group():
 @login_required
 def groups():
     from Football_Project.services.group_service import get_active_group_id
+    from Football_Project.services.challenge_access_service import (
+        build_visible_challenge_summaries,
+    )
  
     active_group_id = get_active_group_id()
     initial_section = request.args.get("section", "groups")
@@ -1878,6 +1881,8 @@ def groups():
             "rank": rank,
         }
     # ───────────────────────────────────────────────────────────────────────
+
+    challenge_summaries = build_visible_challenge_summaries(current_user)
  
     return render_template(
         "groups.html",
@@ -1885,6 +1890,7 @@ def groups():
         active_group_id=active_group_id,
         group_stats=group_stats,
         initial_section=initial_section,
+        challenge_summaries=challenge_summaries,
     )
 
 @main_bp.app_context_processor

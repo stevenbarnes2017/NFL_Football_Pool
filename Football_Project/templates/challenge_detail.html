@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+
+{% block title %}{{ detail.challenge.name }}{% endblock %}
+
+{% block content %}
+{% set challenge = detail.challenge %}
+<div class="container mt-4 challenge-detail-page">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="challenge-messages" role="status">
+        {% for category, message in messages %}
+          <div class="challenge-message challenge-message-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+  <div class="challenge-detail-header">
+    <div>
+      <div class="challenge-detail-title-row">
+        <h2>{{ challenge.name }}</h2>
+        <span class="detail-status detail-status-{{ detail.status }}">
+          {{ detail.status|replace('_', ' ')|title }}
+        </span>
+      </div>
+      <p>{{ challenge.group.name }} &middot; Week {{ challenge.week }}</p>
+    </div>
+    <div class="challenge-header-actions">
+      {% if detail.can_cancel %}
+      <form method="post" action="{{ url_for('challenges.cancel_challenge', challenge_id=challenge.id) }}" onsubmit="return confirm('Cancel this challenge? Picks and history will remain visible, but no further picks can be saved.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="action-btn cancel-challenge-btn">Cancel Challenge</button>
+      </form>
+      {% endif %}
+      <a href="{{ url_for('main.groups', section='challenges') }}" class="action-btn btn-outline">
+        Back to Challenges
+      </a>
+    </div>
+  </div>
+
+  {% if detail.status == 'cancelled' %}
+  <div class="cancelled-notice" role="status">
+    <strong>Challenge cancelled</strong>
+    {% if challenge.cancelled_by %}
+      by {{ challenge.cancelled_by.full_name or challenge.cancelled_by.username }}
+    {% endif %}
+    {% if challenge.cancelled_at %}
+      on {{ challenge.cancelled_at | fmt_mt }}
+    {% endif %}.
+    Challenge history remains available, but picks can no longer be changed.
+  </div>
+  {% endif %}
+
+  {% if challenge.description %}
+  <div class="challenge-detail-section">
+    <h3>About</h3>
+    <p>{{ challenge.description }}</p>
+  </div>
+  {% endif %}
+
+  {% if detail.status == 'completed' %}
+  <section class="challenge-detail-section winners-section">
+    <h3>{% if detail.winners|length == 1 %}Winner{% else %}Winners{% endif %}</h3>
+    <div class="winner-list">
+      {% for participant in detail.winners %}
+        <span>{{ participant.user.full_name or participant.user.username }}</span>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="challenge-detail-section standings-section">
+    <div class="section-heading-row">
+      <h3>Standings</h3>
+      {% if detail.status == 'in_progress' %}<span class="provisional-label">Provisional</span>{% endif %}
+    </div>
+    <div class="standings-table-wrap">
+      <table class="standings-table">
+        <thead><tr><th>Participant</th><th>Correct</th><th>Graded</th><th>Remaining</th></tr></thead>
+        <tbody>
+          {% for standing in detail.standings %}
+          <tr>
+            <td>
+              {{ standing.participant.user.full_name or standing.participant.user.username }}
+              {% if standing.is_winner %}<span class="winner-badge">Winner</span>{% endif %}
+            </td>
+            <td>{{ standing.correct_count }}</td>
+            <td>{{ standing.graded_count }}</td>
+            <td>{{ standing.remaining_count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="challenge-detail-grid">
+    <section class="challenge-detail-section">
+      <h3>Participants</h3>
+      <p class="section-note">Created by {{ challenge.creator.full_name or challenge.creator.username }}</p>
+      <ul class="participant-list">
+        {% for participant in detail.participants %}
+          <li>
+            {{ participant.user.full_name or participant.user.username }}
+            {% if participant.user_id == challenge.creator_user_id %}<span>Creator</span>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <section class="challenge-detail-section games-section">
+      <h3>Selected Games</h3>
+      {% if detail.current_participant and not detail.can_submit_picks %}
+        <p class="pick-notice">Picks are read-only because the challenge is cancelled or your group membership is inactive.</p>
+      {% endif %}
+      {% if detail.can_submit_picks %}
+      <form method="post" action="{{ url_for('challenges.submit_challenge_picks', challenge_id=challenge.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% endif %}
+      <div class="detail-game-list">
+        {% for row in detail.games %}
+          <article class="detail-game-card">
+            <div class="game-information">
+              <strong>{{ row.game.away_team }} @ {{ row.game.home_team }}</strong>
+              <div class="game-kickoff">{{ row.game.commence_time_mt | fmt_mt }}</div>
+              <div class="game-status">Game status: {{ (row.game.status or 'Unknown')|replace('STATUS_', '')|replace('_', ' ')|title }}</div>
+              {% if detail.current_participant %}
+                {% if row.locked or not detail.can_submit_picks %}
+                  <div class="saved-pick">
+                    {% if row.current_pick %}
+                      Your pick: <strong>{{ row.current_pick.team_picked }}</strong>
+                    {% else %}
+                      No pick submitted
+                    {% endif %}
+                  </div>
+                {% else %}
+                  <fieldset class="team-options">
+                    <legend class="visually-hidden">Pick a winner for {{ row.game.away_team }} at {{ row.game.home_team }}</legend>
+                    {% for team in [row.game.away_team, row.game.home_team] %}
+                      <label>
+                        <input
+                          type="radio"
+                          name="pick_{{ row.challenge_game.id }}"
+                          value="{{ team }}"
+                          {% if row.current_pick and row.current_pick.team_picked == team %}checked{% endif %}
+                        >
+                        {{ team }}
+                      </label>
+                    {% endfor %}
+                  </fieldset>
+                {% endif %}
+              {% endif %}
+              <div class="participant-picks">
+                {% for pick_row in row.participant_picks %}
+                  <div class="participant-pick-row">
+                    <span>{{ pick_row.participant.user.full_name or pick_row.participant.user.username }}</span>
+                    {% if not pick_row.visible %}
+                      <span class="pick-hidden">Hidden until kickoff</span>
+                    {% elif pick_row.has_pick %}
+                      <span class="revealed-pick {% if pick_row.correct is sameas true %}pick-correct{% elif pick_row.correct is sameas false %}pick-incorrect{% endif %}">
+                        {{ pick_row.team_picked }}
+                        {% if pick_row.correct is sameas true %}&check;{% elif pick_row.correct is sameas false %}&times;{% endif %}
+                      </span>
+                    {% else %}
+                      <span class="pick-missing">No pick submitted</span>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+            <span class="game-lock {% if row.locked %}game-locked{% else %}game-open{% endif %}">
+              {% if row.locked %}Locked{% else %}Open{% endif %}
+            </span>
+          </article>
+        {% endfor %}
+      </div>
+      {% if detail.can_submit_picks %}
+        {% if detail.games|selectattr('locked', 'equalto', false)|list %}
+          <button type="submit" class="action-btn save-picks-btn">Save Picks</button>
+        {% endif %}
+      </form>
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+<style>
+.challenge-detail-page { max-width: 980px; }
+.challenge-messages { display: grid; gap: 8px; margin-bottom: 14px; }
+.challenge-message { padding: 10px 12px; border: 1px solid #badbcc; border-radius: 8px; background: #d1e7dd; color: #0f5132; }
+.challenge-message-danger { border-color: #f1aeb5; background: #f8d7da; color: #842029; }
+.challenge-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.challenge-detail-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.challenge-detail-title-row h2 { margin: 0; }
+.challenge-detail-header p { margin: 5px 0 0; color: #6c757d; }
+.challenge-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.challenge-header-actions form { margin: 0; }
+.cancel-challenge-btn { border: 1px solid #dc3545; background: #fff; color: #b02a37; cursor: pointer; }
+.cancelled-notice { margin-bottom: 14px; padding: 12px 14px; border: 1px solid #f1aeb5; border-radius: 9px; background: #f8d7da; color: #842029; }
+.detail-status, .game-lock { padding: 3px 9px; border-radius: 99px; background: #e9ecef; color: #495057; font-size: 11px; font-weight: 600; }
+.detail-status-open, .game-open { background: #d1e7dd; color: #0f5132; }
+.detail-status-in_progress { background: #cfe2ff; color: #084298; }
+.detail-status-completed { background: #e2e3e5; color: #41464b; }
+.detail-status-cancelled { background: #f8d7da; color: #842029; }
+.game-locked { background: #e2e3e5; color: #41464b; }
+.challenge-detail-grid { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr); gap: 14px; }
+.challenge-detail-section { padding: 18px; border: 1px solid #dee2e6; border-radius: 10px; background: #fff; }
+.standings-section, .winners-section { margin-bottom: 14px; }
+.section-heading-row { display: flex; align-items: center; gap: 9px; }
+.section-heading-row h3 { margin-bottom: 0; }
+.provisional-label, .winner-badge { padding: 2px 7px; border-radius: 99px; background: #fff3cd; color: #664d03; font-size: 10px; font-weight: 700; }
+.winner-badge { margin-left: 5px; background: #d1e7dd; color: #0f5132; }
+.winner-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.winner-list span { padding: 7px 11px; border-radius: 8px; background: #d1e7dd; color: #0f5132; font-weight: 600; }
+.standings-table-wrap { margin-top: 12px; overflow-x: auto; }
+.standings-table { width: 100%; border-collapse: collapse; }
+.standings-table th, .standings-table td { padding: 9px 8px; border-top: 1px solid #e9ecef; text-align: right; white-space: nowrap; }
+.standings-table th:first-child, .standings-table td:first-child { text-align: left; width: 100%; }
+.challenge-detail-section h3 { margin: 0 0 12px; font-size: 17px; }
+.challenge-detail-section > p { margin: 0; white-space: pre-wrap; }
+.section-note { color: #6c757d; font-size: 12px; }
+.participant-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.participant-list li { display: flex; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid #eee; }
+.participant-list li span { color: #6c757d; font-size: 11px; }
+.detail-game-list { display: grid; gap: 8px; }
+.detail-game-card { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px; border: 1px solid #e9ecef; border-radius: 8px; }
+.game-information { min-width: 0; flex: 1; }
+.game-kickoff, .game-status { margin-top: 3px; color: #6c757d; font-size: 12px; }
+.team-options { display: grid; gap: 7px; margin: 12px 0 0; padding: 0; border: 0; }
+.team-options label { display: flex; align-items: center; gap: 8px; min-height: 36px; margin: 0; padding: 6px 10px; border: 1px solid #dee2e6; border-radius: 7px; cursor: pointer; }
+.team-options input { margin: 0; }
+.saved-pick { margin-top: 10px; color: #495057; font-size: 13px; }
+.participant-picks { display: grid; gap: 5px; margin-top: 12px; padding-top: 9px; border-top: 1px solid #eee; font-size: 12px; }
+.participant-pick-row { display: flex; justify-content: space-between; gap: 10px; }
+.participant-pick-row > span:last-child { text-align: right; }
+.pick-hidden, .pick-missing { color: #6c757d; }
+.pick-correct { color: #0f5132; font-weight: 600; }
+.pick-incorrect { color: #842029; }
+.pick-notice { margin: 0 0 12px !important; color: #6c757d; font-size: 13px; }
+.save-picks-btn { margin-top: 14px; border: 0; cursor: pointer; }
+@media (max-width: 640px) {
+  .challenge-detail-header, .detail-game-card { flex-direction: column; }
+  .challenge-header-actions { width: 100%; justify-content: stretch; }
+  .challenge-header-actions form, .challenge-header-actions .action-btn { width: 100%; text-align: center; }
+  .challenge-detail-grid { grid-template-columns: 1fr; }
+}
+</style>
+{% endblock %}

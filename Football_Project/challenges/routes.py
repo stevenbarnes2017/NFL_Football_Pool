@@ -9,6 +9,21 @@ from Football_Project.services.challenge_creation_service import (
     load_eligible_group_members,
     validate_active_group_membership,
 )
+from Football_Project.services.challenge_access_service import (
+    build_challenge_detail,
+    can_view_challenge,
+    get_challenge_for_detail,
+)
+from Football_Project.services.challenge_pick_service import (
+    ChallengePickAuthorizationError,
+    ChallengePickValidationError,
+    save_challenge_picks,
+)
+from Football_Project.services.challenge_cancellation_service import (
+    ChallengeCancellationError,
+    cancel_challenge as cancel_challenge_record,
+    can_cancel_challenge,
+)
 
 from . import challenges_bp
 
@@ -62,3 +77,74 @@ def create_challenge(group_id):
 
     flash(f'Challenge "{challenge.name}" created successfully.', "success")
     return redirect(url_for("main.groups", section="challenges"))
+
+
+@challenges_bp.route("/challenges/<int:challenge_id>", methods=["GET"])
+@login_required
+def challenge_detail(challenge_id):
+    challenge = get_challenge_for_detail(challenge_id)
+    if challenge is None:
+        abort(404)
+    if not can_view_challenge(current_user, challenge):
+        abort(403)
+    return render_template(
+        "challenge_detail.html",
+        detail=build_challenge_detail(challenge, user=current_user),
+    )
+
+
+@challenges_bp.route("/challenges/<int:challenge_id>/picks", methods=["POST"])
+@login_required
+def submit_challenge_picks(challenge_id):
+    challenge = get_challenge_for_detail(challenge_id)
+    if challenge is None:
+        abort(404)
+
+    submitted = []
+    for key, value in request.form.items(multi=True):
+        if key.startswith("pick_"):
+            submitted.append((key.removeprefix("pick_"), value))
+
+    try:
+        result = save_challenge_picks(
+            challenge=challenge,
+            user_id=current_user.id,
+            submitted_picks=submitted,
+        )
+    except ChallengePickAuthorizationError as exc:
+        abort(403, description=str(exc))
+    except ChallengePickValidationError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("challenges.challenge_detail", challenge_id=challenge.id))
+
+    if result["locked"]:
+        flash(
+            f'Picks saved. {result["locked"]} locked game(s) were left unchanged.',
+            "success",
+        )
+    else:
+        flash("Picks saved successfully.", "success")
+    return redirect(url_for("challenges.challenge_detail", challenge_id=challenge.id))
+
+
+@challenges_bp.route("/challenges/<int:challenge_id>/cancel", methods=["POST"])
+@login_required
+def cancel_challenge(challenge_id):
+    challenge = get_challenge_for_detail(challenge_id)
+    if challenge is None:
+        abort(404)
+    if not can_cancel_challenge(current_user, challenge):
+        abort(403)
+
+    try:
+        cancel_challenge_record(challenge, current_user)
+    except ChallengeCancellationError as exc:
+        flash(str(exc), "danger")
+        return redirect(
+            url_for("challenges.challenge_detail", challenge_id=challenge.id)
+        )
+
+    flash(f'Challenge "{challenge.name}" cancelled successfully.', "success")
+    return redirect(
+        url_for("challenges.challenge_detail", challenge_id=challenge.id)
+    )

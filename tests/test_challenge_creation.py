@@ -11,15 +11,33 @@ from Football_Project.models import (
     Challenge,
     ChallengeGame,
     ChallengeParticipant,
+    ChallengePick,
     Game,
     GroupMember,
+    Pick,
     PoolGroup,
     Settings,
     User,
+    UserScore,
 )
 from Football_Project.services.challenge_creation_service import (
     ChallengeValidationError,
     create_challenge,
+)
+from Football_Project.services.challenge_access_service import (
+    build_challenge_detail,
+    build_challenge_summary,
+    get_visible_challenges,
+)
+from Football_Project.services.challenge_pick_service import (
+    ChallengePickAuthorizationError,
+    ChallengePickValidationError,
+    save_challenge_picks,
+)
+from Football_Project.services.challenge_cancellation_service import (
+    ChallengeCancellationError,
+    can_cancel_challenge,
+    cancel_challenge,
 )
 
 
@@ -358,6 +376,629 @@ class ChallengeCreationTests(unittest.TestCase):
         self.assertEqual(Challenge.query.count(), 0)
         self.assertEqual(ChallengeParticipant.query.count(), 0)
         self.assertEqual(ChallengeGame.query.count(), 0)
+
+    def test_participant_sees_challenge(self):
+        challenge = self._create()
+        self.assertIn(
+            challenge.id,
+            [row.id for row in get_visible_challenges(self.member)],
+        )
+
+    def test_creator_sees_challenge(self):
+        challenge = self._create()
+        self.assertIn(
+            challenge.id,
+            [row.id for row in get_visible_challenges(self.creator)],
+        )
+
+    def test_unrelated_same_group_member_does_not_see_challenge(self):
+        unrelated = self._user("same-group-unrelated")
+        self._membership(unrelated, self.group)
+        db.session.commit()
+        self._create()
+        self.assertEqual(get_visible_challenges(unrelated), [])
+
+    def test_group_admin_sees_challenge(self):
+        group_admin = self._user("group-admin")
+        membership = self._membership(group_admin, self.group)
+        membership.role = "group_admin"
+        db.session.commit()
+        challenge = self._create()
+        self.assertIn(
+            challenge.id,
+            [row.id for row in get_visible_challenges(group_admin)],
+        )
+
+    def test_global_admin_sees_challenge(self):
+        self.outsider.is_admin = True
+        db.session.commit()
+        challenge = self._create()
+        self.assertIn(
+            challenge.id,
+            [row.id for row in get_visible_challenges(self.outsider)],
+        )
+
+    def test_unauthorized_detail_access_is_denied(self):
+        unrelated = self._user("detail-outsider")
+        self._membership(unrelated, self.group)
+        db.session.commit()
+        challenge = self._create()
+        self._login(unrelated)
+        response = self.client.get(f"/challenges/{challenge.id}")
+        self.assertEqual(response.status_code, 403)
+
+    def test_participant_can_open_challenge_detail(self):
+        challenge = self._create(
+            selected_game_ids=[self.early_game.id, self.late_game.id]
+        )
+        self._login(self.member)
+        response = self.client.get(f"/challenges/{challenge.id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Sunday Showdown", response.data)
+        self.assertIn(b"Primary Group", response.data)
+        self.assertIn(b"Home early", response.data)
+        self.assertIn(b"Home late", response.data)
+
+    def test_challenge_list_shows_participant_and_game_counts(self):
+        self._create(selected_game_ids=[self.early_game.id, self.late_game.id])
+        self._login(self.creator)
+        response = self.client.get("/groups?section=challenges")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"2 participants", response.data)
+        self.assertIn(b"2 games", response.data)
+        self.assertIn(b"Open Challenge", response.data)
+
+    def test_open_status(self):
+        challenge = self._create()
+        summary = build_challenge_summary(challenge, now_utc=self.now)
+        self.assertEqual(summary["status"], "open")
+
+    def test_in_progress_status(self):
+        challenge = self._create()
+        self.early_game.commence_time_mt = (
+            (self.now - timedelta(minutes=1))
+            .astimezone(ZoneInfo("America/Denver"))
+            .replace(tzinfo=None)
+        )
+        self.early_game.status = "STATUS_IN_PROGRESS"
+        db.session.commit()
+        summary = build_challenge_summary(challenge, now_utc=self.now)
+        self.assertEqual(summary["status"], "in_progress")
+
+    def test_completed_status(self):
+        challenge = self._create()
+        self.early_game.status = "STATUS_FINAL"
+        self.early_game.home_team_score = 24
+        self.early_game.away_team_score = 17
+        db.session.commit()
+        summary = build_challenge_summary(challenge, now_utc=self.now)
+        self.assertEqual(summary["status"], "completed")
+
+    def test_cancelled_status(self):
+        challenge = self._create()
+        challenge.cancelled_at = self.now
+        db.session.commit()
+        summary = build_challenge_summary(challenge, now_utc=self.now)
+        self.assertEqual(summary["status"], "cancelled")
+
+    def test_detail_games_are_ordered_by_display_order(self):
+        challenge = self._create(
+            selected_game_ids=[self.late_game.id, self.early_game.id]
+        )
+        challenge.challenge_games.reverse()
+        detail = build_challenge_detail(challenge, now_utc=self.now)
+        self.assertEqual(
+            [row["game"].id for row in detail["games"]],
+            [self.early_game.id, self.late_game.id],
+        )
+
+    def _save_picks(self, challenge, user=None, picks=None, now=None):
+        return save_challenge_picks(
+            challenge=challenge,
+            user_id=(user or self.member).id,
+            submitted_picks=picks or [],
+            now_utc=now or self.now,
+        )
+
+    def _lock_game(self, game, when=None):
+        game.commence_time_mt = (
+            (when or self.now).astimezone(ZoneInfo("America/Denver")).replace(
+                tzinfo=None
+            )
+        )
+        db.session.commit()
+
+    def test_participant_can_submit_home_team_pick_before_kickoff(self):
+        challenge = self._create()
+        row = challenge.challenge_games[0]
+        result = self._save_picks(
+            challenge, picks=[(row.id, self.early_game.home_team)]
+        )
+        pick = ChallengePick.query.one()
+        self.assertEqual(result["created"], 1)
+        self.assertEqual(pick.team_picked, self.early_game.home_team)
+
+    def test_participant_can_submit_away_team_pick(self):
+        challenge = self._create()
+        row = challenge.challenge_games[0]
+        self._save_picks(challenge, picks=[(row.id, self.early_game.away_team)])
+        self.assertEqual(ChallengePick.query.one().team_picked, self.early_game.away_team)
+
+    def test_non_participant_cannot_submit(self):
+        challenge = self._create()
+        with self.assertRaises(ChallengePickAuthorizationError):
+            self._save_picks(challenge, user=self.outsider)
+
+    def test_group_admin_non_participant_cannot_submit(self):
+        admin = self._user("pick-group-admin")
+        membership = self._membership(admin, self.group)
+        membership.role = "group_admin"
+        db.session.commit()
+        challenge = self._create()
+        with self.assertRaises(ChallengePickAuthorizationError):
+            self._save_picks(challenge, user=admin)
+
+    def test_global_admin_non_participant_cannot_submit(self):
+        self.outsider.is_admin = True
+        db.session.commit()
+        challenge = self._create()
+        with self.assertRaises(ChallengePickAuthorizationError):
+            self._save_picks(challenge, user=self.outsider)
+
+    def test_participant_removed_from_group_cannot_submit(self):
+        challenge = self._create()
+        GroupMember.query.filter_by(user_id=self.member.id, group_id=self.group.id).one().is_active = False
+        db.session.commit()
+        with self.assertRaises(ChallengePickAuthorizationError):
+            self._save_picks(challenge)
+
+    def test_invalid_team_is_rejected(self):
+        challenge = self._create()
+        with self.assertRaises(ChallengePickValidationError):
+            self._save_picks(challenge, picks=[(challenge.challenge_games[0].id, "Not A Team")])
+        self.assertEqual(ChallengePick.query.count(), 0)
+
+    def test_game_not_in_challenge_is_rejected(self):
+        challenge = self._create()
+        with self.assertRaises(ChallengePickValidationError):
+            self._save_picks(challenge, picks=[(999999, self.late_game.home_team)])
+
+    def test_existing_unlocked_pick_can_be_updated(self):
+        challenge = self._create()
+        row = challenge.challenge_games[0]
+        self._save_picks(challenge, picks=[(row.id, self.early_game.home_team)])
+        self._save_picks(challenge, picks=[(row.id, self.early_game.away_team)])
+        self.assertEqual(ChallengePick.query.one().team_picked, self.early_game.away_team)
+
+    def test_exactly_at_kickoff_is_locked(self):
+        challenge = self._create()
+        row = challenge.challenge_games[0]
+        self._lock_game(self.early_game, self.now)
+        result = self._save_picks(challenge, picks=[(row.id, self.early_game.home_team)])
+        self.assertEqual(result["locked"], 1)
+        self.assertEqual(ChallengePick.query.count(), 0)
+
+    def test_after_kickoff_is_locked(self):
+        challenge = self._create()
+        row = challenge.challenge_games[0]
+        self._lock_game(self.early_game, self.now - timedelta(seconds=1))
+        result = self._save_picks(challenge, picks=[(row.id, self.early_game.home_team)])
+        self.assertEqual(result["locked"], 1)
+        self.assertEqual(ChallengePick.query.count(), 0)
+
+    def test_locked_existing_pick_is_unchanged(self):
+        challenge = self._create()
+        row = challenge.challenge_games[0]
+        self._save_picks(challenge, picks=[(row.id, self.early_game.home_team)])
+        self._lock_game(self.early_game)
+        self._save_picks(challenge, picks=[(row.id, self.early_game.away_team)])
+        self.assertEqual(ChallengePick.query.one().team_picked, self.early_game.home_team)
+
+    def test_locked_missing_pick_cannot_be_created(self):
+        challenge = self._create()
+        row = challenge.challenge_games[0]
+        self._lock_game(self.early_game)
+        self._save_picks(challenge, picks=[(row.id, self.early_game.home_team)])
+        self.assertEqual(ChallengePick.query.count(), 0)
+
+    def test_locked_game_is_skipped_while_later_game_is_saved(self):
+        challenge = self._create(selected_game_ids=[self.early_game.id, self.late_game.id])
+        rows = {row.game_id: row for row in challenge.challenge_games}
+        self._lock_game(self.early_game)
+        result = self._save_picks(challenge, picks=[
+            (rows[self.early_game.id].id, self.early_game.home_team),
+            (rows[self.late_game.id].id, self.late_game.away_team),
+        ])
+        self.assertEqual((result["locked"], result["created"]), (1, 1))
+        self.assertEqual(ChallengePick.query.one().challenge_game_id, rows[self.late_game.id].id)
+
+    def test_duplicate_submitted_game_ids_with_same_value_are_normalized(self):
+        challenge = self._create()
+        row = challenge.challenge_games[0]
+        self._save_picks(challenge, picks=[
+            (row.id, self.early_game.home_team),
+            (row.id, self.early_game.home_team),
+        ])
+        self.assertEqual(ChallengePick.query.count(), 1)
+
+    def test_conflicting_duplicate_game_ids_leave_no_partial_writes(self):
+        challenge = self._create(selected_game_ids=[self.early_game.id, self.late_game.id])
+        rows = {row.game_id: row for row in challenge.challenge_games}
+        with self.assertRaises(ChallengePickValidationError):
+            self._save_picks(challenge, picks=[
+                (rows[self.early_game.id].id, self.early_game.home_team),
+                (rows[self.late_game.id].id, self.late_game.home_team),
+                (rows[self.late_game.id].id, self.late_game.away_team),
+            ])
+        self.assertEqual(ChallengePick.query.count(), 0)
+
+    def test_current_participant_sees_saved_pick_on_detail(self):
+        challenge = self._create()
+        row = challenge.challenge_games[0]
+        self._save_picks(challenge, picks=[(row.id, self.early_game.home_team)])
+        self._login(self.member)
+        response = self.client.get(f"/challenges/{challenge.id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Save Picks", response.data)
+        self.assertIn(b"checked", response.data)
+
+    def test_non_participant_detail_remains_read_only(self):
+        admin = self._user("readonly-admin")
+        membership = self._membership(admin, self.group)
+        membership.role = "group_admin"
+        db.session.commit()
+        challenge = self._create()
+        self._login(admin)
+        response = self.client.get(f"/challenges/{challenge.id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"Save Picks", response.data)
+        self.assertNotIn(b'type="radio"', response.data)
+
+    def test_non_participant_pick_route_is_denied(self):
+        challenge = self._create()
+        self._login(self.outsider)
+        response = self.client.post(f"/challenges/{challenge.id}/picks")
+        self.assertEqual(response.status_code, 403)
+
+    def _save_for_user(self, challenge, user, selections):
+        return self._save_picks(
+            challenge,
+            user=user,
+            picks=[
+                (row.id, selections[row.game_id])
+                for row in challenge.challenge_games
+                if row.game_id in selections
+            ],
+        )
+
+    def _finalize(self, game, home_score, away_score):
+        game.status = "STATUS_FINAL"
+        game.home_team_score = home_score
+        game.away_team_score = away_score
+        db.session.commit()
+
+    def _standing_for(self, detail, user):
+        return next(
+            row for row in detail["standings"]
+            if row["participant"].user_id == user.id
+        )
+
+    def _game_detail_for(self, detail, game):
+        return next(row for row in detail["games"] if row["game"].id == game.id)
+
+    def test_open_challenge_standings_are_all_zero(self):
+        challenge = self._create(selected_game_ids=[self.early_game.id, self.late_game.id])
+        detail = build_challenge_detail(challenge, user=self.member, now_utc=self.now)
+        self.assertTrue(all(row["correct_count"] == 0 for row in detail["standings"]))
+        self.assertTrue(all(row["graded_count"] == 0 for row in detail["standings"]))
+        self.assertTrue(all(row["remaining_count"] == 2 for row in detail["standings"]))
+
+    def test_in_progress_standings_are_calculated(self):
+        challenge = self._create(selected_game_ids=[self.early_game.id, self.late_game.id])
+        self._save_for_user(challenge, self.member, {self.early_game.id: self.early_game.home_team})
+        self._lock_game(self.early_game)
+        self._finalize(self.early_game, 24, 17)
+        detail = build_challenge_detail(challenge, user=self.member, now_utc=self.now)
+        standing = self._standing_for(detail, self.member)
+        self.assertEqual(detail["status"], "in_progress")
+        self.assertEqual((standing["correct_count"], standing["graded_count"], standing["remaining_count"]), (1, 1, 1))
+
+    def test_completed_standings_and_single_winner(self):
+        challenge = self._create()
+        self._save_for_user(challenge, self.creator, {self.early_game.id: self.early_game.away_team})
+        self._save_for_user(challenge, self.member, {self.early_game.id: self.early_game.home_team})
+        self._finalize(self.early_game, 21, 14)
+        detail = build_challenge_detail(challenge, user=self.member, now_utc=self.now)
+        self.assertEqual(detail["status"], "completed")
+        self.assertEqual([row.user_id for row in detail["winners"]], [self.member.id])
+        self.assertEqual(self._standing_for(detail, self.member)["correct_count"], 1)
+
+    def test_completed_challenge_supports_tied_winners(self):
+        challenge = self._create()
+        for user in (self.creator, self.member):
+            self._save_for_user(challenge, user, {self.early_game.id: self.early_game.home_team})
+        self._finalize(self.early_game, 21, 14)
+        detail = build_challenge_detail(challenge, now_utc=self.now)
+        self.assertCountEqual([row.user_id for row in detail["winners"]], [self.creator.id, self.member.id])
+
+    def test_corrected_score_changes_winner_dynamically(self):
+        challenge = self._create()
+        self._save_for_user(challenge, self.creator, {self.early_game.id: self.early_game.home_team})
+        self._save_for_user(challenge, self.member, {self.early_game.id: self.early_game.away_team})
+        self._finalize(self.early_game, 21, 14)
+        first = build_challenge_detail(challenge, now_utc=self.now)
+        self.assertEqual(first["winners"][0].user_id, self.creator.id)
+        self._finalize(self.early_game, 14, 21)
+        corrected = build_challenge_detail(challenge, now_utc=self.now)
+        self.assertEqual(corrected["winners"][0].user_id, self.member.id)
+
+    def test_nfl_tie_is_graded_without_correct_pick(self):
+        challenge = self._create()
+        self._save_for_user(challenge, self.member, {self.early_game.id: self.early_game.home_team})
+        self._finalize(self.early_game, 20, 20)
+        standing = self._standing_for(build_challenge_detail(challenge, now_utc=self.now), self.member)
+        self.assertEqual((standing["correct_count"], standing["graded_count"]), (0, 1))
+
+    def test_participant_sees_own_unlocked_pick_only(self):
+        challenge = self._create()
+        self._save_for_user(challenge, self.creator, {self.early_game.id: self.early_game.away_team})
+        self._save_for_user(challenge, self.member, {self.early_game.id: self.early_game.home_team})
+        detail = build_challenge_detail(challenge, user=self.member, now_utc=self.now)
+        rows = self._game_detail_for(detail, self.early_game)["participant_picks"]
+        own = next(row for row in rows if row["participant"].user_id == self.member.id)
+        other = next(row for row in rows if row["participant"].user_id == self.creator.id)
+        self.assertEqual(own["team_picked"], self.early_game.home_team)
+        self.assertFalse(other["visible"])
+        self.assertIsNone(other["team_picked"])
+
+    def test_nonparticipant_admin_cannot_see_unlocked_picks(self):
+        admin = self._user("reveal-admin")
+        membership = self._membership(admin, self.group)
+        membership.role = "group_admin"
+        challenge = self._create()
+        self._save_for_user(challenge, self.member, {self.early_game.id: self.early_game.home_team})
+        db.session.commit()
+        detail = build_challenge_detail(challenge, user=admin, now_utc=self.now)
+        self.assertTrue(all(not row["visible"] for row in detail["games"][0]["participant_picks"]))
+
+    def test_exactly_at_kickoff_reveals_all_picks(self):
+        challenge = self._create()
+        self._save_for_user(challenge, self.member, {self.early_game.id: self.early_game.home_team})
+        self._lock_game(self.early_game, self.now)
+        detail = build_challenge_detail(challenge, user=self.creator, now_utc=self.now)
+        self.assertTrue(all(row["visible"] for row in detail["games"][0]["participant_picks"]))
+
+    def test_after_kickoff_reveals_all_picks(self):
+        challenge = self._create()
+        self._lock_game(self.early_game, self.now - timedelta(seconds=1))
+        detail = build_challenge_detail(challenge, now_utc=self.now)
+        self.assertTrue(all(row["visible"] for row in detail["games"][0]["participant_picks"]))
+
+    def test_thursday_revealed_while_sunday_remains_hidden(self):
+        challenge = self._create(selected_game_ids=[self.early_game.id, self.late_game.id])
+        self._lock_game(self.early_game)
+        detail = build_challenge_detail(challenge, now_utc=self.now)
+        self.assertTrue(all(row["visible"] for row in self._game_detail_for(detail, self.early_game)["participant_picks"]))
+        self.assertTrue(all(not row["visible"] for row in self._game_detail_for(detail, self.late_game)["participant_picks"]))
+
+    def test_revealed_game_identifies_missing_pick(self):
+        challenge = self._create()
+        self._lock_game(self.early_game)
+        detail = build_challenge_detail(challenge, now_utc=self.now)
+        rows = detail["games"][0]["participant_picks"]
+        self.assertTrue(all(row["visible"] and row["has_pick"] is False for row in rows))
+
+    def test_final_game_marks_correct_and_incorrect_picks(self):
+        challenge = self._create()
+        self._save_for_user(challenge, self.creator, {self.early_game.id: self.early_game.away_team})
+        self._save_for_user(challenge, self.member, {self.early_game.id: self.early_game.home_team})
+        self._lock_game(self.early_game)
+        self._finalize(self.early_game, 24, 17)
+        rows = build_challenge_detail(challenge, now_utc=self.now)["games"][0]["participant_picks"]
+        results = {row["participant"].user_id: row["correct"] for row in rows}
+        self.assertEqual(results, {self.creator.id: False, self.member.id: True})
+
+    def test_completed_detail_renders_winner_badge(self):
+        challenge = self._create()
+        self._save_for_user(challenge, self.member, {self.early_game.id: self.early_game.home_team})
+        self._finalize(self.early_game, 24, 17)
+        self._login(self.member)
+        response = self.client.get(f"/challenges/{challenge.id}")
+        self.assertIn(b"Winner", response.data)
+
+    def test_standing_order_is_deterministic_without_changing_tied_winners(self):
+        self.creator.full_name = "Zulu"
+        self.member.full_name = "Alpha"
+        challenge = self._create()
+        self._finalize(self.early_game, 24, 17)
+        detail = build_challenge_detail(challenge, now_utc=self.now)
+        self.assertEqual([row["participant"].user_id for row in detail["standings"]], [self.member.id, self.creator.id])
+        self.assertCountEqual([row.user_id for row in detail["winners"]], [self.creator.id, self.member.id])
+
+    def test_detail_reads_do_not_write_challenge_pick_data(self):
+        challenge = self._create()
+        self._save_for_user(challenge, self.member, {self.early_game.id: self.early_game.home_team})
+        before = [(row.id, row.team_picked, row.updated_at) for row in ChallengePick.query.all()]
+        build_challenge_detail(challenge, user=self.member, now_utc=self.now)
+        after = [(row.id, row.team_picked, row.updated_at) for row in ChallengePick.query.all()]
+        self.assertEqual(after, before)
+        self.assertFalse(db.session.new)
+        self.assertFalse(db.session.dirty)
+
+    def test_creator_can_cancel_open_challenge(self):
+        challenge = self._create()
+        cancel_challenge(challenge, self.creator, now_utc=self.now)
+        self.assertIsNotNone(challenge.cancelled_at)
+        self.assertEqual(challenge.cancelled_by_user_id, self.creator.id)
+
+    def test_creator_can_cancel_in_progress_challenge(self):
+        challenge = self._create()
+        self._lock_game(self.early_game)
+        cancel_challenge(challenge, self.creator, now_utc=self.now)
+        self.assertIsNotNone(challenge.cancelled_at)
+
+    def test_group_admin_can_cancel(self):
+        admin = self._user("cancel-admin")
+        membership = self._membership(admin, self.group)
+        membership.role = "group_admin"
+        db.session.commit()
+        challenge = self._create()
+        self.assertTrue(can_cancel_challenge(admin, challenge))
+        cancel_challenge(challenge, admin, now_utc=self.now)
+        self.assertEqual(challenge.cancelled_by_user_id, admin.id)
+
+    def test_inactive_former_group_admin_cannot_cancel(self):
+        admin = self._user("former-cancel-admin")
+        membership = self._membership(admin, self.group, active=False)
+        membership.role = "group_admin"
+        db.session.commit()
+        challenge = self._create()
+        self.assertFalse(can_cancel_challenge(admin, challenge))
+
+    def test_global_admin_can_cancel_without_membership(self):
+        self.outsider.is_admin = True
+        db.session.commit()
+        challenge = self._create()
+        cancel_challenge(challenge, self.outsider, now_utc=self.now)
+        self.assertEqual(challenge.cancelled_by_user_id, self.outsider.id)
+
+    def test_unrelated_participant_cannot_cancel(self):
+        challenge = self._create()
+        self.assertFalse(can_cancel_challenge(self.member, challenge))
+        with self.assertRaises(PermissionError):
+            cancel_challenge(challenge, self.member, now_utc=self.now)
+
+    def test_unrelated_group_member_cannot_cancel(self):
+        member = self._user("cancel-unrelated-member")
+        self._membership(member, self.group)
+        db.session.commit()
+        challenge = self._create()
+        self.assertFalse(can_cancel_challenge(member, challenge))
+
+    def test_completed_challenge_cannot_be_cancelled(self):
+        challenge = self._create()
+        self._finalize(self.early_game, 24, 17)
+        with self.assertRaisesRegex(ChallengeCancellationError, "completed"):
+            cancel_challenge(challenge, self.creator, now_utc=self.now)
+        self.assertIsNone(challenge.cancelled_at)
+
+    def test_already_cancelled_challenge_cannot_be_cancelled_again(self):
+        challenge = self._create()
+        cancel_challenge(challenge, self.creator, now_utc=self.now)
+        original = challenge.cancelled_at
+        with self.assertRaisesRegex(ChallengeCancellationError, "already cancelled"):
+            cancel_challenge(challenge, self.creator, now_utc=self.now + timedelta(minutes=1))
+        self.assertEqual(challenge.cancelled_at, original)
+
+    def test_cancellation_preserves_participants_games_and_picks(self):
+        challenge = self._create()
+        self._save_for_user(challenge, self.member, {self.early_game.id: self.early_game.home_team})
+        counts = (
+            ChallengeParticipant.query.count(),
+            ChallengeGame.query.count(),
+            ChallengePick.query.count(),
+        )
+        cancel_challenge(challenge, self.creator, now_utc=self.now)
+        self.assertEqual(
+            (
+                ChallengeParticipant.query.count(),
+                ChallengeGame.query.count(),
+                ChallengePick.query.count(),
+            ),
+            counts,
+        )
+
+    def test_cancelled_challenge_rejects_pick_updates(self):
+        challenge = self._create()
+        row = challenge.challenge_games[0]
+        self._save_picks(challenge, picks=[(row.id, self.early_game.home_team)])
+        cancel_challenge(challenge, self.creator, now_utc=self.now)
+        with self.assertRaises(ChallengePickValidationError):
+            self._save_picks(challenge, picks=[(row.id, self.early_game.away_team)])
+        self.assertEqual(ChallengePick.query.one().team_picked, self.early_game.home_team)
+
+    def test_cancelled_challenge_hides_save_and_cancel_controls(self):
+        challenge = self._create()
+        cancel_challenge(challenge, self.creator, now_utc=self.now)
+        self._login(self.creator)
+        response = self.client.get(f"/challenges/{challenge.id}")
+        self.assertNotIn(b"Save Picks", response.data)
+        self.assertNotIn(b">Cancel Challenge</button>", response.data)
+        self.assertIn(b"Challenge cancelled", response.data)
+
+    def test_completed_challenge_hides_cancel_control(self):
+        challenge = self._create()
+        self._finalize(self.early_game, 24, 17)
+        self._login(self.creator)
+        response = self.client.get(f"/challenges/{challenge.id}")
+        self.assertNotIn(b">Cancel Challenge</button>", response.data)
+
+    def test_cancel_button_only_visible_to_authorized_users(self):
+        challenge = self._create()
+        participant_detail = build_challenge_detail(
+            challenge,
+            user=self.member,
+            now_utc=self.now,
+        )
+        self.assertFalse(participant_detail["can_cancel"])
+        self._login(self.creator)
+        creator_response = self.client.get(f"/challenges/{challenge.id}")
+        self.assertIn(b">Cancel Challenge</button>", creator_response.data)
+
+    def test_cancel_route_forbids_unauthorized_user(self):
+        challenge = self._create()
+        self._login(self.member)
+        response = self.client.post(f"/challenges/{challenge.id}/cancel")
+        self.assertEqual(response.status_code, 403)
+        self.assertIsNone(challenge.cancelled_at)
+
+    def test_cancel_route_redirects_with_success_feedback(self):
+        challenge = self._create()
+        self._login(self.creator)
+        response = self.client.post(
+            f"/challenges/{challenge.id}/cancel",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"cancelled successfully", response.data)
+
+    def test_cancelled_status_appears_on_list_and_detail(self):
+        challenge = self._create()
+        cancel_challenge(challenge, self.creator, now_utc=self.now)
+        self._login(self.creator)
+        detail = self.client.get(f"/challenges/{challenge.id}")
+        listing = self.client.get("/groups?section=challenges")
+        self.assertIn(b"Cancelled", detail.data)
+        self.assertIn(b"Cancelled", listing.data)
+
+    def test_cancellation_does_not_affect_normal_pick_or_user_score(self):
+        challenge = self._create()
+        regular_pick = Pick(
+            user_id=self.creator.id,
+            game_id=self.early_game.id,
+            team_picked=self.early_game.home_team,
+            week=1,
+            group_id=self.group.id,
+        )
+        score = UserScore(
+            user_id=self.creator.id,
+            week=1,
+            season_year=2026,
+            season_type="REG",
+            score=7,
+            group_id=self.group.id,
+        )
+        db.session.add_all([regular_pick, score])
+        db.session.commit()
+        cancel_challenge(challenge, self.creator, now_utc=self.now)
+        self.assertEqual(db.session.get(Pick, regular_pick.id).team_picked, self.early_game.home_team)
+        self.assertEqual(db.session.get(UserScore, score.id).score, 7)
+
+    def test_removed_creator_retains_cancellation_rights(self):
+        challenge = self._create()
+        GroupMember.query.filter_by(user_id=self.creator.id, group_id=self.group.id).one().is_active = False
+        db.session.commit()
+        self.assertTrue(can_cancel_challenge(self.creator, challenge))
 
 
 if __name__ == "__main__":
