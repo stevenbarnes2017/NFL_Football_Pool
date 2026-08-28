@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block title %}Create Challenge{% endblock %}
+
+{% block content %}
+<div class="container mt-4 challenge-form-page">
+  <div class="challenge-form-card">
+    <div class="challenge-form-header">
+      <h2>Create Challenge</h2>
+      <p>Group: <strong>{{ group.name }}</strong></p>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="form-messages" role="alert">
+          {% for category, message in messages %}
+            <div class="form-message form-message-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('challenges.create_challenge', group_id=group.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="form-section">
+        <label for="name" class="form-label">Challenge Name</label>
+        <input
+          type="text"
+          id="name"
+          name="name"
+          class="form-control"
+          maxlength="140"
+          value="{{ form_data.get('name', '') }}"
+          required
+        >
+      </div>
+
+      <div class="form-section">
+        <label for="description" class="form-label">Description <span>(optional)</span></label>
+        <textarea id="description" name="description" class="form-control" rows="3">{{ form_data.get('description', '') }}</textarea>
+      </div>
+
+      <fieldset class="form-section">
+        <legend>Participants</legend>
+        <p class="field-help">Choose at least one additional active member of {{ group.name }}.</p>
+        <div class="choice-list">
+          {% for member in members %}
+          <label class="choice-card {% if member.id == current_user.id %}choice-card-fixed{% endif %}">
+            {% if member.id == current_user.id %}
+              <input type="checkbox" checked disabled>
+              <span>{{ member.full_name or member.username }} <small>(You, included automatically)</small></span>
+            {% else %}
+              <input
+                type="checkbox"
+                name="participant_ids"
+                value="{{ member.id }}"
+                {% if member.id|string in selected_participant_ids %}checked{% endif %}
+              >
+              <span>{{ member.full_name or member.username }}</span>
+            {% endif %}
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <fieldset class="form-section">
+        <legend>Current Week Games</legend>
+        <p class="field-help">Each selected game locks independently at kickoff.</p>
+        {% if games %}
+        <div class="choice-list">
+          {% for game in games %}
+          <label class="choice-card">
+            <input
+              type="checkbox"
+              name="game_ids"
+              value="{{ game.id }}"
+              {% if game.id|string in selected_game_ids %}checked{% endif %}
+            >
+            <span>
+              <strong>{{ game.away_team }} @ {{ game.home_team }}</strong>
+              <small>{{ game.commence_time_mt | fmt_mt }}</small>
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="form-empty-state">No eligible future games are available for the current week.</div>
+        {% endif %}
+      </fieldset>
+
+      <div class="form-actions">
+        <button type="submit" class="action-btn btn-primary" {% if not games %}disabled{% endif %}>
+          Create Challenge
+        </button>
+        <a href="{{ url_for('main.groups', section='challenges') }}" class="action-btn btn-outline">
+          Cancel
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<style>
+.challenge-form-page { max-width: 820px; }
+.challenge-form-card {
+  border: 1px solid #dee2e6;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+.challenge-form-header { padding: 20px 24px; border-bottom: 1px solid #dee2e6; }
+.challenge-form-header h2 { margin: 0 0 6px; }
+.challenge-form-header p { margin: 0; color: #6c757d; }
+.form-messages { padding: 16px 24px 0; }
+.form-message { padding: 10px 12px; border-radius: 7px; background: #fff3cd; color: #664d03; }
+.form-message-danger { background: #f8d7da; color: #842029; }
+.challenge-form-card form { padding: 20px 24px 24px; }
+.form-section { margin: 0 0 22px; padding: 0; border: 0; }
+.form-section legend, .form-label {
+  display: block;
+  margin-bottom: 7px;
+  color: #212529;
+  font-size: 15px;
+  font-weight: 600;
+}
+.form-label span { color: #6c757d; font-size: 12px; font-weight: 400; }
+.form-control {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid #ced4da;
+  border-radius: 7px;
+  background: #fff;
+  color: #212529;
+  font: inherit;
+}
+.form-control:focus { outline: 3px solid rgba(13,110,253,.2); border-color: #86b7fe; }
+.field-help { margin: -2px 0 10px; color: #6c757d; font-size: 13px; }
+.choice-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.choice-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.choice-card:hover { background: #f8f9fa; }
+.choice-card-fixed { background: #f8f9fa; cursor: default; }
+.choice-card input { margin-top: 3px; flex-shrink: 0; }
+.choice-card span { min-width: 0; }
+.choice-card small { display: block; margin-top: 2px; color: #6c757d; }
+.form-empty-state { padding: 18px; border-radius: 8px; background: #f8f9fa; color: #6c757d; }
+.form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 640px) {
+  .challenge-form-header, .challenge-form-card form { padding-left: 16px; padding-right: 16px; }
+  .choice-list { grid-template-columns: 1fr; }
+  .form-actions .action-btn { flex: 1; text-align: center; }
+}
+</style>
+{% endblock %}

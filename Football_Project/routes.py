@@ -1818,6 +1818,9 @@ def groups():
     from Football_Project.services.group_service import get_active_group_id
  
     active_group_id = get_active_group_id()
+    initial_section = request.args.get("section", "groups")
+    if initial_section not in {"groups", "challenges"}:
+        initial_section = "groups"
  
     if current_user.is_admin:
         groups = (
@@ -1881,6 +1884,7 @@ def groups():
         memberships=memberships,
         active_group_id=active_group_id,
         group_stats=group_stats,
+        initial_section=initial_section,
     )
 
 @main_bp.app_context_processor

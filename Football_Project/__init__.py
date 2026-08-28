@@ -371,6 +371,9 @@ def create_app():
     from .notifications import notifications_bp
     notifications.register_blueprint(notifications_bp)
 
+    from .challenges import challenges_bp
+    notifications.register_blueprint(challenges_bp)
+
 
     # --- APScheduler wiring ---
     # ✅ Opt-in: jobs only run where RUN_SCHEDULER=1 is explicitly set.

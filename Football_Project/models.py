@@ -1,6 +1,6 @@
 from .extensions import db
 from flask_login import UserMixin
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import DateTime
 from zoneinfo import ZoneInfo
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -371,3 +371,221 @@ class NotificationSubscription(db.Model):
 
     def __repr__(self):
         return f"<NotificationSubscription user={self.user_id} active={self.active}>"
+
+
+# ----------------------------
+# Challenge Models
+# ----------------------------
+class Challenge(db.Model):
+    __tablename__ = "challenge"
+
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(
+        db.Integer,
+        db.ForeignKey("pool_group.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    creator_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    name = db.Column(db.String(140), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    season_year = db.Column(db.Integer, nullable=False)
+    season_type = db.Column(db.String(10), nullable=False)
+    week = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    cancelled_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    cancelled_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    group = db.relationship(
+        "PoolGroup",
+        backref=db.backref("challenges", lazy=True),
+    )
+    creator = db.relationship(
+        "User",
+        foreign_keys=[creator_user_id],
+        backref=db.backref("created_challenges", lazy=True),
+    )
+    cancelled_by = db.relationship(
+        "User",
+        foreign_keys=[cancelled_by_user_id],
+        backref=db.backref("cancelled_challenges", lazy=True),
+    )
+    participants = db.relationship(
+        "ChallengeParticipant",
+        back_populates="challenge",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    challenge_games = db.relationship(
+        "ChallengeGame",
+        back_populates="challenge",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    picks = db.relationship(
+        "ChallengePick",
+        back_populates="challenge",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    __table_args__ = (
+        db.Index("ix_challenge_group_created", "group_id", "created_at"),
+        db.Index(
+            "ix_challenge_season_week",
+            "season_year",
+            "season_type",
+            "week",
+        ),
+        db.Index("ix_challenge_creator_user", "creator_user_id"),
+    )
+
+
+class ChallengeParticipant(db.Model):
+    __tablename__ = "challenge_participant"
+
+    id = db.Column(db.Integer, primary_key=True)
+    challenge_id = db.Column(
+        db.Integer,
+        db.ForeignKey("challenge.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    added_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    challenge = db.relationship("Challenge", back_populates="participants")
+    user = db.relationship(
+        "User",
+        backref=db.backref("challenge_participations", lazy=True),
+    )
+    picks = db.relationship(
+        "ChallengePick",
+        back_populates="participant",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "challenge_id",
+            "user_id",
+            name="uq_challenge_participant_challenge_user",
+        ),
+        db.Index(
+            "ix_challenge_participant_user_challenge",
+            "user_id",
+            "challenge_id",
+        ),
+    )
+
+
+class ChallengeGame(db.Model):
+    __tablename__ = "challenge_game"
+
+    id = db.Column(db.Integer, primary_key=True)
+    challenge_id = db.Column(
+        db.Integer,
+        db.ForeignKey("challenge.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    game_id = db.Column(
+        db.Integer,
+        db.ForeignKey("game.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    display_order = db.Column(db.Integer, nullable=False)
+    added_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    challenge = db.relationship("Challenge", back_populates="challenge_games")
+    game = db.relationship(
+        "Game",
+        backref=db.backref("challenge_games", lazy=True),
+    )
+    picks = db.relationship(
+        "ChallengePick",
+        back_populates="challenge_game",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "challenge_id",
+            "game_id",
+            name="uq_challenge_game_challenge_game",
+        ),
+        db.UniqueConstraint(
+            "challenge_id",
+            "display_order",
+            name="uq_challenge_game_challenge_display_order",
+        ),
+        db.Index("ix_challenge_game_game", "game_id"),
+    )
+
+
+class ChallengePick(db.Model):
+    __tablename__ = "challenge_pick"
+
+    id = db.Column(db.Integer, primary_key=True)
+    challenge_id = db.Column(
+        db.Integer,
+        db.ForeignKey("challenge.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    participant_id = db.Column(
+        db.Integer,
+        db.ForeignKey("challenge_participant.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    challenge_game_id = db.Column(
+        db.Integer,
+        db.ForeignKey("challenge_game.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    team_picked = db.Column(db.String(50), nullable=False)
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    challenge = db.relationship("Challenge", back_populates="picks")
+    participant = db.relationship("ChallengeParticipant", back_populates="picks")
+    challenge_game = db.relationship("ChallengeGame", back_populates="picks")
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "participant_id",
+            "challenge_game_id",
+            name="uq_challenge_pick_participant_game",
+        ),
+    )

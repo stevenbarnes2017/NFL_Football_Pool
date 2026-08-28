@@ -1,13 +1,46 @@
 {% extends "base.html" %}
 
-{% block title %}My Groups{% endblock %}
+{% block title %}Groups &amp; Challenges{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
 
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <h2 class="mb-0">My Groups</h2>
+    <h2 class="mb-0">Groups &amp; Challenges</h2>
   </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="groups-messages" role="status">
+        {% for category, message in messages %}
+          <div class="groups-message groups-message-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="section-switch" role="tablist" aria-label="Groups and challenges">
+    <button
+      type="button"
+      class="section-switch-btn {% if initial_section != 'challenges' %}active{% endif %}"
+      id="groupsTab"
+      role="tab"
+      aria-selected="{{ 'true' if initial_section != 'challenges' else 'false' }}"
+      aria-controls="groupsPanel"
+      data-section-target="groupsPanel"
+    >My Groups</button>
+    <button
+      type="button"
+      class="section-switch-btn {% if initial_section == 'challenges' %}active{% endif %}"
+      id="challengesTab"
+      role="tab"
+      aria-selected="{{ 'true' if initial_section == 'challenges' else 'false' }}"
+      aria-controls="challengesPanel"
+      data-section-target="challengesPanel"
+    >Challenges</button>
+  </div>
+
+  <div id="groupsPanel" role="tabpanel" aria-labelledby="groupsTab" {% if initial_section == 'challenges' %}hidden{% endif %}>
 
   {% if memberships %}
   <div class="groups-layout">
@@ -145,9 +178,68 @@
   </div>
   {% endif %}
 
+  </div>
+
+  <div id="challengesPanel" role="tabpanel" aria-labelledby="challengesTab" {% if initial_section != 'challenges' %}hidden{% endif %}>
+    <div class="empty-state challenges-empty-state">
+      <h5>No challenges yet</h5>
+      <p>Create a challenge with members of your active group.</p>
+      {% if active_group_id and active_membership %}
+        <a href="{{ url_for('challenges.new_challenge', group_id=active_group_id) }}" class="action-btn btn-primary">
+          Create Challenge
+        </a>
+      {% else %}
+        <button type="button" class="action-btn btn-primary" disabled aria-disabled="true">
+          Create Challenge
+        </button>
+        <div class="coming-soon-note">Select a group where you are an active member first.</div>
+      {% endif %}
+    </div>
+  </div>
+
 </div>
 
 <style>
+/* ── Section switch ─────────────────────────────── */
+.groups-messages { margin-bottom: 16px; }
+.groups-message { padding: 10px 12px; border-radius: 7px; background: #e2e3e5; color: #41464b; }
+.groups-message-success { background: #d1e7dd; color: #0f5132; }
+.groups-message-danger { background: #f8d7da; color: #842029; }
+.groups-message-warning { background: #fff3cd; color: #664d03; }
+.section-switch {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  padding: 4px;
+  border: 1px solid #dee2e6;
+  border-radius: 9px;
+  background: #f8f9fa;
+  width: fit-content;
+  max-width: 100%;
+}
+.section-switch-btn {
+  min-height: 38px;
+  padding: 7px 18px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #495057;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.section-switch-btn:hover { color: #212529; }
+.section-switch-btn.active {
+  border-color: #ced4da;
+  background: #fff;
+  color: #212529;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.section-switch-btn:focus-visible {
+  outline: 3px solid rgba(13, 110, 253, 0.25);
+  outline-offset: 1px;
+}
+
 /* ── Layout ─────────────────────────────────────── */
 .groups-layout {
   display: flex;
@@ -350,8 +442,17 @@
   padding: 32px;
   background: #fff;
 }
+.challenges-empty-state { text-align: center; }
+.challenges-empty-state p { color: #6c757d; }
+.coming-soon-note {
+  margin-top: 10px;
+  color: #6c757d;
+  font-size: 12px;
+}
 
 @media (max-width: 640px) {
+  .section-switch { width: 100%; }
+  .section-switch-btn { flex: 1; padding-left: 10px; padding-right: 10px; }
   .groups-layout { flex-direction: column; }
   .groups-sidebar { width: 100%; border-right: none; border-bottom: 1px solid #dee2e6; }
   .stat-row { flex-wrap: wrap; }
@@ -360,6 +461,29 @@
 .btn-danger { background: #dc3545; border-color: #dc3545; color: #fff; }
 .btn-danger:hover { background: #bb2d3b; color: #fff; }
 </style>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const sectionTabs = document.querySelectorAll("[data-section-target]");
+  const sectionPanels = document.querySelectorAll("#groupsPanel, #challengesPanel");
+
+  sectionTabs.forEach(tab => {
+    tab.addEventListener("click", function () {
+      sectionTabs.forEach(item => {
+        item.classList.remove("active");
+        item.setAttribute("aria-selected", "false");
+      });
+
+      sectionPanels.forEach(panel => {
+        panel.hidden = panel.id !== this.dataset.sectionTarget;
+      });
+
+      this.classList.add("active");
+      this.setAttribute("aria-selected", "true");
+    });
+  });
+});
+</script>
 
 {% if memberships %}
 <script>
