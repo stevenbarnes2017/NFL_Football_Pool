@@ -1,152 +1,69 @@
-<!DOCTYPE html>
-<html lang="en">
-
 {% extends "base.html" %}
 {% block title %}NFL Playoff Picture{% endblock %}
+
+{% macro team_row(team) %}
+<div class="playoff-team-row{% if team.playoff_seed == 1 %} top-seed{% endif %}{% if team.playoff_seed == 8 %} below-cutoff{% endif %}">
+  {% if team.playoff_seed == 8 %}<div class="playoff-line"><span>Playoff cutoff</span></div>{% endif %}
+  <div class="seed-cell" aria-label="Seed {{ team.playoff_seed }}">{{ team.playoff_seed }}</div>
+  <div class="team-cell">
+    {% if team.logo %}<img src="{{ team.logo }}" alt="" loading="lazy">{% endif %}
+    <div><strong>{{ team.name }}</strong><div class="mobile-team-meta">{{ team.wins }}-{{ team.losses }}{% if team.ties %}-{{ team.ties }}{% endif %} &middot; Diff {% if team.point_differential > 0 %}+{% endif %}{{ team.point_differential }}</div></div>
+  </div>
+  <div class="record-cell">{{ team.wins }}-{{ team.losses }}{% if team.ties %}-{{ team.ties }}{% endif %}</div>
+  <div class="metric-cell">{{ team.points_for }}</div>
+  <div class="metric-cell">{{ team.points_against }}</div>
+  <div class="metric-cell differential{% if team.point_differential > 0 %} positive{% elif team.point_differential < 0 %} negative{% endif %}">{% if team.point_differential > 0 %}+{% endif %}{{ team.point_differential }}</div>
+  <div class="streak-cell">{{ team.streak }}</div>
+  <div class="status-cell">
+    {% if team.eliminated %}<span class="picture-badge badge-eliminated">Eliminated</span>
+    {% elif team.clinched_division %}<span class="picture-badge badge-clinched">Division clinched</span>
+    {% elif team.clinched_playoff %}<span class="picture-badge badge-clinched">Playoff spot clinched</span>
+    {% elif team.picture_status == 'division_leader' %}<span class="picture-badge badge-division">Division leader</span>
+    {% elif team.picture_status == 'wild_card' %}<span class="picture-badge badge-wildcard">Wild card</span>
+    {% elif team.picture_status == 'in_hunt' %}<span class="picture-badge badge-hunt">In the hunt</span>
+    {% else %}<span class="picture-badge badge-outside">Outside</span>{% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{% macro conference_panel(conference) %}
+{% set conference_data = standings[conference] %}
+<section class="conference-panel{% if conference == 'AFC' %} active{% endif %}" id="{{ conference|lower }}Panel" data-conference-panel="{{ conference }}" role="tabpanel" aria-labelledby="{{ conference|lower }}Tab">
+  <div class="conference-heading"><div class="conference-mark conference-mark-{{ conference|lower }}">{{ conference }}</div><div><h2>{{ conference }} standings</h2><p>Current order based on the latest available NFL standings.</p></div></div>
+  {% if conference_data.teams %}
+  <div class="playoff-table" role="table" aria-label="{{ conference }} playoff standings">
+    <div class="playoff-table-header" role="row"><span>Seed</span><span>Team</span><span>Record</span><span>PF</span><span>PA</span><span>Diff</span><span>Streak</span><span>Status</span></div>
+    {% for team in conference_data.teams %}{{ team_row(team) }}{% endfor %}
+  </div>
+  {% else %}
+  <div class="playoff-empty-state"><h3>No {{ conference }} standings available</h3><p>Standings will appear when the NFL data feed publishes them.</p></div>
+  {% endif %}
+</section>
+{% endmacro %}
+
 {% block content %}
+<div class="container playoff-page">
+  <header class="playoff-header">
+    <div><span class="playoff-eyebrow">NFL standings</span><h1>If the season ended today</h1><p>Seeds 1–4 are current division leaders. Seeds 5–7 are current wild cards. Early-season positions are provisional and can change quickly.</p></div>
+    <div class="playoff-refresh"><span>Data checked</span><strong>{% if standings.metadata.fetched_at %}{{ standings.metadata.fetched_at | fmt_mt }}{% else %}Unavailable{% endif %}</strong></div>
+  </header>
+  {% if standings.metadata.error %}<div class="playoff-alert" role="alert"><strong>Standings are temporarily unavailable.</strong> The NFL data provider could not be reached. Please try again shortly.</div>{% endif %}
+  <div class="playoff-legend" aria-label="Playoff picture legend"><span><i class="legend-swatch division"></i> Division leaders (1–4)</span><span><i class="legend-swatch wildcard"></i> Wild cards (5–7)</span><span><i class="legend-swatch hunt"></i> In the hunt (8–10)</span></div>
+  <div class="conference-switch" role="tablist" aria-label="NFL conference"><button type="button" id="afcTab" class="active" role="tab" aria-selected="true" aria-controls="afcPanel" data-conference="AFC">AFC</button><button type="button" id="nfcTab" role="tab" aria-selected="false" aria-controls="nfcPanel" data-conference="NFC">NFC</button></div>
+  <div class="conference-grid">{{ conference_panel('AFC') }}{{ conference_panel('NFC') }}</div>
+</div>
+{% endblock %}
 
-<body>
-    <h1 class="main-heading" style="margin-top: 50px;">NFL Playoff Picture</h1>
-
-    <div class="playoff-container">
-        <!-- AFC Column -->
-        <div class="conference-column">
-            <h2>AFC Playoff Picture</h2>
-
-            <!-- Clinched Playoff Spot -->
-            <h3>Clinched Playoff Spot</h3>
-            <div class="team-cards">
-                {% for team in standings['AFC']['clinched'] %}
-                    <div class="team-card">
-                        <img src="{{ team.logo }}" alt="{{ team.name }} logo" class="team-logo">
-                        <h4>{{ team.name }}</h4>
-                        <p>Record: {{ team.wins }}-{{ team.losses }}{% if team.ties > 0 %}-{{ team.ties }}{% endif %}</p>
-                        <p>Points For: {{ team.points_for }}</p>
-                        <p>Points Against: {{ team.points_against }}</p>
-                        <p>Point Differential: {{ team.point_differential }}</p>
-                        <p>Streak: {{ team.streak }}</p>
-                    </div>
-                {% endfor %}
-            </div>
-
-            <!-- In the Hunt -->
-            <h3>In the Hunt</h3>
-            <div class="team-cards">
-                {% for team in standings['AFC']['in_hunt'] %}
-                    <div class="team-card">
-                        <img src="{{ team.logo }}" alt="{{ team.name }} logo" class="team-logo">
-                        <h4>{{ team.name }}</h4>
-                        <p>Record: {{ team.wins }}-{{ team.losses }}{% if team.ties > 0 %}-{{ team.ties }}{% endif %}</p>
-                        <p>Points For: {{ team.points_for }}</p>
-                        <p>Points Against: {{ team.points_against }}</p>
-                        <p>Point Differential: {{ team.point_differential }}</p>
-                        <p>Streak: {{ team.streak }}</p>
-                    </div>
-                {% endfor %}
-            </div>
-
-            <!-- Bubble -->
-            <h3>Bubble</h3>
-            <div class="team-cards">
-                {% for team in standings['AFC']['bubble'] %}
-                    <div class="team-card">
-                        <img src="{{ team.logo }}" alt="{{ team.name }} logo" class="team-logo">
-                        <h4>{{ team.name }}</h4>
-                        <p>Record: {{ team.wins }}-{{ team.losses }}{% if team.ties > 0 %}-{{ team.ties }}{% endif %}</p>
-                        <p>Points For: {{ team.points_for }}</p>
-                        <p>Points Against: {{ team.points_against }}</p>
-                        <p>Point Differential: {{ team.point_differential }}</p>
-                        <p>Streak: {{ team.streak }}</p>
-                    </div>
-                {% endfor %}
-            </div>
-
-            <!-- Eliminated -->
-            <h3>Eliminated</h3>
-            <div class="team-cards">
-                {% for team in standings['AFC']['eliminated'] %}
-                    <div class="team-card">
-                        <img src="{{ team.logo }}" alt="{{ team.name }} logo" class="team-logo">
-                        <h4>{{ team.name }}</h4>
-                        <p>Record: {{ team.wins }}-{{ team.losses }}{% if team.ties > 0 %}-{{ team.ties }}{% endif %}</p>
-                        <p>Points For: {{ team.points_for }}</p>
-                        <p>Points Against: {{ team.points_against }}</p>
-                        <p>Point Differential: {{ team.point_differential }}</p>
-                        <p>Streak: {{ team.streak }}</p>
-                    </div>
-                {% endfor %}
-            </div>
-        </div>
-
-        <!-- NFC Column -->
-        <div class="conference-column">
-            <h2>NFC Playoff Picture</h2>
-
-            <!-- Clinched Playoff Spot -->
-            <h3>Clinched Playoff Spot</h3>
-            <div class="team-cards">
-                {% for team in standings['NFC']['clinched'] %}
-                    <div class="team-card">
-                        <img src="{{ team.logo }}" alt="{{ team.name }} logo" class="team-logo">
-                        <h4>{{ team.name }}</h4>
-                        <p>Record: {{ team.wins }}-{{ team.losses }}{% if team.ties > 0 %}-{{ team.ties }}{% endif %}</p>
-                        <p>Points For: {{ team.points_for }}</p>
-                        <p>Points Against: {{ team.points_against }}</p>
-                        <p>Point Differential: {{ team.point_differential }}</p>
-                        <p>Streak: {{ team.streak }}</p>
-                    </div>
-                {% endfor %}
-            </div>
-
-            <!-- In the Hunt -->
-            <h3>In the Hunt</h3>
-            <div class="team-cards">
-                {% for team in standings['NFC']['in_hunt'] %}
-                    <div class="team-card">
-                        <img src="{{ team.logo }}" alt="{{ team.name }} logo" class="team-logo">
-                        <h4>{{ team.name }}</h4>
-                        <p>Record: {{ team.wins }}-{{ team.losses }}{% if team.ties > 0 %}-{{ team.ties }}{% endif %}</p>
-                        <p>Points For: {{ team.points_for }}</p>
-                        <p>Points Against: {{ team.points_against }}</p>
-                        <p>Point Differential: {{ team.point_differential }}</p>
-                        <p>Streak: {{ team.streak }}</p>
-                    </div>
-                {% endfor %}
-            </div>
-
-            <!-- Bubble -->
-            <h3>Bubble</h3>
-            <div class="team-cards">
-                {% for team in standings['NFC']['bubble'] %}
-                    <div class="team-card">
-                        <img src="{{ team.logo }}" alt="{{ team.name }} logo" class="team-logo">
-                        <h4>{{ team.name }}</h4>
-                        <p>Record: {{ team.wins }}-{{ team.losses }}{% if team.ties > 0 %}-{{ team.ties }}{% endif %}</p>
-                        <p>Points For: {{ team.points_for }}</p>
-                        <p>Points Against: {{ team.points_against }}</p>
-                        <p>Point Differential: {{ team.point_differential }}</p>
-                        <p>Streak: {{ team.streak }}</p>
-                    </div>
-                {% endfor %}
-            </div>
-
-            <!-- Eliminated -->
-            <h3>Eliminated</h3>
-            <div class="team-cards">
-                {% for team in standings['NFC']['eliminated'] %}
-                    <div class="team-card">
-                        <img src="{{ team.logo }}" alt="{{ team.name }} logo" class="team-logo">
-                        <h4>{{ team.name }}</h4>
-                        <p>Record: {{ team.wins }}-{{ team.losses }}{% if team.ties > 0 %}-{{ team.ties }}{% endif %}</p>
-                        <p>Points For: {{ team.points_for }}</p>
-                        <p>Points Against: {{ team.points_against }}</p>
-                        <p>Point Differential: {{ team.point_differential }}</p>
-                        <p>Streak: {{ team.streak }}</p>
-                    </div>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
-</body>
-</html>
+{% block scripts %}
+<script>
+(() => {
+  const buttons = document.querySelectorAll('[data-conference]');
+  const panels = document.querySelectorAll('[data-conference-panel]');
+  buttons.forEach((button) => button.addEventListener('click', () => {
+    const selected = button.dataset.conference;
+    buttons.forEach((item) => { const active = item === button; item.classList.toggle('active', active); item.setAttribute('aria-selected', active ? 'true' : 'false'); });
+    panels.forEach((panel) => panel.classList.toggle('active', panel.dataset.conferencePanel === selected));
+  }));
+})();
+</script>
 {% endblock %}

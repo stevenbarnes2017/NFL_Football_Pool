@@ -1053,16 +1053,20 @@ def get_picks(user_id, week, group_id):
     return picks_data
 
 def get_nfl_playoff_picture():
-    import requests
-
     url = "https://site.api.espn.com/apis/v2/sports/football/nfl/standings"
-    response = requests.get(url)
-    
-    if response.status_code != 200:
-        print(f"Error fetching data: {response.status_code}")
-        return None
-    
-    data = response.json()
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("Unable to fetch NFL playoff standings: %s", exc)
+        return build_nfl_playoff_picture(None, error=True)
+
+    return build_nfl_playoff_picture(data)
+
+
+def build_nfl_playoff_picture(data, *, error=False):
+    """Normalize ESPN conference standings for playoff-picture views."""
 
     # Define conference mapping
     conference_map = {
@@ -1071,56 +1075,109 @@ def get_nfl_playoff_picture():
     }
     
     playoff_picture = {
-        "AFC": {"clinched": [], "in_hunt": [], "bubble": [], "eliminated": []},
-        "NFC": {"clinched": [], "in_hunt": [], "bubble": [], "eliminated": []}
+        "AFC": {"teams": [], "clinched": [], "in_hunt": [], "bubble": [], "eliminated": []},
+        "NFC": {"teams": [], "clinched": [], "in_hunt": [], "bubble": [], "eliminated": []},
+        "metadata": {
+            "error": error,
+            "fetched_at": None if error else datetime.now(pytz.utc),
+        },
     }
+
+    if not data:
+        return playoff_picture
     
     for conference in data.get('children', []):
         # Map the conference name
         conf_name = conference_map.get(conference.get('name'), conference.get('name'))
+        if conf_name not in ("AFC", "NFC"):
+            continue
         
         # Access the standings entries directly under each conference
         if 'standings' in conference and 'entries' in conference['standings']:
-            for entry in conference['standings']['entries']:
+            for conference_rank, entry in enumerate(
+                conference['standings']['entries'], start=1
+            ):
                 team_data = entry['team']
-                stats = {stat['name']: stat.get('value', 0) for stat in entry.get('stats', [])}
+                stat_rows = {
+                    stat['name']: stat for stat in entry.get('stats', [])
+                }
+
+                def stat_value(name, default=0):
+                    return stat_rows.get(name, {}).get('value', default)
+
+                def stat_display(name, default=''):
+                    stat = stat_rows.get(name, {})
+                    return stat.get('displayValue', stat.get('value', default))
                 
                 # Extract the clincher display value if present
-                clincher_stat = next((stat for stat in entry.get('stats', []) if stat['name'] == 'clincher'), {})
-                clincher_display_value = clincher_stat.get('displayValue', '')
+                clincher_stat = stat_rows.get('clincher', {})
+                clincher_display_value = str(
+                    clincher_stat.get('displayValue', '')
+                ).strip().lower()
 
                 # Determine clinched/eliminated status based on the display value
                 clinched_playoff = clincher_display_value in ['x', 'y', 'z']
                 clinched_division = clincher_display_value in ['y', 'z']
                 eliminated = clincher_display_value == 'e'
 
+                raw_seed = stat_value('playoffSeed', None)
+                try:
+                    playoff_seed = int(raw_seed) if raw_seed else conference_rank
+                except (TypeError, ValueError):
+                    playoff_seed = conference_rank
+
+                logos = team_data.get('logos') or []
                 team_info = {
                     'name': team_data.get('displayName', 'Unknown Team'),
-                    'logo': team_data.get('logos', [{}])[0].get('href', ''),
-                    'wins': stats.get('wins', 0),
-                    'losses': stats.get('losses', 0),
-                    'ties': stats.get('ties', 0),
-                    'points_for': stats.get('pointsFor', 0),
-                    'points_against': stats.get('pointsAgainst', 0),
-                    'point_differential': stats.get('pointDifferential', 0),
-                    'streak': stats.get('streak', ''),
-                    'division_record': stats.get('divisionWinPercent', 0),
-                    'conference_record': stats.get('conferenceWinPercent', 0),
-                    'playoff_seed': stats.get('playoffSeed'),
+                    'abbreviation': team_data.get('abbreviation', ''),
+                    'logo': logos[0].get('href', '') if logos else '',
+                    'wins': int(stat_value('wins', 0) or 0),
+                    'losses': int(stat_value('losses', 0) or 0),
+                    'ties': int(stat_value('ties', 0) or 0),
+                    'win_percent': stat_value('winPercent', 0) or 0,
+                    'points_for': int(stat_value('pointsFor', 0) or 0),
+                    'points_against': int(stat_value('pointsAgainst', 0) or 0),
+                    'point_differential': int(stat_value('pointDifferential', 0) or 0),
+                    'streak': stat_display('streak', '—') or '—',
+                    'division_record': stat_display('divisionRecord', '—') or '—',
+                    'conference_record': stat_display('conferenceRecord', '—') or '—',
+                    'playoff_seed': playoff_seed,
                     'clinched_playoff': clinched_playoff,
                     'clinched_division': clinched_division,
-                    'eliminated': eliminated
+                    'eliminated': eliminated,
                 }
+
+                if eliminated:
+                    team_info['picture_status'] = 'eliminated'
+                elif clinched_division:
+                    team_info['picture_status'] = 'clinched_division'
+                elif clinched_playoff:
+                    team_info['picture_status'] = 'clinched_playoff'
+                elif playoff_seed <= 4:
+                    team_info['picture_status'] = 'division_leader'
+                elif playoff_seed <= 7:
+                    team_info['picture_status'] = 'wild_card'
+                elif playoff_seed <= 10:
+                    team_info['picture_status'] = 'in_hunt'
+                else:
+                    team_info['picture_status'] = 'outside'
+
+                playoff_picture[conf_name]["teams"].append(team_info)
 
                 # Classify teams based on clinched/eliminated status
                 if eliminated:
                     playoff_picture[conf_name]["eliminated"].append(team_info)
                 elif clinched_playoff:
                     playoff_picture[conf_name]["clinched"].append(team_info)
-                elif team_info['playoff_seed'] and team_info['playoff_seed'] <= 7:
+                elif team_info['playoff_seed'] <= 7:
                     playoff_picture[conf_name]["in_hunt"].append(team_info)
-                elif team_info['playoff_seed']:
+                else:
                     playoff_picture[conf_name]["bubble"].append(team_info)
+
+    for conference in ("AFC", "NFC"):
+        playoff_picture[conference]["teams"].sort(
+            key=lambda team: (team['playoff_seed'], team['name'])
+        )
 
     return playoff_picture
 
