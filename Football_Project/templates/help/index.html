@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Help - SundayPickems{% endblock %}
+
+{% block content %}
+<div class="container help-page">
+    <div class="help-shell">
+
+        <header class="help-header">
+            <h1>Help Center</h1>
+
+            <p>
+                Need help using SundayPickems? Choose a topic below.
+            </p>
+        </header>
+
+        <div class="help-grid">
+
+            {% for slug, article in articles.items() %}
+            <a
+                href="{{ url_for('main.help_article', slug=slug) }}"
+                class="help-card"
+            >
+                <h2>{{ article.title }}</h2>
+
+                <p>
+                    {{ article.description }}
+                </p>
+                <span class="help-card-action">Read guide <span aria-hidden="true">&rarr;</span></span>
+            </a>
+            {% endfor %}
+
+        </div>
+
+    </div>
+</div>
+{% endblock %}

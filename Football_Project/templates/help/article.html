@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}{{ article.title }} - SundayPickems{% endblock %}
+
+{% block content %}
+<div class="container help-page">
+    <div class="help-shell help-article-shell">
+
+        <div class="help-navigation">
+            <a href="{{ url_for('main.help_center') }}" class="help-back-link">
+                <span aria-hidden="true">&larr;</span> Back to Help Center
+            </a>
+        </div>
+
+        <article class="help-article">
+            {{ content | safe }}
+        </article>
+
+    </div>
+</div>
+{% endblock %}

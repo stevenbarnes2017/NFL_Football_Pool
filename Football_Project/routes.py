@@ -13,7 +13,7 @@ from dateutil import parser
 import time
 import pytz
 from threading import Thread
-from flask import request, flash, redirect, url_for, render_template, session
+from flask import request, flash, redirect, url_for, render_template, session, current_app, abort
 from flask_login import current_user, login_required
 from datetime import datetime
 from pytz import timezone  # Add this
@@ -28,12 +28,91 @@ from Football_Project.services.season import get_current_season_context
 from .services.group_service import get_active_group_id
 from Football_Project.services.group_service import get_active_group_id
 from slugify import slugify
-from flask import current_app
+import markdown
+from pathlib import Path
 
-
+HELP_ARTICLES = {
+    "getting-started": {
+        "title": "Getting Started",
+        "description": "New to SundayPickems? Start here.",
+        "filename": "getting-started.md",
+    },
+    "making-picks": {
+        "title": "How to Make Your Picks",
+        "description": "Learn how to select teams and assign confidence points.",
+        "filename": "making-picks.md",
+    },
+    "rules": {
+        "title": "SundayPickems Rules",
+        "description": "Scoring, spreads, confidence points, deadlines, and season rules.",
+        "filename": "rules.md",
+    },
+    "live-scores": {
+        "title": "Live Scores",
+        "description": "Follow your picks and games throughout game day.",
+        "filename": "live-scores.md",
+    },
+    "groups": {
+        "title": "Groups",
+        "description": "Learn how groups, memberships, and group standings work.",
+        "filename": "groups.md",
+    },
+    "challenges": {
+        "title": "Challenges",
+        "description": "Learn how SundayPickems Challenges work.",
+        "filename": "challenges.md",
+    },
+    "notifications": {
+        "title": "Notifications",
+        "description": "Set up mobile reminders and troubleshoot notifications.",
+        "filename": "notifications.md",
+    },
+    "faq": {
+        "title": "Frequently Asked Questions",
+        "description": "Answers to common SundayPickems questions.",
+        "filename": "faq.md",
+    },
+}
 
 main_bp = Blueprint('main', __name__)
 
+@main_bp.route("/help")
+@login_required
+def help_center():
+    return render_template(
+        "help/index.html",
+        articles=HELP_ARTICLES,
+    )
+
+@main_bp.route("/help/<slug>")
+@login_required
+def help_article(slug):
+    article = HELP_ARTICLES.get(slug)
+
+    if not article:
+        abort(404)
+
+    help_dir = Path(current_app.root_path) / "help"
+    markdown_file = help_dir / article["filename"]
+
+    if not markdown_file.is_file():
+        abort(404)
+
+    markdown_text = markdown_file.read_text(encoding="utf-8")
+
+    html_content = markdown.markdown(
+        markdown_text,
+        extensions=[
+            "extra",
+            "sane_lists",
+        ],
+    )
+
+    return render_template(
+        "help/article.html",
+        article=article,
+        content=html_content,
+    )
 
 @main_bp.route('/playoff-picture')
 def playoff_picture():
