@@ -59,7 +59,7 @@
         {% for membership, group in memberships %}
           {% set role_label = membership.role|replace('_', ' ')|title if membership else 'Global Admin' if current_user.is_admin else 'No Membership' %}
           {% set can_invite = current_user.is_admin or (membership and membership.role == "group_admin") %}
-          {% set can_delete = current_user.is_admin or (membership and membership.role == "group_admin") %}
+          {% set can_delete = current_user.is_admin or group.created_by_user_id == current_user.id or (membership and membership.role == "group_admin") %}
           {% set initials = group.name.split()|map('first')|join('')|upper|truncate(2, false, '') %}
           <button
             type="button"
@@ -92,6 +92,7 @@
       {% set first_membership, first_group = memberships[0] %}
       {% set first_role_label = first_membership.role|replace('_', ' ')|title if first_membership else 'Global Admin' if current_user.is_admin else 'No Membership' %}
       {% set first_can_invite = current_user.is_admin or (first_membership and first_membership.role == "group_admin") %}
+      {% set first_can_delete = current_user.is_admin or first_group.created_by_user_id == current_user.id or (first_membership and first_membership.role == "group_admin") %}
       {% set first_is_active = first_group.id == active_group_id %}
       {% set first_stats = group_stats[first_group.id] %}
 
@@ -150,7 +151,7 @@
             </form>
           {% endif %}
 
-          {% if current_user.is_admin or (first_membership and first_membership.role == "group_admin") %}
+          {% if first_can_delete %}
             <form method="POST"
                     action="{{ url_for('main.delete_group', group_id=first_group.id) }}"
                     class="d-inline"
@@ -642,7 +643,7 @@ document.addEventListener("DOMContentLoaded", function () {
       detailWeek.textContent    = stats.current_week  != null ? stats.current_week  : "—";
       detailRank.textContent    = stats.rank          != null ? "#" + stats.rank    : "—";
 
-      renderActions(groupId, isActiveGroup, canInvite);
+      renderActions(groupId, isActiveGroup, canInvite, canDelete);
 
       if (isGlobalAdmin && !hasMembership) {
         globalAdminNote.classList.remove("d-none");

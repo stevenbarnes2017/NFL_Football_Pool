@@ -3,6 +3,7 @@ from flask import render_template, redirect, url_for, flash, request, current_ap
 from flask_login import login_user, logout_user, login_required, current_user
 from sqlalchemy import func
 from werkzeug.security import generate_password_hash, check_password_hash
+from slugify import slugify
 
 from Football_Project import db
 from Football_Project.models import User, GroupMember, PoolGroup
@@ -25,6 +26,8 @@ def register():
         user = User(
             username=form.username.data.strip(),
             email=form.email.data,
+            full_name=f"{form.first_name.data} {form.last_name.data}",
+            phone=form.phone.data,
         )
         user.set_password(form.password.data)
         db.session.add(user)
@@ -41,7 +44,9 @@ def register():
         if form.create_group.data and form.new_group_name.data:
             group = PoolGroup(
                 name=form.new_group_name.data.strip(),
-                is_active=True
+                slug=slugify(form.new_group_name.data.strip()),
+                is_active=True,
+                created_by_user_id=user.id,
             )
             db.session.add(group)
             db.session.flush()
