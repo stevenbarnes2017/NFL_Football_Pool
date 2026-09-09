@@ -24,6 +24,10 @@ from Football_Project.services.challenge_cancellation_service import (
     cancel_challenge as cancel_challenge_record,
     can_cancel_challenge,
 )
+from Football_Project.services.challenge_deletion_service import (
+    can_delete_challenge,
+    delete_challenge as delete_challenge_record,
+)
 
 from . import challenges_bp
 
@@ -148,3 +152,18 @@ def cancel_challenge(challenge_id):
     return redirect(
         url_for("challenges.challenge_detail", challenge_id=challenge.id)
     )
+
+
+@challenges_bp.route("/challenges/<int:challenge_id>/delete", methods=["POST"])
+@login_required
+def delete_challenge(challenge_id):
+    challenge = get_challenge_for_detail(challenge_id)
+    if challenge is None:
+        abort(404)
+    if not can_delete_challenge(current_user, challenge):
+        abort(403)
+
+    name = challenge.name
+    delete_challenge_record(challenge, current_user)
+    flash(f'Challenge "{name}" permanently deleted.', "success")
+    return redirect(url_for("main.groups", section="challenges"))

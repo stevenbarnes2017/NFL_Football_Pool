@@ -31,6 +31,12 @@
         <button type="submit" class="action-btn cancel-challenge-btn">Cancel Challenge</button>
       </form>
       {% endif %}
+      {% if detail.can_delete %}
+      <form method="post" action="{{ url_for('challenges.delete_challenge', challenge_id=challenge.id) }}" onsubmit="return confirm('Permanently delete this challenge? All challenge picks, participants, and results will be removed. This cannot be undone.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="action-btn btn-danger">Delete Challenge</button>
+      </form>
+      {% endif %}
       <a href="{{ url_for('main.groups', section='challenges') }}" class="action-btn btn-outline">
         Back to Challenges
       </a>

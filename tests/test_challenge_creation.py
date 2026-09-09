@@ -39,6 +39,10 @@ from Football_Project.services.challenge_cancellation_service import (
     can_cancel_challenge,
     cancel_challenge,
 )
+from Football_Project.services.challenge_deletion_service import (
+    can_delete_challenge,
+    delete_challenge,
+)
 
 
 class ChallengeCreationTests(unittest.TestCase):
@@ -999,6 +1003,53 @@ class ChallengeCreationTests(unittest.TestCase):
         GroupMember.query.filter_by(user_id=self.creator.id, group_id=self.group.id).one().is_active = False
         db.session.commit()
         self.assertTrue(can_cancel_challenge(self.creator, challenge))
+
+    def test_only_creator_can_delete_challenge(self):
+        challenge = self._create()
+        self.assertTrue(can_delete_challenge(self.creator, challenge))
+        self.assertFalse(can_delete_challenge(self.member, challenge))
+        self.outsider.is_admin = True
+        self.assertFalse(can_delete_challenge(self.outsider, challenge))
+
+    def test_creator_can_permanently_delete_challenge_and_related_data(self):
+        challenge = self._create()
+        self._save_for_user(
+            challenge,
+            self.member,
+            {self.early_game.id: self.early_game.home_team},
+        )
+        challenge_id = challenge.id
+
+        delete_challenge(challenge, self.creator)
+
+        self.assertIsNone(db.session.get(Challenge, challenge_id))
+        self.assertEqual(ChallengeParticipant.query.filter_by(challenge_id=challenge_id).count(), 0)
+        self.assertEqual(ChallengeGame.query.filter_by(challenge_id=challenge_id).count(), 0)
+        self.assertEqual(ChallengePick.query.filter_by(challenge_id=challenge_id).count(), 0)
+
+    def test_non_creator_delete_route_is_forbidden(self):
+        challenge = self._create()
+        challenge_id = challenge.id
+        self._login(self.member)
+
+        response = self.client.post(f"/challenges/{challenge_id}/delete")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIsNotNone(db.session.get(Challenge, challenge_id))
+
+    def test_creator_delete_route_redirects_and_removes_challenge(self):
+        challenge = self._create()
+        challenge_id = challenge.id
+        self._login(self.creator)
+
+        response = self.client.post(
+            f"/challenges/{challenge_id}/delete",
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"permanently deleted", response.data)
+        self.assertIsNone(db.session.get(Challenge, challenge_id))
 
 
 if __name__ == "__main__":

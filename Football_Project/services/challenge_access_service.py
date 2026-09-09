@@ -26,6 +26,7 @@ from Football_Project.services.challenge_service import (
 from Football_Project.services.challenge_cancellation_service import (
     can_cancel_challenge,
 )
+from Football_Project.services.challenge_deletion_service import can_delete_challenge
 
 
 def _challenge_load_options():
@@ -281,6 +282,7 @@ def build_challenge_detail(
             and status in {"open", "in_progress"}
             and can_cancel_challenge(user, challenge)
         ),
+        "can_delete": user is not None and can_delete_challenge(user, challenge),
         "can_submit_picks": (
             participant is not None
             and active_membership
