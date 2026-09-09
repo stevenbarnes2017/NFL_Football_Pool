@@ -208,6 +208,7 @@
             </div>
             <div class="challenge-card-group">{{ challenge.group.name }} &middot; Week {{ challenge.week }}</div>
             <div class="challenge-card-meta">
+              <span>{{ {'winner': 'Pick the Winner', 'score': 'Score Prediction', 'over_under': 'Over / Under'}[challenge.challenge_type or 'winner'] }}</span>
               <span>{{ summary.participant_count }} participant{% if summary.participant_count != 1 %}s{% endif %}</span>
               <span>{{ summary.game_count }} game{% if summary.game_count != 1 %}s{% endif %}</span>
               <span>Created by {{ challenge.creator.full_name or challenge.creator.username }}</span>

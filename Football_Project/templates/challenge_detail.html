@@ -22,7 +22,7 @@
           {{ detail.status|replace('_', ' ')|title }}
         </span>
       </div>
-      <p>{{ challenge.group.name }} &middot; Week {{ challenge.week }}</p>
+      <p>{{ challenge.group.name }} &middot; Week {{ challenge.week }} &middot; {{ {'winner': 'Pick the Winner', 'score': 'Score Prediction', 'over_under': 'Over / Under'}[challenge.challenge_type or 'winner'] }}</p>
     </div>
     <div class="challenge-header-actions">
       {% if detail.can_cancel %}
@@ -81,7 +81,7 @@
     </div>
     <div class="standings-table-wrap">
       <table class="standings-table">
-        <thead><tr><th>Participant</th><th>Correct</th><th>Graded</th><th>Remaining</th></tr></thead>
+        <thead><tr><th>Participant</th><th>{% if challenge.challenge_type == 'score' %}Total Error{% else %}Correct{% endif %}</th><th>Graded</th><th>Remaining</th></tr></thead>
         <tbody>
           {% for standing in detail.standings %}
           <tr>
@@ -89,7 +89,7 @@
               {{ standing.participant.user.full_name or standing.participant.user.username }}
               {% if standing.is_winner %}<span class="winner-badge">Winner</span>{% endif %}
             </td>
-            <td>{{ standing.correct_count }}</td>
+            <td>{% if challenge.challenge_type == 'score' %}{{ standing.prediction_error }}{% else %}{{ standing.correct_count }}{% endif %}</td>
             <td>{{ standing.graded_count }}</td>
             <td>{{ standing.remaining_count }}</td>
           </tr>
@@ -133,26 +133,42 @@
                 {% if row.locked or not detail.can_submit_picks %}
                   <div class="saved-pick">
                     {% if row.current_pick %}
-                      Your pick: <strong>{{ row.current_pick.team_picked }}</strong>
+                      Your prediction:
+                      <strong>
+                        {% if challenge.challenge_type == 'score' %}
+                          {{ row.game.away_team }} {{ row.current_pick.predicted_away_score }} - {{ row.game.home_team }} {{ row.current_pick.predicted_home_score }}
+                        {% else %}
+                          {{ row.current_pick.team_picked|title if challenge.challenge_type == 'over_under' else row.current_pick.team_picked }}
+                        {% endif %}
+                      </strong>
                     {% else %}
                       No pick submitted
                     {% endif %}
                   </div>
                 {% else %}
+                  {% if challenge.challenge_type == 'score' %}
+                  <fieldset class="score-options">
+                    <legend class="visually-hidden">Predict the score for {{ row.game.away_team }} at {{ row.game.home_team }}</legend>
+                    <label>{{ row.game.away_team }} <input type="number" name="away_score_{{ row.challenge_game.id }}" min="0" max="100" value="{{ row.current_pick.predicted_away_score if row.current_pick and row.current_pick.predicted_away_score is not none else '' }}" required></label>
+                    <label>{{ row.game.home_team }} <input type="number" name="home_score_{{ row.challenge_game.id }}" min="0" max="100" value="{{ row.current_pick.predicted_home_score if row.current_pick and row.current_pick.predicted_home_score is not none else '' }}" required></label>
+                  </fieldset>
+                  {% else %}
                   <fieldset class="team-options">
-                    <legend class="visually-hidden">Pick a winner for {{ row.game.away_team }} at {{ row.game.home_team }}</legend>
-                    {% for team in [row.game.away_team, row.game.home_team] %}
+                    <legend class="visually-hidden">Make a prediction for {{ row.game.away_team }} at {{ row.game.home_team }}</legend>
+                    {% set options = [('over', 'Over ' ~ row.challenge_game.over_under_line), ('under', 'Under ' ~ row.challenge_game.over_under_line)] if challenge.challenge_type == 'over_under' else [(row.game.away_team, row.game.away_team), (row.game.home_team, row.game.home_team)] %}
+                    {% for value, label in options %}
                       <label>
                         <input
                           type="radio"
                           name="pick_{{ row.challenge_game.id }}"
-                          value="{{ team }}"
-                          {% if row.current_pick and row.current_pick.team_picked == team %}checked{% endif %}
+                          value="{{ value }}"
+                          {% if row.current_pick and row.current_pick.team_picked == value %}checked{% endif %}
                         >
-                        {{ team }}
+                        {{ label }}
                       </label>
                     {% endfor %}
                   </fieldset>
+                  {% endif %}
                 {% endif %}
               {% endif %}
               <div class="participant-picks">
@@ -163,7 +179,7 @@
                       <span class="pick-hidden">Hidden until kickoff</span>
                     {% elif pick_row.has_pick %}
                       <span class="revealed-pick {% if pick_row.correct is sameas true %}pick-correct{% elif pick_row.correct is sameas false %}pick-incorrect{% endif %}">
-                        {{ pick_row.team_picked }}
+                        {{ pick_row.display_value }}
                         {% if pick_row.correct is sameas true %}&check;{% elif pick_row.correct is sameas false %}&times;{% endif %}
                       </span>
                     {% else %}
@@ -240,6 +256,9 @@
 .team-options { display: grid; gap: 7px; margin: 12px 0 0; padding: 0; border: 0; }
 .team-options label { display: flex; align-items: center; gap: 8px; min-height: 36px; margin: 0; padding: 6px 10px; border: 1px solid #dee2e6; border-radius: 7px; cursor: pointer; }
 .team-options input { margin: 0; }
+.score-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; padding: 0; border: 0; }
+.score-options label { display: grid; gap: 4px; font-size: 12px; }
+.score-options input { width: 100%; box-sizing: border-box; padding: 7px; border: 1px solid #ced4da; border-radius: 6px; }
 .saved-pick { margin-top: 10px; color: #495057; font-size: 13px; }
 .participant-picks { display: grid; gap: 5px; margin-top: 12px; padding-top: 9px; border-top: 1px solid #eee; font-size: 12px; }
 .participant-pick-row { display: flex; justify-content: space-between; gap: 10px; }

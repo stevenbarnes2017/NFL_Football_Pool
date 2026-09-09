@@ -392,6 +392,7 @@ class Challenge(db.Model):
     )
     name = db.Column(db.String(140), nullable=False)
     description = db.Column(db.Text, nullable=True)
+    challenge_type = db.Column(db.String(20), nullable=False, default="winner")
     season_year = db.Column(db.Integer, nullable=False)
     season_type = db.Column(db.String(10), nullable=False)
     week = db.Column(db.Integer, nullable=False)
@@ -513,6 +514,7 @@ class ChallengeGame(db.Model):
         nullable=False,
     )
     display_order = db.Column(db.Integer, nullable=False)
+    over_under_line = db.Column(db.Float, nullable=True)
     added_at = db.Column(
         db.DateTime(timezone=True),
         nullable=False,
@@ -565,7 +567,9 @@ class ChallengePick(db.Model):
         db.ForeignKey("challenge_game.id", ondelete="CASCADE"),
         nullable=False,
     )
-    team_picked = db.Column(db.String(50), nullable=False)
+    team_picked = db.Column(db.String(50), nullable=True)
+    predicted_home_score = db.Column(db.Integer, nullable=True)
+    predicted_away_score = db.Column(db.Integer, nullable=True)
     created_at = db.Column(
         db.DateTime(timezone=True),
         nullable=False,

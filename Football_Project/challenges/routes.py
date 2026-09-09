@@ -74,6 +74,12 @@ def create_challenge(group_id):
             description=request.form.get("description"),
             selected_participant_ids=request.form.getlist("participant_ids"),
             selected_game_ids=request.form.getlist("game_ids"),
+            challenge_type=request.form.get("challenge_type", "winner"),
+            over_under_lines={
+                key.removeprefix("over_under_line_"): value
+                for key, value in request.form.items()
+                if key.startswith("over_under_line_")
+            },
         )
     except ChallengeValidationError as exc:
         flash(str(exc), "danger")
@@ -108,12 +114,22 @@ def submit_challenge_picks(challenge_id):
     for key, value in request.form.items(multi=True):
         if key.startswith("pick_"):
             submitted.append((key.removeprefix("pick_"), value))
+    submitted_scores = []
+    for key, home_score in request.form.items():
+        if key.startswith("home_score_"):
+            challenge_game_id = key.removeprefix("home_score_")
+            submitted_scores.append((
+                challenge_game_id,
+                home_score,
+                request.form.get(f"away_score_{challenge_game_id}"),
+            ))
 
     try:
         result = save_challenge_picks(
             challenge=challenge,
             user_id=current_user.id,
             submitted_picks=submitted,
+            submitted_scores=submitted_scores,
         )
     except ChallengePickAuthorizationError as exc:
         abort(403, description=str(exc))
