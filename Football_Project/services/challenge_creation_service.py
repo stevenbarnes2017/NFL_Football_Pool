@@ -248,6 +248,24 @@ def create_challenge(
             for display_order, game in enumerate(games, start=1)
         )
         db.session.commit()
+
+        try:
+            from Football_Project.services.notification_service import (
+                notify_challenge_invite,
+            )
+
+            notify_challenge_invite(
+                challenge,
+                participant_ids,
+                exclude_user_id=creator_user_id,
+            )
+        except Exception as e:
+            from flask import current_app
+
+            current_app.logger.warning(
+                f"[NOTIFY] challenge invite notify failed: {e}"
+            )
+
         return challenge
     except Exception:
         db.session.rollback()

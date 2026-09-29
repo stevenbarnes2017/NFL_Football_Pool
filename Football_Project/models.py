@@ -373,6 +373,57 @@ class NotificationSubscription(db.Model):
         return f"<NotificationSubscription user={self.user_id} active={self.active}>"
 
 
+class Notification(db.Model):
+    __tablename__ = "notification"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # "announcement" | "board_post" | "challenge_invite"
+    type = db.Column(db.String(30), nullable=False, index=True)
+
+    title = db.Column(db.String(200), nullable=False)
+    body = db.Column(db.String(500), nullable=True)
+    url = db.Column(db.String(300), nullable=True)
+
+    group_id = db.Column(db.Integer, db.ForeignKey("pool_group.id"), nullable=True)
+    related_id = db.Column(db.Integer, nullable=True)
+
+    created_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        index=True,
+    )
+    read_at = db.Column(db.DateTime, nullable=True)
+
+    push_sent_at = db.Column(db.DateTime, nullable=True)
+    email_sent_at = db.Column(db.DateTime, nullable=True)
+
+    user = db.relationship(
+        "User",
+        backref=db.backref(
+            "notifications",
+            lazy="dynamic",
+            cascade="all, delete-orphan",
+        ),
+    )
+
+    __table_args__ = (
+        db.Index("ix_notification_user_type_read", "user_id", "type", "read_at"),
+    )
+
+    def __repr__(self):
+        return f"<Notification user={self.user_id} type={self.type} read={self.read_at is not None}>"
+
+
+
 # ----------------------------
 # Challenge Models
 # ----------------------------

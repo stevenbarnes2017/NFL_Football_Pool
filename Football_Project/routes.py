@@ -1630,6 +1630,35 @@ def leaderboard():
         season_type=season_type,
     )
 
+@main_bp.route("/announcements", methods=["GET"])
+@login_required
+def announcements():
+    from .services.notification_service import mark_read
+
+    anns = (
+        Announcement.query
+        .filter(Announcement.is_active.is_(True))
+        .order_by(Announcement.pinned.desc(), Announcement.created_at.desc())
+        .all()
+    )
+
+    try:
+        mark_read(current_user.id, "announcement")
+    except Exception as e:
+        current_app.logger.warning(f"[NOTIFY] mark_read announcement failed: {e}")
+
+    from .services.permissions import can_manage_group
+
+    active_group_id = session.get("active_group_id")
+    can_manage = bool(active_group_id) and can_manage_group(current_user, active_group_id)
+
+    return render_template(
+        "announcements.html",
+        announcements=anns,
+        can_manage_announcements=can_manage,
+    )
+
+
 @main_bp.route("/board", methods=["GET"])
 @login_required
 def board():
@@ -1658,6 +1687,13 @@ def board():
     )
 
     active_group = PoolGroup.query.filter_by(id=active_group_id, is_active=True).first()
+
+    try:
+        from .services.notification_service import mark_read
+
+        mark_read(current_user.id, "board_post")
+    except Exception as e:
+        current_app.logger.warning(f"[NOTIFY] mark_read board_post failed: {e}")
 
     return render_template(
         "board_threads.html",
@@ -1714,6 +1750,23 @@ def view_thread(thread_id):
             thread.last_activity_at = datetime.utcnow()
             db.session.commit()
 
+            try:
+                from .services.notification_service import notify_board_post
+
+                member_ids = [
+                    m.user_id for m in GroupMember.query.filter_by(
+                        group_id=thread.group_id, is_active=True
+                    ).all()
+                ]
+                notify_board_post(
+                    thread,
+                    post,
+                    recipient_user_ids=member_ids,
+                    is_new_thread=False,
+                )
+            except Exception as e:
+                current_app.logger.warning(f"[NOTIFY] board reply notify failed: {e}")
+
             return redirect(url_for("main.view_thread", thread_id=thread.id))
 
     posts = (
@@ -1722,6 +1775,13 @@ def view_thread(thread_id):
         .order_by(BoardPost.created_at.asc())
         .all()
     )
+
+    try:
+        from .services.notification_service import mark_read
+
+        mark_read(current_user.id, "board_post", related_id=thread.id)
+    except Exception as e:
+        current_app.logger.warning(f"[NOTIFY] mark_read thread board_post failed: {e}")
 
     return render_template(
         "thread.html",
@@ -1776,6 +1836,23 @@ def new_thread():
             db.session.add(first_post)
 
             db.session.commit()
+
+            try:
+                from .services.notification_service import notify_board_post
+
+                member_ids = [
+                    m.user_id for m in GroupMember.query.filter_by(
+                        group_id=thread.group_id, is_active=True
+                    ).all()
+                ]
+                notify_board_post(
+                    thread,
+                    first_post,
+                    recipient_user_ids=member_ids,
+                    is_new_thread=True,
+                )
+            except Exception as e:
+                current_app.logger.warning(f"[NOTIFY] new thread notify failed: {e}")
 
             return redirect(url_for("main.view_thread", thread_id=thread.id))
 
@@ -1962,7 +2039,14 @@ def groups():
     # ───────────────────────────────────────────────────────────────────────
 
     challenge_summaries = build_visible_challenge_summaries(current_user)
- 
+
+    try:
+        from .services.notification_service import mark_read
+
+        mark_read(current_user.id, "challenge_invite")
+    except Exception as e:
+        current_app.logger.warning(f"[NOTIFY] mark_read challenge_invite failed: {e}")
+
     return render_template(
         "groups.html",
         memberships=memberships,
@@ -1971,6 +2055,30 @@ def groups():
         initial_section=initial_section,
         challenge_summaries=challenge_summaries,
     )
+
+@main_bp.app_context_processor
+def inject_notification_badges():
+    from Football_Project.services.notification_service import unread_counts
+
+    counts = {
+        "announcement": 0,
+        "board_post": 0,
+        "challenge_invite": 0,
+        "total": 0,
+    }
+    show_banner = False
+
+    if getattr(current_user, "is_authenticated", False):
+        try:
+            counts = unread_counts(current_user.id)
+        except Exception as e:
+            current_app.logger.warning(f"[NOTIFY] unread_counts failed: {e}")
+
+        if session.pop("show_unread_banner", False) and counts["total"] > 0:
+            show_banner = True
+
+    return {"unread_counts": counts, "show_unread_banner": show_banner}
+
 
 @main_bp.app_context_processor
 def inject_active_group():

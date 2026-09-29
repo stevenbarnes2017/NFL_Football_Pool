@@ -101,6 +101,16 @@ def admin_announcement_new():
         db.session.add(ann)
         db.session.commit()
         flash("Announcement posted.", "success")
+
+        try:
+            from Football_Project.services.notification_service import notify_announcement
+
+            recipient_ids = [
+                u.id for u in User.query.filter_by(is_active=True).all()
+            ]
+            notify_announcement(ann, recipient_ids)
+        except Exception as e:
+            current_app.logger.warning(f"[NOTIFY] announcement notify failed: {e}")
     except Exception as e:
         db.session.rollback()
         flash(f"Failed to post announcement: {e}", "danger")

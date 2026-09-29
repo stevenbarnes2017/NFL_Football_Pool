@@ -98,7 +98,7 @@ def login():
                 db.session.commit()
 
             login_user(user, remember=form.remember.data)
-            
+            session["show_unread_banner"] = True
 
             pending_token = session.pop("pending_invite_token", None)
             if pending_token:

@@ -87,6 +87,14 @@ def challenge_detail(challenge_id):
         abort(404)
     if not can_view_challenge(current_user, challenge):
         abort(403)
+
+    try:
+        from Football_Project.services.notification_service import mark_read
+
+        mark_read(current_user.id, "challenge_invite", related_id=challenge.id)
+    except Exception:
+        pass
+
     return render_template(
         "challenge_detail.html",
         detail=build_challenge_detail(challenge, user=current_user),

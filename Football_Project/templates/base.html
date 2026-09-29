@@ -37,15 +37,15 @@
     </div>
 
     <nav class="nav-desktop" aria-label="Primary">
-      <a href="{{ url_for('admin.admin_announcements') }}">Announcements</a>
-      <a href="{{ url_for('main.board') }}">Message Board</a>
+      <a href="{{ url_for('main.announcements') }}">Announcements{% if unread_counts.announcement %}<span class="nav-badge">{{ unread_counts.announcement }}</span>{% endif %}</a>
+      <a href="{{ url_for('main.board') }}">Message Board{% if unread_counts.board_post %}<span class="nav-badge">{{ unread_counts.board_post }}</span>{% endif %}</a>
       <a href="{{ url_for('main.leaderboard') }}">Leaderboard</a>
       <a href="{{ url_for('main.live_scores_page') }}">Live Scores</a>
       <a href="{{ url_for('main.playoff_picture') }}">Playoff Picture</a>
       <a href="{{ url_for('main.dashboard') }}">Dashboard</a>
       <a href="{{ url_for('main.nfl_picks') }}">Select Picks</a>
       <a href="{{ url_for('main.see_picks') }}">See Picks</a>
-      <a href="{{ url_for('main.groups') }}">Groups &amp; Challenges</a>
+      <a href="{{ url_for('main.groups') }}">Groups &amp; Challenges{% if unread_counts.challenge_invite %}<span class="nav-badge">{{ unread_counts.challenge_invite }}</span>{% endif %}</a>
 
       <div class="dropdown">
         <button class="dropbtn" type="button">Settings ▾</button>
@@ -83,15 +83,15 @@
     {% endif %}
 
     <nav class="drawer-links" aria-label="Mobile Primary">
-      <a href="{{ url_for('admin.admin_announcements') }}">Announcements</a>
-      <a href="{{ url_for('main.board') }}">Message Board</a>
+      <a href="{{ url_for('main.announcements') }}">Announcements{% if unread_counts.announcement %}<span class="nav-badge">{{ unread_counts.announcement }}</span>{% endif %}</a>
+      <a href="{{ url_for('main.board') }}">Message Board{% if unread_counts.board_post %}<span class="nav-badge">{{ unread_counts.board_post }}</span>{% endif %}</a>
       <a href="{{ url_for('main.leaderboard') }}">Leaderboard</a>
       <a href="{{ url_for('main.live_scores_page') }}">Live Scores</a>
       <a href="{{ url_for('main.playoff_picture') }}">Playoff Picture</a>
       <a href="{{ url_for('main.dashboard') }}">Dashboard</a>
       <a href="{{ url_for('main.nfl_picks') }}">Select Picks</a>
       <a href="{{ url_for('main.see_picks') }}">See Picks</a>
-      <a href="{{ url_for('main.groups') }}">Groups &amp; Challenges</a>
+      <a href="{{ url_for('main.groups') }}">Groups &amp; Challenges{% if unread_counts.challenge_invite %}<span class="nav-badge">{{ unread_counts.challenge_invite }}</span>{% endif %}</a>
 
       <div class="drawer-divider"></div>
 
@@ -104,6 +104,35 @@
   </aside>
 
   <div class="backdrop" hidden></div>
+
+  {% if show_unread_banner %}
+  <div id="unread-banner-backdrop" class="unread-banner-backdrop">
+    <div class="unread-banner-modal" role="dialog" aria-modal="true" aria-labelledby="unread-banner-title">
+      <h3 id="unread-banner-title">You have unread updates</h3>
+      <ul class="unread-banner-list">
+        {% if unread_counts.announcement %}
+          <li><a href="{{ url_for('main.announcements') }}">{{ unread_counts.announcement }} new announcement{{ 's' if unread_counts.announcement != 1 else '' }}</a></li>
+        {% endif %}
+        {% if unread_counts.board_post %}
+          <li><a href="{{ url_for('main.board') }}">{{ unread_counts.board_post }} new message board post{{ 's' if unread_counts.board_post != 1 else '' }}</a></li>
+        {% endif %}
+        {% if unread_counts.challenge_invite %}
+          <li><a href="{{ url_for('main.groups') }}">{{ unread_counts.challenge_invite }} new challenge invite{{ 's' if unread_counts.challenge_invite != 1 else '' }}</a></li>
+        {% endif %}
+      </ul>
+      <button type="button" id="unread-banner-ok" class="save-button">OK</button>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var backdrop = document.getElementById('unread-banner-backdrop');
+      var okBtn = document.getElementById('unread-banner-ok');
+      okBtn && okBtn.addEventListener('click', function () {
+        backdrop && backdrop.remove();
+      });
+    })();
+  </script>
+  {% endif %}
 
   <!-- View-As Banner -->
   {% set local_view_as_id = view_as_id or session.get('view_as_user_id') or session.get('admin_view_as_user_id') %}

@@ -59,7 +59,7 @@
         <div class="thread-meta">
           <span class="meta-author">{{ thread.created_by.username }}</span>
           <span class="meta-sep">·</span>
-          <span>{{ thread.created_at.strftime("%b %-d, %Y at %H:%M") }}</span>
+          <span>{{ thread.created_at.strftime("%b %d, %Y at %H:%M") }}</span>
           <span class="meta-sep">·</span>
           <span>{{ thread.posts|selectattr('is_active')|list|length }} replies</span>
           {% if thread.week %}
