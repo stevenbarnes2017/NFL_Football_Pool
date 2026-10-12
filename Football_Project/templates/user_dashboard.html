@@ -1,34 +1,243 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css">
-</head>
-<body class="bg-gray-100 text-gray-900">
-    {% extends "base.html" %}
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
 
-{% block title %}Select NFL Picks{% endblock %}
+{% block head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v='20261012-1') }}">
+{% endblock %}
 
 {% block content %}
+<div class="sp-page sp-dash">
+  {% if not dash %}
+    <p class="sp-empty">The dashboard is unavailable until app settings are configured.</p>
+  {% else %}
 
-    <div class="container mx-auto py-10">
-        <div class="text-center mb-8">
-            <h1 class="main-heading" style="margin-top: 80px; font-weight: bold;">User Dashboard Week {{week}} </h1>
-            <p class="text-lg text-gray-600">Manage your NFL picks for the current week or past weeks.</p>
-            
-            
-
-            <div class="mt-8">
-                <a href="{{ url_for('main.user_score_summary') }}" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">View Your Scores and Standings</a>
-                <a href="{{ url_for('main.nfl_picks') }}" class="bg-blue-500 text-white py-2 px-4 rounded">Select Picks</a>
-                <a href="{{ url_for('main.see_picks') }}" class="bg-blue-500 text-white py-2 px-4 rounded ml-4">See Picks</a>
-            </div>
-        </div>
+  <header class="sp-row-between" style="align-items:flex-end; margin-bottom:16px;">
+    <div>
+      <p class="sp-welcome">Welcome back, {{ dash.first_name }}</p>
+      <h1 class="sp-week-title">Week {{ dash.week }}</h1>
     </div>
+    <a class="sp-link" href="{{ url_for('main.recap_latest') }}">Past weeks ›</a>
+  </header>
 
-   
-</body>
-</html>
+  {% if not dash.group_id %}
+    <section class="sp-card">
+      <h2 class="sp-section-label sp-in-card">Get started</h2>
+      <p class="sp-muted" style="margin-bottom:14px;">Join or create a group to start making picks.</p>
+      <a class="sp-btn" href="{{ url_for('main.groups') }}">Go to groups</a>
+    </section>
+  {% else %}
+  <div class="sp-stack sp-dash-grid">
+
+    {# ---------------- Pick status ---------------- #}
+    {% set p = dash.picks %}
+    <section class="sp-card sp-card-dark sp-span-2" aria-labelledby="pick-status-h">
+      {% if p.total == 0 %}
+        <h2 class="sp-lock-eyebrow" id="pick-status-h">Week {{ p.week }}</h2>
+        <p class="sp-dim" style="margin:12px 0 16px;">This week's games aren't posted yet.</p>
+        <a class="sp-btn" href="{{ url_for('main.nfl_picks') }}">Go to picks</a>
+
+      {% elif p.mode == 'open' %}
+        <h2 class="sp-lock-eyebrow" id="pick-status-h">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>
+          Picks lock {{ p.next_lock_label }}
+        </h2>
+        <div class="sp-countdown">
+          <span class="sp-countdown-num" data-deadline="{{ p.next_lock_iso }}">{{ p.countdown }}</span>
+          <span class="sp-countdown-sub">left to pick</span>
+        </div>
+        <div class="sp-row-between sp-small">
+          <span class="sp-dim">{{ p.picked }} of {{ p.total }} games picked</span>
+          <span class="sp-dim">{{ p.remaining }} left</span>
+        </div>
+        <div class="sp-progress" role="progressbar" aria-valuemin="0" aria-valuemax="{{ p.total }}" aria-valuenow="{{ p.picked }}" aria-label="Games picked">
+          <span style="width: {{ p.pct }}%"></span>
+        </div>
+        {% if p.remaining %}
+          <a class="sp-btn" href="{{ url_for('main.nfl_picks') }}">Finish my picks</a>
+        {% else %}
+          <a class="sp-btn sp-btn-ghost" href="{{ url_for('main.nfl_picks') }}">Review my picks</a>
+        {% endif %}
+
+      {% elif p.mode == 'live' %}
+        <h2 class="sp-lock-eyebrow" id="pick-status-h"><span class="sp-live-dot" aria-hidden="true"></span> Games underway</h2>
+        <div class="sp-countdown">
+          <span class="sp-countdown-num">{{ p.week_points }}</span>
+          <span class="sp-countdown-sub">live points this week</span>
+        </div>
+        <div class="sp-row-between sp-small">
+          <span class="sp-dim">{{ p.final }} of {{ p.total }} games final</span>
+          {% if p.next_lock_label %}<span class="sp-dim">Next kickoff {{ p.next_lock_label }}</span>{% endif %}
+        </div>
+        <div class="sp-progress" role="progressbar" aria-valuemin="0" aria-valuemax="{{ p.total }}" aria-valuenow="{{ p.final }}" aria-label="Games final">
+          <span style="width: {{ (p.final / p.total * 100)|round|int }}%"></span>
+        </div>
+        <div class="sp-stack" style="gap:10px;">
+          {% if p.unpicked_open %}
+            <a class="sp-btn" href="{{ url_for('main.nfl_picks') }}">Finish my picks ({{ p.unpicked_open }} open)</a>
+            <a class="sp-btn sp-btn-ghost" href="{{ url_for('main.live_scores_page') }}">Live scores</a>
+          {% else %}
+            <a class="sp-btn" href="{{ url_for('main.live_scores_page') }}">Live scores</a>
+          {% endif %}
+        </div>
+
+      {% else %}
+        <h2 class="sp-lock-eyebrow" id="pick-status-h">Week {{ p.week }} is final</h2>
+        <div class="sp-countdown">
+          <span class="sp-countdown-num">{{ p.week_points }}</span>
+          <span class="sp-countdown-sub">points this week</span>
+        </div>
+        <a class="sp-btn" href="{{ url_for('main.see_picks') }}">See everyone's picks</a>
+      {% endif %}
+    </section>
+
+    {# ---------------- My standing ---------------- #}
+    {% set s = dash.standing %}
+    <section class="sp-card" aria-labelledby="standing-h">
+      <h2 class="sp-section-label sp-in-card" id="standing-h">My standing</h2>
+      {% if s %}
+        <div class="sp-stat-row">
+          <div>
+            <div class="sp-stat-num">{{ s.rank|ordinal }}</div>
+            <div class="sp-stat-label">of {{ s.players }} players</div>
+          </div>
+          <div>
+            <div class="sp-stat-num">{{ s.points }}</div>
+            <div class="sp-stat-label">season pts</div>
+          </div>
+          <div>
+            {% if s.behind > 0 %}
+              <div class="sp-stat-num bad">−{{ s.behind }}</div>
+              <div class="sp-stat-label">behind 1st</div>
+            {% elif s.ahead_of_next is not none %}
+              <div class="sp-stat-num good">+{{ s.ahead_of_next }}</div>
+              <div class="sp-stat-label">ahead of 2nd</div>
+            {% else %}
+              <div class="sp-stat-num good">0</div>
+              <div class="sp-stat-label">behind 1st</div>
+            {% endif %}
+          </div>
+        </div>
+
+        {% if dash.rank_history %}
+          <p class="sp-stat-label" style="margin-top:16px;">Rank by week</p>
+          <div class="sp-rank-chart" role="list" aria-label="Season rank after each week">
+            {% for h in dash.rank_history %}
+              <div class="sp-rank-col{% if loop.last %} is-last{% endif %}" role="listitem"
+                   aria-label="Week {{ h.week }}: {{ h.rank|ordinal }}">
+                <span class="sp-rank-val">{{ h.rank|ordinal }}</span>
+                <span class="sp-rank-bar" style="height: {{ h.height }}%"></span>
+                <span class="sp-rank-wk">W{{ h.week }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% else %}
+        <p class="sp-empty">Standings appear after your first scored week.</p>
+      {% endif %}
+    </section>
+
+    {# ---------------- Latest recap ---------------- #}
+    {% set r = dash.recap %}
+    {% if r %}
+    <a class="sp-card sp-card-accent sp-recap-card" href="{{ url_for('main.recap_week', season_year=dash.season_year, week=r.week) }}">
+      <div class="sp-row-between">
+        <span class="sp-eyebrow" style="margin:0;">Week {{ r.week }} recap</span>
+        {% if r.is_new %}<span class="sp-pill sp-pill-good">New</span>{% endif %}
+      </div>
+      <h2 class="sp-headline-sm">{{ r.headline }}</h2>
+      {% if r.me %}
+      <div class="sp-recap-line">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          {% if (r.me.rank_change or 0) < 0 %}<path d="M3 7l6 6 4-4 8 8M21 11v6h-6"/>{% else %}<path d="M3 17l6-6 4 4 8-8M21 13V7h-6"/>{% endif %}
+        </svg>
+        <span><strong>You scored {{ r.me.points }}</strong>
+          <span class="sp-muted"> · {{ r.me.rank|ordinal }} this week
+          {%- if r.me.rank_change %} · {{ 'up' if r.me.rank_change > 0 else 'down' }} {{ r.me.rank_change|abs }} spot{{ 's' if r.me.rank_change|abs != 1 }}{% endif %}</span>
+        </span>
+      </div>
+      {% endif %}
+      <span class="sp-link">Read the full recap ›</span>
+    </a>
+    {% else %}
+    <section class="sp-card">
+      <h2 class="sp-section-label sp-in-card">Weekly recap</h2>
+      <p class="sp-empty">The first recap appears once a week's games are all final.</p>
+    </section>
+    {% endif %}
+
+    {# ---------------- My season ---------------- #}
+    {% set st = dash.stats %}
+    <section class="sp-card" aria-labelledby="season-h">
+      <h2 class="sp-section-label sp-in-card" id="season-h">My season</h2>
+      <div class="sp-grid-2">
+        <div class="sp-tile">
+          <div class="sp-stat-num">{{ st.accuracy ~ '%' if st.accuracy is not none else '—' }}</div>
+          <div class="sp-stat-label">pick accuracy</div>
+        </div>
+        <div class="sp-tile">
+          <div class="sp-stat-num">{{ st.avg_points if st.avg_points is not none else '—' }}</div>
+          <div class="sp-stat-label">avg pts / week</div>
+        </div>
+        <div class="sp-tile">
+          <div class="sp-stat-num">{{ st.best_week_points if st.best_week is not none else '—' }}</div>
+          <div class="sp-stat-label">best week{% if st.best_week is not none %} (W{{ st.best_week }}){% endif %}</div>
+        </div>
+        <div class="sp-tile">
+          <div class="sp-stat-num">{{ st.left_on_table }}</div>
+          <div class="sp-stat-label">pts left on table</div>
+        </div>
+      </div>
+    </section>
+
+    {# ---------------- Mini leaderboard ---------------- #}
+    <section class="sp-card" aria-labelledby="board-h">
+      <div class="sp-row-between" style="margin-bottom:8px;">
+        <h2 class="sp-section-label sp-in-card" id="board-h" style="margin:0;">Leaderboard</h2>
+        <a class="sp-link" href="{{ url_for('main.leaderboard') }}">Full standings ›</a>
+      </div>
+      <ol class="sp-board">
+        {% for row in dash.board %}
+          <li class="sp-board-row{% if row.user_id == dash.user_id %} is-me{% endif %}">
+            <span class="sp-board-rank">{{ row.rank }}</span>
+            <span class="sp-board-name">{{ 'You' if row.user_id == dash.user_id else row.username }}</span>
+            <span class="sp-board-pts">{{ row.total_points }}</span>
+          </li>
+        {% endfor %}
+        {% if dash.board_me %}
+          <li class="sp-board-gap" aria-hidden="true">⋯</li>
+          <li class="sp-board-row is-me">
+            <span class="sp-board-rank">{{ dash.board_me.rank }}</span>
+            <span class="sp-board-name">You</span>
+            <span class="sp-board-pts">{{ dash.board_me.total_points }}</span>
+          </li>
+        {% endif %}
+      </ol>
+    </section>
+
+  </div>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var el = document.querySelector('[data-deadline]');
+    if (!el || !el.dataset.deadline) return;
+    var deadline = new Date(el.dataset.deadline).getTime();
+    if (isNaN(deadline)) return;
+
+    function tick() {
+      var secs = Math.max(0, Math.floor((deadline - Date.now()) / 1000));
+      if (secs === 0) { window.location.reload(); return; }
+      var d = Math.floor(secs / 86400), h = Math.floor(secs % 86400 / 3600), m = Math.floor(secs % 3600 / 60);
+      el.textContent = d ? d + 'd ' + h + 'h' : (h ? h + 'h ' + m + 'm' : m + 'm');
+    }
+    setInterval(tick, 30000);
+  })();
+</script>
 {% endblock %}

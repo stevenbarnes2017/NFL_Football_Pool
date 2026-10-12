@@ -304,9 +304,23 @@ def dashboard():
     ):
         return redirect(url_for('admin.admin_dashboard'))
 
+    return _render_user_dashboard()
+
+
+def _render_user_dashboard():
+    from .services.dashboard import build_dashboard, effective_user_id
+
+    settings = Settings.query.first()
+    if not settings:
+        flash("App settings are not configured. Please contact an admin.", "danger")
+        return render_template('user_dashboard.html', dash=None, name=current_user.username)
+
+    dash = build_dashboard(effective_user_id(), get_active_group_id(), settings)
     return render_template(
         'user_dashboard.html',
+        dash=dash,
         name=current_user.username,
+        current_week=settings.current_week,
         now=datetime.now()
     )
     
@@ -620,10 +634,8 @@ def user_dashboard():
     if not settings:
         flash("App settings are not configured. Please contact an admin.", "danger")
         return redirect(url_for("main.dashboard"))
-    current_week = settings.current_week
-    all_weeks = list(range(1, current_week))  # List of all weeks up to the current week
 
-    return render_template('user_dashboard.html', name=current_user.username, current_week=current_week, all_weeks=all_weeks, now=datetime.now())
+    return _render_user_dashboard()
 
 
 @main_bp.route('/results', methods=['GET', 'POST'])
