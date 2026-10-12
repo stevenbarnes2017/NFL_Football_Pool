@@ -640,3 +640,44 @@ class ChallengePick(db.Model):
             name="uq_challenge_pick_participant_game",
         ),
     )
+
+
+# ----------------------------
+# Weekly Recap Model
+# ----------------------------
+class WeeklyRecap(db.Model):
+    """Generated, group-scoped summary of one finished week (see services/recap.py)."""
+    __tablename__ = "weekly_recap"
+
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(
+        db.Integer,
+        db.ForeignKey("pool_group.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    season_year = db.Column(db.Integer, nullable=False)
+    season_type = db.Column(db.String(10), nullable=False)
+    week = db.Column(db.Integer, nullable=False)
+
+    headline = db.Column(db.String(200), nullable=False)
+    data = db.Column(db.JSON, nullable=False)
+
+    generated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    group = db.relationship(
+        "PoolGroup",
+        backref=db.backref("weekly_recaps", lazy=True, cascade="all, delete-orphan"),
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "group_id",
+            "season_year",
+            "season_type",
+            "week",
+            name="uq_weekly_recap_group_season_week",
+        ),
+    )
+
+    def __repr__(self):
+        return f"<WeeklyRecap group={self.group_id} {self.season_type} {self.season_year} wk={self.week}>"
