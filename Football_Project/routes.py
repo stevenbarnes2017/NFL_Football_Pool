@@ -1630,6 +1630,91 @@ def leaderboard():
         season_type=season_type,
     )
 
+@main_bp.app_template_filter("ordinal")
+def ordinal_filter(n):
+    from .services.recap import ordinal
+    return ordinal(int(n)) if n is not None else ""
+
+
+def _recap_url(season_year, season_type, week, settings):
+    """Stable recap URL; season type only appears when it differs from the current one."""
+    if season_type == settings.season_type:
+        return url_for("main.recap_week", season_year=season_year, week=week)
+    return url_for("main.recap_week", season_year=season_year, week=week, type=season_type)
+
+
+@main_bp.route("/recap", methods=["GET"])
+@login_required
+def recap_latest():
+    from .services.recap import get_recap, recap_weeks
+
+    group_id = get_active_group_id()
+    if not group_id:
+        flash("No active group selected.", "warning")
+        return redirect(url_for("main.groups"))
+
+    settings = Settings.query.first()
+    if not settings:
+        flash("App settings are not configured. Please contact an admin.", "danger")
+        return redirect(url_for("main.dashboard"))
+
+    for week in reversed(recap_weeks(group_id, settings.season_year, settings.season_type)):
+        if get_recap(group_id, settings.season_year, settings.season_type, week):
+            return redirect(_recap_url(settings.season_year, settings.season_type, week, settings))
+
+    return render_template(
+        "recap.html",
+        recap=None,
+        week=None,
+        weeks=[],
+        season_year=settings.season_year,
+    )
+
+
+@main_bp.route("/recap/<int:season_year>/<int:week>", methods=["GET"])
+@login_required
+def recap_week(season_year, week):
+    from .services.dashboard import effective_user_id
+    from .services.recap import get_recap, recap_weeks
+
+    group_id = get_active_group_id()
+    if not group_id:
+        flash("No active group selected.", "warning")
+        return redirect(url_for("main.groups"))
+
+    settings = Settings.query.first()
+    if not settings:
+        flash("App settings are not configured. Please contact an admin.", "danger")
+        return redirect(url_for("main.dashboard"))
+
+    season_type = request.args.get("type") or settings.season_type
+
+    # Recaps are stored per group, and the active group is membership-checked,
+    # so a user can only ever load their own group's recap.
+    recap = get_recap(group_id, season_year, season_type, week)
+    weeks = [
+        {"week": w, "url": _recap_url(season_year, season_type, w, settings)}
+        for w in recap_weeks(group_id, season_year, season_type)
+    ]
+
+    viewer_id = effective_user_id()
+    me = None
+    if recap:
+        me = next((s for s in recap.data["scores"] if s["user_id"] == viewer_id), None)
+
+    return render_template(
+        "recap.html",
+        recap=recap,
+        data=recap.data if recap else None,
+        me=me,
+        viewer_id=viewer_id,
+        week=week,
+        weeks=weeks,
+        season_year=season_year,
+        season_type=season_type,
+    ), (200 if recap else 404)
+
+
 @main_bp.route("/announcements", methods=["GET"])
 @login_required
 def announcements():

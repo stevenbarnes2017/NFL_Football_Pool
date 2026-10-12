@@ -96,7 +96,7 @@ def points_left_on_table(week_picks: list[dict]) -> int:
     return max(0, sum(confidences[:correct]) - actual)
 
 
-def _ordinal(n: int) -> str:
+def ordinal(n: int) -> str:
     if 10 <= n % 100 <= 20:
         suffix = "th"
     else:
@@ -229,8 +229,8 @@ def compute_awards(week_games, week_picks, usernames, rank_changes, week):
                 "from_rank": top["prev_season_rank"],
                 "to_rank": top["season_rank"],
                 "change": top["rank_change"],
-                "from_rank_label": _ordinal(top["prev_season_rank"]),
-                "to_rank_label": _ordinal(top["season_rank"]),
+                "from_rank_label": ordinal(top["prev_season_rank"]),
+                "to_rank_label": ordinal(top["season_rank"]),
             }
 
     return {

@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% block title %}{% if week %}Week {{ week }} Recap{% else %}Weekly Recap{% endif %}{% endblock %}
+
+{% block head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v='20261012-1') }}">
+{% endblock %}
+
+{% macro who(row) -%}
+  {%- if row.user_id == viewer_id -%}You{%- else -%}{{ row.username }}{%- endif -%}
+{%- endmacro %}
+
+{% block content %}
+<div class="sp-page sp-recap">
+
+  <section class="sp-hero">
+    <div class="sp-hero-bar">
+      <a class="sp-icon-btn" href="{{ url_for('main.dashboard') }}" aria-label="Back to dashboard">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      </a>
+      <h1 class="sp-hero-title">Weekly Recap</h1>
+      {% if recap %}
+      <button type="button" class="sp-icon-btn" id="sp-share" aria-label="Share this recap"
+              data-title="{{ recap.headline }}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5M5 13v6h14v-6"/></svg>
+      </button>
+      {% else %}
+      <span class="sp-icon-spacer"></span>
+      {% endif %}
+    </div>
+
+    {% if weeks %}
+    <nav class="sp-chips" aria-label="Recap weeks">
+      {% for w in weeks %}
+        <a class="sp-chip{% if w.week == week %} is-active{% endif %}" href="{{ w.url }}"
+           {% if w.week == week %}aria-current="page"{% endif %}>Wk {{ w.week }}</a>
+      {% endfor %}
+    </nav>
+    {% endif %}
+
+    {% if recap %}
+      <h2 class="sp-headline">{{ recap.headline }}</h2>
+
+      {% set podium = data.scores[:3] %}
+      {% if podium and data.winning_score %}
+      <div class="sp-podium" role="list" aria-label="Top three">
+        {% for slot in [1, 0, 2] %}
+          {% if podium|length > slot %}
+          {% set row = podium[slot] %}
+          <div class="sp-podium-col sp-podium-{{ slot + 1 }}" role="listitem">
+            {% if slot == 0 %}
+              <svg class="sp-trophy" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v5a4 4 0 01-8 0V4zM8 6H5v1a3 3 0 003 3M16 6h3v1a3 3 0 01-3 3M12 13v4M9 20h6"/></svg>
+            {% endif %}
+            <div class="sp-podium-name">{{ who(row) }}</div>
+            <div class="sp-podium-block">
+              <div class="sp-podium-score">{{ row.points }}</div>
+              <div class="sp-podium-label">
+                {{ row.rank|ordinal }}{% if slot == 0 and data.winning_margin %} · +{{ data.winning_margin }}{% endif %}
+              </div>
+            </div>
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% else %}
+      <h2 class="sp-headline">
+        {% if week %}Week {{ week }} isn't wrapped up yet{% else %}No recaps yet{% endif %}
+      </h2>
+      <p class="sp-hero-sub">A recap appears once every game in the week is final.</p>
+    {% endif %}
+  </section>
+
+  {% if recap %}
+  <div class="sp-stack">
+
+    {% if me %}
+    <section class="sp-card sp-card-accent sp-mine">
+      <div class="sp-mine-score">{{ me.points }}</div>
+      <div>
+        <div class="sp-mine-title">Your week: {{ me.rank|ordinal }} place</div>
+        <div class="sp-muted">
+          {% if me.rank_change is none %}
+            {{ me.season_rank|ordinal }} overall
+          {% elif me.rank_change > 0 %}
+            Up {{ me.rank_change }} spot{{ 's' if me.rank_change != 1 }} to {{ me.season_rank|ordinal }} overall
+          {% elif me.rank_change < 0 %}
+            Down {{ -me.rank_change }} spot{{ 's' if me.rank_change != -1 }} to {{ me.season_rank|ordinal }} overall
+          {% else %}
+            Holding at {{ me.season_rank|ordinal }} overall
+          {% endif %}
+          · {{ me.left_on_table }} pts left on table
+        </div>
+      </div>
+    </section>
+    {% endif %}
+
+    {% set a = data.awards %}
+    <section aria-labelledby="awards-h">
+      <h3 class="sp-section-label" id="awards-h">This week's awards</h3>
+      <div class="sp-grid-2">
+        <div class="sp-card sp-award">
+          <div class="sp-eyebrow">Biggest mover</div>
+          {% if a.biggest_mover %}
+            <div class="sp-award-main">{{ a.biggest_mover.username }} <span aria-label="up">↑</span>{{ a.biggest_mover.change }}</div>
+            <div class="sp-muted">{{ a.biggest_mover.from_rank_label }} to {{ a.biggest_mover.to_rank_label }} overall</div>
+          {% else %}
+            <div class="sp-award-main">—</div>
+            <div class="sp-muted">{% if week == 1 %}Standings start this week{% else %}Nobody climbed{% endif %}</div>
+          {% endif %}
+        </div>
+
+        <div class="sp-card sp-award">
+          <div class="sp-eyebrow">Best call</div>
+          {% if a.best_call %}
+            <div class="sp-award-main">{{ a.best_call.username }} · {{ a.best_call.confidence }} pts</div>
+            <div class="sp-muted">{{ a.best_call.team_nickname }} over {{ a.best_call.opponent_nickname }}</div>
+          {% else %}
+            <div class="sp-award-main">—</div><div class="sp-muted">No correct picks</div>
+          {% endif %}
+        </div>
+
+        <div class="sp-card sp-award">
+          <div class="sp-eyebrow sp-eyebrow-bad">Ouch</div>
+          {% if a.worst_miss %}
+            <div class="sp-award-main">{{ a.worst_miss.username }} · −{{ a.worst_miss.confidence }}</div>
+            <div class="sp-muted">{{ a.worst_miss.team_abbr }} didn't cover vs {{ a.worst_miss.opponent_abbr }}</div>
+          {% else %}
+            <div class="sp-award-main">—</div><div class="sp-muted">No misses. Wow.</div>
+          {% endif %}
+        </div>
+
+        <div class="sp-card sp-award">
+          <div class="sp-eyebrow">Contrarian</div>
+          {% if a.contrarian %}
+            <div class="sp-award-main">{{ a.contrarian.username }} · {{ a.contrarian.confidence }} pts</div>
+            <div class="sp-muted">
+              {% if a.contrarian.team_pickers == 1 %}Only pick on{% else %}{{ a.contrarian.team_pickers }} picked{% endif %}
+              {{ a.contrarian.team_nickname }} ({{ a.contrarian.share_pct|round|int }}%)
+            </div>
+          {% else %}
+            <div class="sp-award-main">—</div><div class="sp-muted">No winning picks under 20%</div>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    {% if data.upset %}
+    {% set u = data.upset %}
+    <section class="sp-card">
+      <div class="sp-row-between">
+        <h3 class="sp-section-label sp-in-card">Upset of the week</h3>
+        <span class="sp-pill sp-pill-bad">+{{ '%g'|format(u.spread) }} dog</span>
+      </div>
+      <div class="sp-upset-score">{{ u.underdog_abbr }} {{ u.underdog_score }} – {{ u.favorite_abbr }} {{ u.favorite_score }}</div>
+      <p class="sp-muted">
+        {% if u.won_outright %}Won outright as a {{ '%g'|format(u.spread) }}-point underdog.{% else %}Covered +{{ '%g'|format(u.spread) }}.{% endif %}
+        {% if u.picked_count == 0 %}
+          Nobody picked the {{ u.underdog_nickname }}.
+        {% else %}
+          {% if u.picked_count * 2 < u.game_pickers %}Only {% endif %}{{ u.picked_count }} of {{ u.game_pickers }} picked the {{ u.underdog_nickname }}.
+        {% endif %}
+      </p>
+      {% if u.pickers %}
+      <details class="sp-details">
+        <summary>Who picked them</summary>
+        <p class="sp-muted">{{ u.pickers|join(', ') }}</p>
+      </details>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    {% set c = data.crowd %}
+    {% if c.games %}
+    <section class="sp-card">
+      <div class="sp-row-between">
+        <h3 class="sp-section-label sp-in-card">The crowd</h3>
+        <span class="sp-strong">Went {{ c.won }}–{{ c.lost }}{% if c.push %}–{{ c.push }}{% endif %}</span>
+      </div>
+      <p class="sp-muted sp-small">The pool's majority pick in each game, against the spread.</p>
+
+      {% macro crowd_row(g) -%}
+        <li class="sp-crowd-row">
+          <div class="sp-row-between sp-small">
+            <span>{% if g.team_abbr %}{{ g.team_abbr }} {{ g.pct }}%{% else %}{{ g.matchup }} · split{% endif %}</span>
+            <span class="sp-result sp-result-{{ g.result }}">{{ {'won': 'Won', 'lost': 'Lost', 'push': 'Push', 'split': 'Split'}[g.result] }}</span>
+          </div>
+          <div class="sp-bar"><span class="sp-bar-fill sp-bar-{{ g.result }}" style="width: {{ g.pct }}%"></span></div>
+        </li>
+      {%- endmacro %}
+
+      <ul class="sp-crowd">
+        {% for g in c.games[:3] %}{{ crowd_row(g) }}{% endfor %}
+      </ul>
+      {% if c.games|length > 3 %}
+      <details class="sp-details">
+        <summary>All {{ c.games|length }} games</summary>
+        <ul class="sp-crowd">
+          {% for g in c.games[3:] %}{{ crowd_row(g) }}{% endfor %}
+        </ul>
+      </details>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    <section class="sp-card">
+      <h3 class="sp-section-label sp-in-card">Week {{ week }} scores</h3>
+      {% set top_n = 4 %}
+      <ol class="sp-board">
+        {% for row in data.scores[:top_n] %}
+          <li class="sp-board-row{% if row.user_id == viewer_id %} is-me{% endif %}">
+            <span class="sp-board-rank">{{ row.rank }}</span>
+            <span class="sp-board-name">{{ who(row) }}</span>
+            <span class="sp-board-pts">{{ row.points }}</span>
+          </li>
+        {% endfor %}
+        {% if me and me.rank and data.scores.index(me) >= top_n %}
+          <li class="sp-board-gap" aria-hidden="true">⋯</li>
+          <li class="sp-board-row is-me">
+            <span class="sp-board-rank">{{ me.rank }}</span>
+            <span class="sp-board-name">You</span>
+            <span class="sp-board-pts">{{ me.points }}</span>
+          </li>
+        {% endif %}
+      </ol>
+      {% if data.scores|length > top_n %}
+      <details class="sp-details">
+        <summary>Show all {{ data.scores|length }}</summary>
+        <table class="sp-table">
+          <thead>
+            <tr><th scope="col">#</th><th scope="col">Player</th><th scope="col">Pts</th><th scope="col">Correct</th><th scope="col">Overall</th></tr>
+          </thead>
+          <tbody>
+            {% for row in data.scores %}
+            <tr class="{{ 'is-me' if row.user_id == viewer_id }}">
+              <td>{{ row.rank }}</td>
+              <td class="sp-table-name">{{ who(row) }}{% if row.picked == 0 %} <span class="sp-muted sp-small">(no picks)</span>{% endif %}</td>
+              <td>{{ row.points }}</td>
+              <td>{{ row.correct }}</td>
+              <td>
+                {{ row.season_rank|ordinal }}
+                {% if row.rank_change %}<span class="sp-delta {{ 'up' if row.rank_change > 0 else 'down' }}">{{ '↑' if row.rank_change > 0 else '↓' }}{{ row.rank_change|abs }}</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </details>
+      {% endif %}
+    </section>
+
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var active = document.querySelector('.sp-chip.is-active');
+    if (active && active.scrollIntoView) {
+      active.scrollIntoView({ block: 'nearest', inline: 'center' });
+      window.scrollTo(0, 0);
+    }
+
+    var share = document.getElementById('sp-share');
+    if (!share) return;
+    share.addEventListener('click', function () {
+      var data = { title: share.dataset.title, url: window.location.href };
+      if (navigator.share) {
+        navigator.share(data).catch(function () {});
+      } else if (navigator.clipboard) {
+        navigator.clipboard.writeText(data.url).then(function () {
+          share.setAttribute('aria-label', 'Link copied');
+          share.classList.add('is-done');
+          setTimeout(function () { share.classList.remove('is-done'); }, 1500);
+        });
+      }
+    });
+  })();
+</script>
+{% endblock %}
