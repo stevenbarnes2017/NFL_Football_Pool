@@ -286,6 +286,40 @@ def dispatch_due_reminders_with_context(app):
             db.session.remove()
 
 
+def generate_weekly_recaps_with_context(app):
+    """Build recaps for the current and previous week once all their games are final."""
+    from .services.recap import generate_recaps
+
+    with app.app_context():
+        try:
+            settings = Settings.query.first()
+            if not settings or not settings.current_week:
+                app.logger.info("[RECAPS] no Settings/current_week; skipping")
+                return
+
+            week = settings.current_week
+            weeks = [w for w in (week - 1, week) if w >= 1]
+            results = generate_recaps(settings.season_year, settings.season_type, weeks=weeks)
+
+            changed = [r for r in results if r["status"] in ("created", "updated")]
+            errors = [r for r in results if r["status"].startswith("error")]
+            if changed or errors:
+                db.session.add(JobRun(
+                    job_name="weekly_recaps",
+                    ok=not errors,
+                    inserted=sum(1 for r in changed if r["status"] == "created"),
+                    updated=sum(1 for r in changed if r["status"] == "updated"),
+                    message=f"{settings.season_type} {settings.season_year} weeks={weeks} errors={len(errors)}",
+                ))
+                db.session.commit()
+            app.logger.info(f"[RECAPS] {results}")
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f"[RECAPS] generation failed: {e}")
+        finally:
+            db.session.remove()
+
+
 def create_app():
     notifications = Flask(__name__)
     metrics = PrometheusMetrics(notifications)
@@ -373,6 +407,10 @@ def create_app():
 
     from .challenges import challenges_bp
     notifications.register_blueprint(challenges_bp)
+
+    # CLI
+    from .commands import recaps_cli
+    notifications.cli.add_command(recaps_cli)
 
 
     # --- APScheduler wiring ---
@@ -514,6 +552,18 @@ def create_app():
             hour=7,
             minute=0,
             id="odds_escalation",
+            replace_existing=True,
+        )
+
+        # Weekly recaps: shortly after each scores refresh; no-op until a week is final
+        scheduler.add_job(
+            generate_weekly_recaps_with_context,
+            "cron",
+            args=[notifications],
+            day_of_week="mon,tue,wed,thu,fri,sat,sun",
+            hour="0-23",
+            minute="7,22,37,52",
+            id="generate_weekly_recaps",
             replace_existing=True,
         )
 
