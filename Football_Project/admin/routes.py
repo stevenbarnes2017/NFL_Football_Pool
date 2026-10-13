@@ -1276,22 +1276,14 @@ def admin_override_score():
     db.session.add(pick)
     db.session.commit()
 
-    # Recompute totals for that week/group
-    user_scores = calculate_user_scores(week=week, group_id=group_id)
-
-    row = UserScore.query.filter_by(user_id=user_id, week=week).first()
-    if row:
-        row.score = user_scores.get(user_id, row.score)
-    else:
-        db.session.add(
-            UserScore(
-                user_id=user_id,
-                week=week,
-                score=user_scores.get(user_id, 0),
-                calculated_at=datetime.utcnow(),
-            )
-        )
-    db.session.commit()
+    # Recompute totals for that week/group (also upserts the scoped UserScore rows)
+    season_year, season_type = get_current_season_context()
+    calculate_user_scores(
+        week=week,
+        season_year=season_year,
+        season_type=season_type,
+        group_id=group_id,
+    )
 
     flash("Score successfully overridden and totals updated.", "success")
     return redirect(url_for('admin.admin_scores', week=week))
