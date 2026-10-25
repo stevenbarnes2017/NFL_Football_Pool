@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v='20261012-1') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/live_scores.css', v='20261025-1') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/live_scores.css', v='20261025-2') }}">
 {% endblock %}
 
 {% block content %}
@@ -187,11 +187,12 @@ document.addEventListener('DOMContentLoaded', function () {
     const situation = state === 'in' && g.down_distance
       ? `<div class="ls-situation ${g.red_zone ? 'is-redzone' : ''}">${esc(g.down_distance)}${g.red_zone ? ' · Red zone' : ''}</div>`
       : '';
-    const statsLink = state !== 'pre' && g.game_id
-      ? `<a class="ls-stats-link" href="/game_details/${encodeURIComponent(g.game_id)}">Game stats<span aria-hidden="true"> →</span></a>`
+    // The link's ::after covers the whole card, so tapping anywhere opens the game
+    const statsLink = g.game_id
+      ? `<a class="ls-stats-link" href="/game_details/${encodeURIComponent(g.game_id)}">${state === 'pre' ? 'Matchup' : 'Game stats'}<span aria-hidden="true"> →</span></a>`
       : '';
     return `
-      <article class="ls-game is-${state}">
+      <article class="ls-game is-${state}${g.game_id ? ' is-clickable' : ''}">
         <div class="ls-game-top">
           ${statusLine(g, state)}
           ${g.broadcast ? `<span class="ls-tv">${esc(g.broadcast)}</span>` : ''}
