@@ -13,6 +13,7 @@ from Football_Project.services.recap import (
     generate_recap,
     generate_recaps,
     get_recap,
+    headline_story,
     points_left_on_table,
 )
 
@@ -166,7 +167,9 @@ class ComputeWeekRecapTests(unittest.TestCase):
         self.assertEqual(data["awards"]["contrarian"]["share_pct"], 10.0)
 
         self.assertEqual(data["upset"]["underdog"], "Chicago Bears")
-        self.assertEqual(headline, "alice rides a Bears upset to a first weekly win")
+        self.assertIn("alice", headline)
+        self.assertIn("Bears", headline)
+        self.assertIn("first weekly win", headline)
 
     def test_missed_pick_is_not_worst_miss(self):
         _, data = self.recap(1)
@@ -185,6 +188,108 @@ class ComputeWeekRecapTests(unittest.TestCase):
 
     def test_deterministic(self):
         self.assertEqual(self.recap(2), self.recap(2))
+
+
+def score_row(uid, name, points, correct=5, season_rank=None, prev_season_rank=None):
+    return {"user_id": uid, "username": name, "points": points, "correct": correct,
+            "season_rank": season_rank, "prev_season_rank": prev_season_rank}
+
+
+class HeadlineStoryTests(unittest.TestCase):
+    def setUp(self):
+        self.scores = [score_row(1, "alice", 60, season_rank=3, prev_season_rank=3),
+                       score_row(2, "bob", 55), score_row(3, "cara", 40)]
+
+    def story(self, week=5, winner_ids=frozenset({1}), prior_wins=None, upset=None, **facts):
+        return headline_story(week, self.scores, set(winner_ids), {1: 1} if prior_wins is None else prior_wins, upset, **facts)
+
+    def test_no_winner(self):
+        self.assertEqual(self.story(winner_ids=set()), ("no_winner", "Week 5 is in the books"))
+
+    def test_two_way_tie(self):
+        kind, text = self.story(winner_ids={1, 2})
+        self.assertEqual(kind, "tie")
+        self.assertIn("alice", text)
+        self.assertIn("bob", text)
+
+    def test_season_high_beats_other_stories(self):
+        upset = {"underdog_nickname": "Bears", "pickers": ["alice"], "picked_count": 1, "game_pickers": 3}
+        kind, text = self.story(prior_best=58, upset=upset, streak=2)
+        self.assertEqual(kind, "season_high")
+        self.assertIn("60", text)
+
+    def test_season_high_needs_history(self):
+        kind, _ = self.story(week=2, prior_best=58)
+        self.assertNotEqual(kind, "season_high")
+
+    def test_not_a_season_high_when_tied_or_below(self):
+        kind, _ = self.story(prior_best=60)
+        self.assertNotEqual(kind, "season_high")
+
+    def test_upset_counts_win_number(self):
+        upset = {"underdog_nickname": "Bears", "pickers": ["alice"], "won_outright": True,
+                 "picked_count": 1, "game_pickers": 3}
+        kind, text = self.story(upset=upset, prior_wins={1: 2})
+        self.assertEqual(kind, "upset")
+        self.assertIn("No. 3", text)
+
+    def test_upset_needs_outright_win_most_of_the_pool_missed(self):
+        upset = {"underdog_nickname": "Bears", "pickers": ["alice"], "won_outright": True,
+                 "picked_count": 2, "game_pickers": 3}
+        self.assertNotEqual(self.story(upset=upset)[0], "upset")
+        upset.update(picked_count=1, won_outright=False)
+        self.assertNotEqual(self.story(upset=upset)[0], "upset")
+
+    def test_back_to_back_and_longer_streaks(self):
+        self.assertEqual(self.story(streak=1)[0], "streak")
+        kind, text = self.story(streak=3)
+        self.assertEqual(kind, "streak")
+        self.assertIn("4", text)
+
+    def test_takes_over_first_place(self):
+        self.scores[0].update(season_rank=1, prev_season_rank=4)
+        kind, text = self.story()
+        self.assertEqual(kind, "takes_lead")
+        self.assertIn("alice", text)
+
+    def test_contrarian_only_for_the_winner(self):
+        lone = {"user_id": 1, "team_nickname": "Cardinals", "team_pickers": 1}
+        kind, text = self.story(awards={"contrarian": lone})
+        self.assertEqual(kind, "contrarian")
+        self.assertIn("Cardinals", text)
+        other = dict(lone, user_id=2)
+        self.assertNotEqual(self.story(awards={"contrarian": other})[0], "contrarian")
+
+    def test_first_win_mentions_how_it_was_won(self):
+        kind, text = self.story(prior_wins={})
+        self.assertEqual(kind, "first_win")
+        self.scores[1]["points"] = 59
+        self.assertIn("1 pt", self.story(prior_wins={})[1])
+        self.scores[1]["points"] = 40
+        self.assertIn("20", self.story(prior_wins={})[1])
+
+    def test_blowout_and_photo_finishes(self):
+        self.scores[1]["points"] = 45
+        self.assertEqual(self.story()[0], "blowout")
+        self.scores[1]["points"] = 60
+        self.assertEqual(self.story()[0], "photo_finish")
+        self.scores[1]["points"] = 59
+        kind, text = self.story()
+        self.assertEqual(kind, "photo_finish")
+        self.assertIn("1 pt", text)
+
+    def test_rough_week_for_the_crowd(self):
+        kind, text = self.story(crowd={"won": 4, "lost": 9})
+        self.assertEqual(kind, "rough_week")
+
+    def test_milestone_then_plain_win(self):
+        self.assertEqual(self.story(prior_wins={1: 2})[0], "milestone")
+        self.assertEqual(self.story(prior_wins={1: 1})[0], "win")
+
+    def test_wording_is_stable_but_varies_by_week(self):
+        self.assertEqual(self.story(), self.story())
+        texts = {self.story(week=w)[1].replace(f"Week {w}", "Week N") for w in range(1, 19)}
+        self.assertGreater(len(texts), 1)
 
 
 class GenerateRecapDbTests(unittest.TestCase):

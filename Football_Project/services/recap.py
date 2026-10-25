@@ -11,6 +11,7 @@ results, then upsert one WeeklyRecap row per group/season/week. Generation is
 deterministic, so re-running it for the same week leaves the row unchanged.
 """
 
+import zlib
 from collections import Counter, defaultdict
 from datetime import datetime
 
@@ -318,37 +319,167 @@ def compute_crowd(week_games, week_picks):
     return {**record, "games": games}
 
 
-def build_headline(week, scores, winner_ids, prior_wins, upset):
+def _variant(options, *seed):
+    """Pick one phrasing deterministically, so regenerating a week keeps its headline."""
+    key = ":".join(str(x) for x in seed).encode()
+    return options[zlib.crc32(key) % len(options)]
+
+
+def headline_story(week, scores, winner_ids, prior_wins, upset, *,
+                   streak=0, prior_best=None, awards=None, crowd=None):
+    """
+    Choose the most notable story of the week and return (kind, headline).
+
+    streak:     consecutive weeks the (single) winner had already won going into this week
+    prior_best: best weekly score by anyone in an earlier final week, or None
+    awards:     compute_awards() output (contrarian is used)
+    crowd:      compute_crowd() output (won/lost record is used)
+    """
     winners = [r for r in scores if r["user_id"] in winner_ids]
     if not winners:
-        return f"Week {week} is in the books"
+        return "no_winner", f"Week {week} is in the books"
 
     top = winners[0]["points"]
     if len(winners) == 2:
-        return f"{winners[0]['username']} and {winners[1]['username']} share Week {week} with {top}"
+        a, b = winners[0]["username"], winners[1]["username"]
+        return "tie", _variant([
+            f"{a} and {b} share Week {week} with {top}",
+            f"Dead heat: {a} and {b} split Week {week} at {top}",
+        ], week, a, b)
     if len(winners) > 2:
-        return f"{len(winners)}-way tie atop Week {week} at {top}"
+        return "tie", f"{len(winners)}-way tie atop Week {week} at {top}"
 
     w = winners[0]
+    name = w["username"]
     others = [r["points"] for r in scores if r["user_id"] != w["user_id"]]
     margin = top - max(others) if others else None
     wins_before = prior_wins.get(w["user_id"], 0)
+    win_no = wins_before + 1
 
-    if upset and w["username"] in upset["pickers"]:
+    def pick(options):
+        return _variant(options, week, name)
+
+    # 1. A new single-week high for the season (needs a couple of weeks of history)
+    if prior_best is not None and week >= 3 and top > prior_best:
+        return "season_high", pick([
+            f"{name} drops {top}, the best week of the season",
+            f"Season high: {name} puts up {top} in Week {week}",
+            f"{name} sets the season mark with {top}",
+        ])
+
+    # 2. Winner rode the week's biggest upset: an outright win most of the pool missed
+    if (
+        upset and name in upset["pickers"] and upset.get("won_outright", True)
+        and upset.get("picked_count", 0) * 2 < upset.get("game_pickers", 0)
+    ):
+        dog = upset["underdog_nickname"]
         if wins_before == 0:
-            tail = "a first weekly win"
-        else:
-            tail = f"weekly win No. {wins_before + 1}"
-        return f"{w['username']} rides a {upset['underdog_nickname']} upset to {tail}"
+            return "upset", pick([
+                f"{name} rides a {dog} upset to a first weekly win",
+                f"The {dog} come through and {name} grabs a first weekly win",
+            ])
+        return "upset", pick([
+            f"{name} rides a {dog} upset to weekly win No. {win_no}",
+            f"{name} cashes in on the {dog} upset for win No. {win_no}",
+        ])
+
+    # 3. Winning streaks
+    if streak >= 2:
+        return "streak", pick([
+            f"{name} makes it {streak + 1} straight",
+            f"Nobody can stop {name}: {streak + 1} weekly wins in a row",
+        ])
+    if streak == 1:
+        return "streak", pick([
+            f"{name} goes back-to-back",
+            f"Two in a row for {name}",
+            f"{name} repeats as weekly champ",
+        ])
+
+    # 4. Winner moved into first place overall
+    if week > 1 and w.get("season_rank") == 1 and (w.get("prev_season_rank") or 1) > 1:
+        return "takes_lead", pick([
+            f"{name} wins Week {week} and takes over first place",
+            f"{name} jumps to the top of the standings",
+        ])
+
+    # 5. Winner was (nearly) alone on a winning pick
+    contrarian = (awards or {}).get("contrarian")
+    if contrarian and contrarian["user_id"] == w["user_id"]:
+        team = contrarian["team_nickname"]
+        if contrarian["team_pickers"] == 1:
+            return "contrarian", pick([
+                f"Only {name} had the {team}, and it paid off",
+                f"{name} goes it alone on the {team} and wins Week {week}",
+            ])
+        return "contrarian", pick([
+            f"{name} bucks the crowd with the {team} and wins Week {week}",
+            f"A gutsy {team} call lifts {name} to the Week {week} win",
+        ])
+
+    # 6. First weekly win of the season, flavored by how it was won
     if wins_before == 0:
-        return f"{w['username']} grabs a first weekly win with {top}"
+        if margin is not None and margin >= 10:
+            return "first_win", pick([
+                f"{name} wins big for a first weekly win, by {margin}",
+                f"{name} breaks through in style, winning Week {week} by {margin}",
+            ])
+        if margin == 0:
+            return "first_win", f"{name} wins a first weekly title on correct picks"
+        if margin is not None and margin <= 2:
+            return "first_win", pick([
+                f"{name} squeaks out a first weekly win by {_fmt_points(margin)}",
+                f"{name} holds on for a first weekly win by {_fmt_points(margin)}",
+            ])
+        return "first_win", pick([
+            f"{name} grabs a first weekly win with {top}",
+            f"{name} breaks through for a first weekly win",
+            f"First time's the charm: {name} takes Week {week}",
+        ])
+
+    # 7. Big margin
     if margin is not None and margin >= 10:
-        return f"{w['username']} runs away with Week {week} by {margin}"
+        return "blowout", pick([
+            f"{name} runs away with Week {week} by {margin}",
+            f"{name} wins Week {week} going away, by {margin}",
+            f"No contest: {name} takes Week {week} by {margin}",
+        ])
+
+    # 8. Photo finishes
     if margin == 0:
-        return f"{w['username']} takes Week {week} on correct picks"
+        return "photo_finish", pick([
+            f"{name} takes Week {week} on correct picks",
+            f"Tied on points, {name} wins Week {week} on correct picks",
+        ])
     if margin is not None and margin <= 2:
-        return f"{w['username']} edges out Week {week} by {_fmt_points(margin)}"
-    return f"{w['username']} takes Week {week} with {top}"
+        return "photo_finish", pick([
+            f"{name} edges out Week {week} by {_fmt_points(margin)}",
+            f"{name} holds on to win Week {week} by {_fmt_points(margin)}",
+        ])
+
+    # 9. Rough week for the pool's majority picks
+    if crowd and crowd.get("lost", 0) > crowd.get("won", 0) and crowd.get("lost", 0) >= 3:
+        return "rough_week", pick([
+            f"{name} survives a rough week for the crowd with {top}",
+            f"The crowd went {crowd['won']}-{crowd['lost']}, but {name} won Week {week}",
+        ])
+
+    # 10. Milestone weekly wins
+    if win_no >= 3:
+        return "milestone", pick([
+            f"{name} picks up weekly win No. {win_no}",
+            f"{name} takes Week {week} for win No. {win_no} this season",
+        ])
+
+    return "win", pick([
+        f"{name} takes Week {week} with {top}",
+        f"{name} wins Week {week} with {top}",
+        f"Week {week} goes to {name} with {top}",
+    ])
+
+
+def build_headline(week, scores, winner_ids, prior_wins, upset, **facts):
+    return headline_story(week, scores, winner_ids, prior_wins, upset, **facts)[1]
 
 
 def compute_week_recap(*, season_year, season_type, week, games, members, picks, tiebreaker=None):
@@ -411,16 +542,37 @@ def compute_week_recap(*, season_year, season_type, week, games, members, picks,
 
     winner_ids = _weekly_winner_ids(members, picks_by_week, week)
     prior_wins = Counter()
+    winners_by_week = {}
+    prior_best = None
     for w in sorted(picks_by_week):
         if w >= week:
             continue
         if all(is_final_status(g.get("status")) for g in games if g["week"] == w):
-            prior_wins.update(_weekly_winner_ids(members, picks_by_week, w))
+            winners_by_week[w] = _weekly_winner_ids(members, picks_by_week, w)
+            prior_wins.update(winners_by_week[w])
+            week_best = max(
+                (t["points"] for t in _weekly_totals(list(usernames), picks_by_week, w).values()),
+                default=0,
+            )
+            if week_best > 0:
+                prior_best = max(prior_best or 0, week_best)
+
+    # consecutive weeks the sole winner had already won coming into this week
+    streak = 0
+    if len(winner_ids) == 1:
+        (winner_id,) = winner_ids
+        w = week - 1
+        while winner_id in winners_by_week.get(w, ()):
+            streak += 1
+            w -= 1
 
     upset = compute_upset(week_games, week_picks, usernames)
     awards = compute_awards(week_games, week_picks, usernames, scores, week)
     crowd = compute_crowd(week_games, week_picks)
-    headline = build_headline(week, scores, winner_ids, prior_wins, upset)[:200]
+    headline = build_headline(
+        week, scores, winner_ids, prior_wins, upset,
+        streak=streak, prior_best=prior_best, awards=awards, crowd=crowd,
+    )[:200]
 
     winner_rows = [r for r in scores if r["user_id"] in winner_ids]
     runner_up = next((r for r in scores if r["user_id"] not in winner_ids), None)
