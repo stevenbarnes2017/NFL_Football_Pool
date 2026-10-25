@@ -1,145 +1,165 @@
 {% extends "base.html" %}
 
-{% block title %}Game Details: {{ data.home_team }} vs {{ data.away_team }}{% endblock %}
-
-{% block content %}
-<h1 class="page-title">Game Details: {{ data.home_team }} vs {{ data.away_team }}</h1>
-
-<!-- Team Stats -->
-<h2>Team Stats</h2>
-<div class="team-stats">
-    <div class="team">
-        <h3>{{ data.home_team }} (Home)</h3>
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Statistic</th>
-                    <th>Value</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for stat_name, stat_value in data.home_team_stats.items() %}
-                <tr>
-                    <td>{{ stat_name|title }}</td>
-                    <td>{{ stat_value }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-
-    <div class="team">
-        <h3>{{ data.away_team }} (Away)</h3>
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Statistic</th>
-                    <th>Value</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for stat_name, stat_value in data.away_team_stats.items() %}
-                <tr>
-                    <td>{{ stat_name|title }}</td>
-                    <td>{{ stat_value }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<!-- Player Stats -->
-<h2>Player Stats</h2>
-<div class="player-stats">
-    {% for team, players in data.player_stats.items() %}
-    <h3>{{ team }}</h3>
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Position</th>
-                <th>Passing Yards</th>
-                <th>Rushing Yards</th>
-                <th>Receiving Yards</th>
-                <th>Touchdowns</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for player in players %}
-            <tr>
-                <td>{{ player.name }}</td>
-                <td>{{ player.position }}</td>
-                <td>{{ player.stats.get('passingYards', 'N/A') }}</td>
-                <td>{{ player.stats.get('rushingYards', 'N/A') }}</td>
-                <td>{{ player.stats.get('receivingYards', 'N/A') }}</td>
-                <td>{{ player.stats.get('touchdowns', 'N/A') }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% endfor %}
-</div>
-
-<!-- Back to Live Scores Button -->
-<a href="{{ url_for('main.live_scores_page') }}" class="btn btn-primary">Back to Live Scores</a>
-
-{% endblock %}
+{% block title %}{{ data.away.abbr or data.away_team }} @ {{ data.home.abbr or data.home_team }} – Game Stats{% endblock %}
 
 {% block head %}
-    {{ super() }}
-    <style>
-        /* Table styles */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-        }
+  {{ super() }}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v='20261012-1') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/live_scores.css', v='20261025-1') }}">
+{% endblock %}
 
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-        }
+{% macro team_bug(t, loser) -%}
+  <div class="gd-team{% if loser %} is-loser{% endif %}">
+    <img src="{{ url_for('static', filename='images/' ~ t.name ~ '.png') }}" alt="" onerror="this.style.visibility='hidden'">
+    <div class="gd-team-name">{{ t.name }}</div>
+    {% if t.record %}<div class="gd-team-record">{{ t.record }}</div>{% endif %}
+    {% if data.state != 'pre' %}<div class="gd-score">{{ t.score }}</div>{% endif %}
+  </div>
+{%- endmacro %}
 
-        th {
-            background-color: #f2f2f2;
-        }
+{% macro cat_table(cat) -%}
+  <div class="gd-cat">
+    <h3 class="gd-cat-title">{{ cat.title }}</h3>
+    <div class="gd-scroll">
+      <table class="gd-table gd-players">
+        <thead>
+          <tr><th>Player</th>{% for l in cat.labels %}<th>{{ l }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+          {% for row in cat.rows %}
+          <tr><td>{{ row.name }}</td>{% for v in row.stats %}<td>{{ v }}</td>{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{%- endmacro %}
 
-        .table-striped tbody tr:nth-child(even) {
-            background-color: #f9f9f9;
-        }
+{% block content %}
+<div class="sp-page ls-page">
 
-        .table-striped tbody tr:hover {
-            background-color: #f1f1f1;
-        }
+  <section class="sp-hero">
+    <div class="sp-hero-bar">
+      <a class="sp-icon-btn" href="{{ url_for('main.live_scores_page') }}" aria-label="Back to live scores">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+      </a>
+      <h1 class="sp-hero-title" style="text-align:center">Game Stats</h1>
+      <span class="sp-icon-spacer"></span>
+    </div>
+    <div class="gd-scorebug">
+      {{ team_bug(data.away, data.state == 'post' and data.home.winner) }}
+      <div class="gd-status">{{ data.detail }}</div>
+      {{ team_bug(data.home, data.state == 'post' and data.away.winner) }}
+    </div>
+  </section>
 
-        h3 {
-            margin-top: 30px;
-            color: #333;
-        }
+  {% if data.state == 'pre' and not data.team_stats %}
+    <div class="sp-card"><p class="sp-empty">Stats will show up here once the game kicks off.</p></div>
+  {% else %}
 
-        .page-title {
-            margin-bottom: 20px;
-            color: #333;
-            text-align: center;
-        }
+  <div class="gd-cols">
+    <div class="sp-stack">
+      {% if data.away.linescores and data.home.linescores %}
+      <section class="sp-card">
+        <h2 class="sp-section-label sp-in-card">Scoring by quarter</h2>
+        <div class="gd-scroll">
+          <table class="gd-table gd-linescore">
+            <thead>
+              <tr>
+                <th>Team</th>
+                {% for _ in data.home.linescores %}
+                  <th>{% if loop.index <= 4 %}{{ loop.index }}{% else %}OT{% endif %}</th>
+                {% endfor %}
+                <th>T</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for t in [data.away, data.home] %}
+              <tr>
+                <td>{{ t.abbr }}</td>
+                {% for q in t.linescores %}<td>{{ q }}</td>{% endfor %}
+                <td>{{ t.score }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      {% endif %}
 
-        /* Button styling */
-        .btn {
-            display: inline-block;
-            padding: 10px 20px;
-            font-size: 16px;
-            color: #fff;
-            background-color: #007bff;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            text-decoration: none;
-        }
+      {% if data.team_stats %}
+      <section class="sp-card">
+        <h2 class="sp-section-label sp-in-card">Team stats</h2>
+        <table class="gd-table gd-compare">
+          <thead>
+            <tr><th>{{ data.away.abbr }}</th><th></th><th>{{ data.home.abbr }}</th></tr>
+          </thead>
+          <tbody>
+            {% for s in data.team_stats %}
+            <tr><td>{{ s.away }}</td><td>{{ s.label }}</td><td>{{ s.home }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+      {% endif %}
 
-        .btn:hover {
-            background-color: #0056b3;
-        }
-    </style>
+      {% if data.scoring_plays %}
+      <section class="sp-card">
+        <h2 class="sp-section-label sp-in-card">Scoring plays</h2>
+        <ol class="gd-plays">
+          {% for p in data.scoring_plays %}
+          <li>
+            <span class="gd-play-when"><strong>{{ p.team }}</strong><br>Q{{ p.quarter }} {{ p.clock }}</span>
+            <span><span class="sp-pill sp-pill-good">{{ p.type }}</span> {{ p.text }}</span>
+            <span class="gd-play-score">{{ p.away_score }}–{{ p.home_score }}</span>
+          </li>
+          {% endfor %}
+        </ol>
+      </section>
+      {% endif %}
+    </div>
+
+    {% if data.player_stats %}
+    <section class="sp-card">
+      <h2 class="sp-section-label sp-in-card">Player stats</h2>
+      <div class="gd-tabs" role="tablist">
+        {% for team in data.player_stats %}
+          <button type="button" class="sp-chip{% if loop.first %} is-active{% endif %}" data-team-tab="{{ loop.index0 }}">{{ team.team }}</button>
+        {% endfor %}
+      </div>
+
+      {% for team in data.player_stats %}
+      <div class="gd-team-block" data-team-panel="{{ loop.index0 }}"{% if not loop.first %} hidden{% endif %}>
+        {% set featured = team.categories | selectattr('featured') | list %}
+        {% set extra = team.categories | rejectattr('featured') | list %}
+
+
+
+        {% for cat in featured %}{{ cat_table(cat) }}{% endfor %}
+        {% if extra %}
+          <details class="gd-more">
+            <summary>More stats ({{ extra | map(attribute='title') | join(', ') }})</summary>
+            {% for cat in extra %}{{ cat_table(cat) }}{% endfor %}
+          </details>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </section>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<script>
+  document.querySelectorAll('[data-team-tab]').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const idx = tab.dataset.teamTab;
+      document.querySelectorAll('[data-team-tab]').forEach(t => t.classList.toggle('is-active', t === tab));
+      document.querySelectorAll('[data-team-panel]').forEach(p => { p.hidden = p.dataset.teamPanel !== idx; });
+    });
+  });
+</script>
 {% endblock %}

@@ -803,6 +803,70 @@ import requests
 
 
 
+def _home_away(competitors):
+    """Return (home, away) competitor dicts, using ESPN's homeAway flag when present."""
+    home = next((c for c in competitors if c.get('homeAway') == 'home'), competitors[0])
+    away = next((c for c in competitors if c.get('homeAway') == 'away'), competitors[1])
+    return home, away
+
+
+def parse_scoreboard_event(game):
+    """Flatten one ESPN scoreboard event into the dict the live scores page renders.
+    Returns None when the event doesn't have two competitors."""
+    competition = game.get('competitions', [{}])[0]
+    competitors = competition.get('competitors', [])
+    if len(competitors) < 2:
+        return None
+
+    home, away = _home_away(competitors)
+    status = game.get('status', {})
+    status_type = status.get('type', {})
+    situation = competition.get('situation', {}) or {}
+
+    # Possession comes back as a team ID; map it to the team name
+    possession_team = None
+    possession_team_id = situation.get('possession')
+    if possession_team_id:
+        for competitor in (home, away):
+            if competitor.get('team', {}).get('id') == possession_team_id:
+                possession_team = competitor.get('team', {}).get('displayName')
+                break
+
+    def record(competitor):
+        records = competitor.get('records') or []
+        return records[0].get('summary') if records else None
+
+    broadcasts = [name for b in competition.get('broadcasts', []) for name in b.get('names', [])]
+
+    return {
+        'game_id': game.get('id', None),
+        'home_team': home.get('team', {}).get('displayName', 'Unknown'),
+        'away_team': away.get('team', {}).get('displayName', 'Unknown'),
+        'home_score': home.get('score', '0'),
+        'away_score': away.get('score', '0'),
+        'status': status_type.get('description', 'Unknown'),
+        'clock': status.get('displayClock', '0:00'),
+        'period': status.get('period', 1),
+        'down': situation.get('down'),
+        'distance': situation.get('distance'),
+        'possession': possession_team,
+        'yardLine': situation.get('yardLine'),
+        # Display helpers for the scoreboard cards
+        'state': status_type.get('state', 'pre'),           # pre / in / post
+        'detail': status_type.get('shortDetail', ''),       # e.g. "Final", "2nd - 5:32", "Halftime"
+        'kickoff': game.get('date'),                         # ISO UTC
+        'home_abbr': home.get('team', {}).get('abbreviation'),
+        'away_abbr': away.get('team', {}).get('abbreviation'),
+        'home_record': record(home),
+        'away_record': record(away),
+        'home_winner': bool(home.get('winner')),
+        'away_winner': bool(away.get('winner')),
+        'broadcast': ', '.join(broadcasts[:2]) or None,
+        'down_distance': situation.get('downDistanceText') or situation.get('shortDownDistanceText'),
+        'red_zone': bool(situation.get('isRedZone')),
+    }
+
+
 def fetch_live_scores():
     url = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
     try:
@@ -813,68 +877,144 @@ def fetch_live_scores():
         print(f"Error fetching live scores: {e}")
         return {'live_games': [], 'last_week_games': fetch_last_week_scores()}
 
-    live_games = []
-
-    for game in live_scores.get('events', []):
-        competition = game.get('competitions', [{}])[0]
-        competitors = competition.get('competitors', [])
-        status = game.get('status', {}).get('type', {})
-
-        if len(competitors) < 2:
-            continue
-
-        # Team Data
-        home_team = competitors[0].get('team', {}).get('displayName', 'Unknown')
-        away_team = competitors[1].get('team', {}).get('displayName', 'Unknown')
-        home_score = competitors[0].get('score', '0')
-        away_score = competitors[1].get('score', '0')
-
-        # Game Status Data
-        clock = game.get('status', {}).get('displayClock', '0:00')
-        period = game.get('status', {}).get('period', 1)
-        game_status = status.get('description', 'Unknown')
-
-        # Situation Data (down, distance, possession, yard line)
-        situation = competition.get('situation', {})
-        
-
-        # Default values if data isn't present
-        down = situation.get('down')
-        distance = situation.get('distance')
-        yard_line = situation.get('yardLine')
-        possession_team = None
-
-        # Check possession and map it to the correct team name if it's an ID
-        possession_team_id = situation.get('possession')
-        if possession_team_id:
-            # Attempt to match possession_team_id with team IDs in competitors
-            for competitor in competitors:
-                if competitor.get('team', {}).get('id') == possession_team_id:
-                    possession_team = competitor.get('team', {}).get('displayName')
-                    break
-
-        # Append all relevant data to live_games list
-        live_games.append({
-            'game_id': game.get('id', None),
-            'home_team': home_team,
-            'away_team': away_team,
-            'home_score': home_score,
-            'away_score': away_score,
-            'status': game_status,
-            'clock': clock,
-            'period': period,
-            'down': down,
-            'distance': distance,
-            'possession': possession_team,
-            'yardLine': yard_line,
-        })
+    live_games = [g for g in map(parse_scoreboard_event, live_scores.get('events', [])) if g]
 
     # Return live games data or fallback to last week's games if no live data
     if not live_games:
         last_week_games = fetch_last_week_scores()  # Fetch last week's games if needed
         return {'live_games': live_games, 'last_week_games': last_week_games}
-    
+
     return {'live_games': live_games, 'last_week_games': None}
+
+
+# Team stats shown on the game details page, in display order: (ESPN name, label)
+GAME_TEAM_STATS = [
+    ('totalYards', 'Total yards'),
+    ('netPassingYards', 'Passing yards'),
+    ('rushingYards', 'Rushing yards'),
+    ('yardsPerPlay', 'Yards per play'),
+    ('firstDowns', 'First downs'),
+    ('thirdDownEff', '3rd down'),
+    ('fourthDownEff', '4th down'),
+    ('redZoneAttempts', 'Red zone'),
+    ('completionAttempts', 'Comp / Att'),
+    ('sacksYardsLost', 'Sacks – yards'),
+    ('turnovers', 'Turnovers'),
+    ('totalPenaltiesYards', 'Penalties – yards'),
+    ('possessionTime', 'Time of possession'),
+]
+
+# Player stat tables, in display order. "featured" tables are shown open.
+GAME_PLAYER_CATEGORIES = [
+    ('passing', 'Passing', True),
+    ('rushing', 'Rushing', True),
+    ('receiving', 'Receiving', True),
+    ('defensive', 'Defense', False),
+    ('interceptions', 'Interceptions', False),
+    ('kicking', 'Kicking', False),
+    ('punting', 'Punting', False),
+]
+
+
+def parse_game_summary(game_data):
+    """Shape an ESPN game summary into what game_details.html renders.
+    Returns None when the summary doesn't identify both teams."""
+    header = (game_data.get('header', {}).get('competitions') or [{}])[0]
+    competitors = header.get('competitors', [])
+    if len(competitors) < 2:
+        return None
+
+    home, away = _home_away(competitors)
+    status_type = header.get('status', {}).get('type', {})
+
+    def team_info(c):
+        team = c.get('team', {})
+        records = c.get('record') or []
+        return {
+            'name': team.get('displayName', 'Unknown'),
+            'abbr': team.get('abbreviation', ''),
+            'score': c.get('score'),
+            'record': records[0].get('summary') if records else None,
+            'winner': bool(c.get('winner')),
+            'linescores': [ls.get('displayValue', '') for ls in c.get('linescores', [])],
+        }
+
+    boxscore = game_data.get('boxscore', {})
+
+    # Team stats keyed by home/away so the template can show them side by side
+    stats_by_side = {}
+    for team in boxscore.get('teams', []):
+        side = team.get('homeAway')
+        if side not in ('home', 'away'):
+            side = 'home' if team.get('team', {}).get('id') == home.get('team', {}).get('id') else 'away'
+        stats_by_side[side] = {st.get('name'): st.get('displayValue') for st in team.get('statistics', [])}
+
+    team_stats = []
+    if stats_by_side:
+        for name, label in GAME_TEAM_STATS:
+            away_val = stats_by_side.get('away', {}).get(name)
+            home_val = stats_by_side.get('home', {}).get(name)
+            if away_val is None and home_val is None:
+                continue
+            team_stats.append({'label': label, 'away': away_val or '–', 'home': home_val or '–'})
+
+    # Player stats: one table per category, each with that category's own columns
+    player_stats = []
+    for team_players in boxscore.get('players', []):
+        team = team_players.get('team', {})
+        by_name = {cat.get('name'): cat for cat in team_players.get('statistics', [])}
+        categories = []
+        for name, title, featured in GAME_PLAYER_CATEGORIES:
+            cat = by_name.get(name)
+            if not cat or not cat.get('athletes'):
+                continue
+            categories.append({
+                'name': name,
+                'title': title,
+                'featured': featured,
+                'labels': cat.get('labels', []),
+                'rows': [
+                    {
+                        'name': a.get('athlete', {}).get('displayName', 'Unknown'),
+                        'stats': a.get('stats', []),
+                    }
+                    for a in cat.get('athletes', [])
+                ],
+            })
+        player_stats.append({
+            'team': team.get('displayName', 'Unknown'),
+            'abbr': team.get('abbreviation', ''),
+            'categories': categories,
+        })
+    # Away team first, matching the header
+    away_name = away.get('team', {}).get('displayName')
+    player_stats.sort(key=lambda t: 0 if t['team'] == away_name else 1)
+
+    scoring_plays = [
+        {
+            'quarter': sp.get('period', {}).get('number'),
+            'clock': sp.get('clock', {}).get('displayValue', ''),
+            'team': sp.get('team', {}).get('abbreviation', ''),
+            'type': sp.get('type', {}).get('abbreviation') or sp.get('type', {}).get('text', ''),
+            'text': (sp.get('text') or '').strip(),
+            'away_score': sp.get('awayScore'),
+            'home_score': sp.get('homeScore'),
+        }
+        for sp in game_data.get('scoringPlays', [])
+    ]
+
+    return {
+        'home_team': home.get('team', {}).get('displayName', 'Unknown'),
+        'away_team': away.get('team', {}).get('displayName', 'Unknown'),
+        'home': team_info(home),
+        'away': team_info(away),
+        'state': status_type.get('state', 'pre'),
+        'detail': status_type.get('shortDetail') or status_type.get('description', ''),
+        'kickoff': header.get('date'),
+        'team_stats': team_stats,
+        'player_stats': player_stats,
+        'scoring_plays': scoring_plays,
+    }
 
 
 def fetch_detailed_game_stats(game_id):
@@ -888,57 +1028,7 @@ def fetch_detailed_game_stats(game_id):
         print(f"Error fetching detailed stats: {e}")
         return None
 
-    # Fetch team and player stats
-    boxscore = game_data.get('boxscore', {})
-    teams = boxscore.get('teams', [])
-    
-    if len(teams) < 2:
-        return None
-
-    # Home and Away team stats
-    home_team = teams[0].get('team', {}).get('displayName', 'Unknown')
-    away_team = teams[1].get('team', {}).get('displayName', 'Unknown')
-    
-    # Team statistics like total yards, passing yards, etc.
-    home_stats = teams[0].get('statistics', [])
-    away_stats = teams[1].get('statistics', [])
-    
-    # Parse team stats
-    home_team_stats = {stat.get('name', 'Unknown'): stat.get('displayValue', 'N/A') for stat in home_stats}
-    away_team_stats = {stat.get('name', 'Unknown'): stat.get('displayValue', 'N/A') for stat in away_stats}
-
-    # Fetch individual player stats (passing, rushing, receiving)
-    players = boxscore.get('players', [])
-    player_stats = {}
-
-    for team_players in players:
-        team = team_players.get('team', {}).get('displayName', 'Unknown')
-        player_stats[team] = []
-        
-        for stat_category in team_players.get('statistics', []):
-            stat_name = stat_category.get('name', 'Unknown')
-            
-            for player in stat_category.get('athletes', []):
-                player_data = {
-                    'name': player.get('athlete', {}).get('displayName', 'Unknown'),
-                    'position': player.get('athlete', {}).get('position', {}).get('abbreviation', 'N/A'),
-                    'stats': {
-                        'passingYards': player.get('stats', [])[1] if stat_name == 'passing' else 'N/A',
-                        'rushingYards': player.get('stats', [])[1] if stat_name == 'rushing' else 'N/A',
-                        'receivingYards': player.get('stats', [])[1] if stat_name == 'receiving' else 'N/A',
-                        'touchdowns': player.get('stats', [])[3] if len(player.get('stats', [])) > 3 else 'N/A',
-                    }
-                }
-                player_stats[team].append(player_data)
-
-    # Return combined detailed stats
-    return {
-        'home_team': home_team,
-        'away_team': away_team,
-        'home_team_stats': home_team_stats,
-        'away_team_stats': away_team_stats,
-        'player_stats': player_stats
-    }
+    return parse_game_summary(game_data)
 
 
 

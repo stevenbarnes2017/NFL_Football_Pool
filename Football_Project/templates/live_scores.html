@@ -4,152 +4,305 @@
 
 {% block head %}
   {{ super() }}
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/live_scores.css', v=3) }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v='20261012-1') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/live_scores.css', v='20261025-1') }}">
 {% endblock %}
 
 {% block content %}
-  <h1 class="page-title">Live NFL Scores</h1>
-  <div class="scoreboard-grid">
-      <div id="live-scoreboard" class="scoreboard-grid"></div>
-      <h2 id="last-week-header" style="display:none;">Last Week's Scores</h2>
-      <div id="last-week-scoreboard" class="scoreboard"></div>
+<div class="sp-page ls-page">
+
+  <section class="sp-hero ls-hero">
+    <div class="ls-hero-row">
+      <h1 class="sp-hero-title">Live Scores<span id="ls-week-label"></span></h1>
+      <span id="ls-updated" class="ls-updated sp-dim"></span>
+    </div>
+
+    <!-- Your week at a glance (filled in when signed in and picks exist) -->
+    <div id="ls-summary" class="ls-summary" hidden>
+      <div class="ls-summary-item">
+        <div class="ls-summary-num" id="ls-sum-points">0</div>
+        <div class="ls-summary-label">Points banked</div>
+      </div>
+      <div class="ls-summary-item">
+        <div class="ls-summary-num" id="ls-sum-record">0–0</div>
+        <div class="ls-summary-label">Final record</div>
+      </div>
+      <div class="ls-summary-item">
+        <div class="ls-summary-num" id="ls-sum-live">0</div>
+        <div class="ls-summary-label">Covering now</div>
+      </div>
+    </div>
+
+    <div class="sp-chips ls-filters" role="tablist" aria-label="Filter games">
+      <button type="button" class="sp-chip is-active" data-filter="all">All</button>
+      <button type="button" class="sp-chip" data-filter="in">Live</button>
+      <button type="button" class="sp-chip" data-filter="pre">Upcoming</button>
+      <button type="button" class="sp-chip" data-filter="post">Final</button>
+      <button type="button" class="sp-chip" data-filter="mine" id="ls-filter-mine" hidden>My picks</button>
+    </div>
+  </section>
+
+  <div id="ls-board" class="ls-board" aria-live="polite">
+    <p class="sp-empty">Loading scores…</p>
   </div>
+</div>
 
-  <!-- Floating Box for User's Score Summary -->
-  <div id="user-score-box" class="floating-box">
-      <h3>Your Score for Week <span id="current-week-number"></span></h3>
-      <div id="user-total-points">Total Points: 0</div>
-      <table id="user-picks-table">
-          <thead>
-              <tr>
-                  <th>Game</th>
-                  <th>Your Pick</th>
-                  <th>Confidence</th>
-                  <th>Points</th>
-                  <th>Status</th>
-              </tr>
-          </thead>
-          <tbody id="user-picks-list">
-              <!-- Picks will be populated here -->
-          </tbody>
-      </table>
-  </div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const board = document.getElementById('ls-board');
+  const updated = document.getElementById('ls-updated');
+  const weekLabel = document.getElementById('ls-week-label');
+  const summary = document.getElementById('ls-summary');
+  const mineChip = document.getElementById('ls-filter-mine');
 
-  <script>
-    document.addEventListener('DOMContentLoaded', function () {
-      const liveScoreboard = document.getElementById('live-scoreboard');
-      const lastWeekHeader = document.getElementById('last-week-header');
-      const lastWeekScoreboard = document.getElementById('last-week-scoreboard');
-      const userTotalPoints = document.getElementById('user-total-points');
-      const userPicksList = document.getElementById('user-picks-list');
-      const currentWeekElement = document.getElementById('current-week-number');
-      const defaultLogo = '/static/images/default.png';
+  let games = [];
+  let picksByMatchup = {};   // "Away Team@Home Team" -> game_picks row from /user_score_summary
+  let filter = 'all';
 
-      // Optional: auto-offset floating box below your navbar height
-      const nav = document.querySelector('#navbar, .navbar, header');
-      if (nav) {
-        const top = nav.offsetHeight + 20; // spacing below navbar
-        const box = document.querySelector('#user-score-box');
-        if (box) box.style.top = top + 'px';
+  const SECTIONS = [
+    { state: 'in',   title: 'Live now' },
+    { state: 'pre',  title: 'Upcoming' },
+    { state: 'post', title: 'Final' },
+  ];
+
+  function esc(value) {
+    return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function num(value) {
+    const n = parseInt(value, 10);
+    return Number.isNaN(n) ? null : n;
+  }
+
+  function matchupKey(away, home) { return `${away}@${home}`; }
+
+  // Older cache entries (and the last-week fallback) don't carry `state`; infer it.
+  function gameState(g) {
+    if (g.state) return g.state;
+    const s = (g.status || '').toLowerCase();
+    if (s.includes('final')) return 'post';
+    if (s.includes('progress') || s.includes('half')) return 'in';
+    return 'pre';
+  }
+
+  function kickoffText(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+  }
+
+  // Mirrors services.recap.ats_winner / utils.calculate_user_scores:
+  // against the spread when a line is stored (a push goes to the underdog), else straight up.
+  function atsWinner(home, away, homeScore, awayScore, spread, favorite) {
+    if (homeScore === null || awayScore === null) return null;
+    if (spread === null || spread === undefined || !favorite) {
+      if (homeScore === awayScore) return null;
+      return homeScore > awayScore ? home : away;
+    }
+    const margin = favorite === home ? homeScore - awayScore : awayScore - homeScore;
+    if (margin > Math.abs(spread)) return favorite;
+    return favorite === home ? away : home;
+  }
+
+  function pickInfo(g, state) {
+    const row = picksByMatchup[matchupKey(g.away_team, g.home_team)];
+    if (!row) return null;
+    if (!row.pick) return { kind: 'none' };
+
+    const pick = row.pick;
+    const winner = atsWinner(g.home_team, g.away_team, num(g.home_score), num(g.away_score), row.spread, row.favorite_team);
+    const line = row.spread !== null && row.favorite_team
+      ? `${row.favorite_team === g.home_team ? (g.home_abbr || g.home_team) : (g.away_abbr || g.away_team)} ${row.spread > 0 ? '-' + row.spread : row.spread}`
+      : 'No line';
+    const team = pick.team_picked === g.home_team ? (g.home_abbr || g.home_team)
+               : pick.team_picked === g.away_team ? (g.away_abbr || g.away_team)
+               : pick.team_picked;
+
+    let result = 'pending';
+    if (state === 'in') result = winner === pick.team_picked ? 'covering' : 'trailing';
+    if (state === 'post') result = winner === pick.team_picked ? 'won' : 'lost';
+    return { kind: 'pick', team, confidence: pick.confidence, line, result };
+  }
+
+  function teamRow(g, side, state) {
+    const name = g[`${side}_team`];
+    const abbr = g[`${side}_abbr`] || '';
+    const score = state === 'pre' ? '' : esc(g[`${side}_score`]);
+    const otherSide = side === 'home' ? 'away' : 'home';
+    let outcome = '';
+    if (state === 'post') {
+      const mine = num(g[`${side}_score`]), theirs = num(g[`${otherSide}_score`]);
+      if (mine !== null && theirs !== null && mine !== theirs) outcome = mine > theirs ? 'is-winner' : 'is-loser';
+    }
+    const hasBall = state === 'in' && g.possession && g.possession === name;
+    return `
+      <div class="ls-team ${outcome}">
+        <span class="ls-logo" data-abbr="${esc(abbr)}">
+          <img src="/static/images/${encodeURIComponent(name)}.png" alt=""
+               onerror="this.remove()">
+        </span>
+        <span class="ls-team-name">
+          <span class="ls-name">${esc(name)}</span>
+          ${g[`${side}_record`] ? `<span class="ls-record">${esc(g[`${side}_record`])}</span>` : ''}
+        </span>
+        ${hasBall ? `<span class="ls-ball" title="Possession" aria-label="Has the ball"></span>` : ''}
+        <span class="ls-score">${score}</span>
+      </div>`;
+  }
+
+  function statusLine(g, state) {
+    if (state === 'in') {
+      const text = g.detail || `Q${g.period} · ${g.clock}`;
+      return `<span class="ls-status is-live"><span class="sp-live-dot"></span>${esc(text)}</span>`;
+    }
+    if (state === 'post') return `<span class="ls-status">${esc(g.detail || g.status || 'Final')}</span>`;
+    return `<span class="ls-status">${esc(kickoffText(g.kickoff) || g.detail || g.status || '')}</span>`;
+  }
+
+  function pickLine(info) {
+    if (!info) return '';
+    if (info.kind === 'none') return `<div class="ls-pick is-none">No pick for this game</div>`;
+    const labels = {
+      pending: '',
+      covering: '<span class="sp-pill sp-pill-good">Covering</span>',
+      trailing: '<span class="sp-pill sp-pill-bad">Not covering</span>',
+      won: `<span class="sp-pill sp-pill-good">+${esc(info.confidence)}</span>`,
+      lost: '<span class="sp-pill sp-pill-bad">0</span>',
+    };
+    return `
+      <div class="ls-pick is-${info.result}">
+        <span>Your pick <strong>${esc(info.team)}</strong> · ${esc(info.confidence)} pts
+          <span class="ls-line">(${esc(info.line)})</span></span>
+        ${labels[info.result]}
+      </div>`;
+  }
+
+  function card(g) {
+    const state = gameState(g);
+    const info = pickInfo(g, state);
+    const situation = state === 'in' && g.down_distance
+      ? `<div class="ls-situation ${g.red_zone ? 'is-redzone' : ''}">${esc(g.down_distance)}${g.red_zone ? ' · Red zone' : ''}</div>`
+      : '';
+    const statsLink = state !== 'pre' && g.game_id
+      ? `<a class="ls-stats-link" href="/game_details/${encodeURIComponent(g.game_id)}">Game stats<span aria-hidden="true"> →</span></a>`
+      : '';
+    return `
+      <article class="ls-game is-${state}">
+        <div class="ls-game-top">
+          ${statusLine(g, state)}
+          ${g.broadcast ? `<span class="ls-tv">${esc(g.broadcast)}</span>` : ''}
+        </div>
+        ${teamRow(g, 'away', state)}
+        ${teamRow(g, 'home', state)}
+        ${situation}
+        ${pickLine(info)}
+        ${statsLink}
+      </article>`;
+  }
+
+  function render() {
+    const visible = games.filter(g => {
+      if (filter === 'all') return true;
+      if (filter === 'mine') {
+        const row = picksByMatchup[matchupKey(g.away_team, g.home_team)];
+        return row && row.pick;
       }
-
-      // Fetch live scores every 30 seconds
-      function fetchLiveScores() {
-          fetch('/stream-live-scores')
-              .then(response => response.json())
-              .then(data => {
-                  updateScoreboard(data);
-              })
-              .catch(error => console.error('Error fetching live scores:', error));
-      }
-
-      function updateScoreboard(data) {
-          liveScoreboard.innerHTML = '';
-          lastWeekScoreboard.innerHTML = '';
-
-          if (data.live_games && data.live_games.length > 0) {
-              data.live_games.forEach(game => renderGame(game, liveScoreboard));
-              lastWeekHeader.style.display = 'none';
-          } else if (data.last_week_games && data.last_week_games.length > 0) {
-              lastWeekHeader.style.display = 'block';
-              data.last_week_games.forEach(game => renderGame(game, lastWeekScoreboard));
-          } else {
-              liveScoreboard.innerHTML = '<div class="no-games">No games currently available.</div>';
-              lastWeekHeader.style.display = 'none';
-          }
-      }
-
-      function renderGame(game, container) {
-          const gameCard = document.createElement('div');
-          gameCard.classList.add('game-card');
-
-          const homeTeamLogo = `/static/images/${game.home_team}.png`;
-          const awayTeamLogo = `/static/images/${game.away_team}.png`;
-
-          gameCard.innerHTML = `
-              <a href="/game_details/${game.game_id}">
-                  <div class="team-logos">
-                      <div class="team-logo">
-                          <img src="${homeTeamLogo}" alt="${game.home_team} logo" onerror="this.onerror=null;this.src='${defaultLogo}'">
-                      </div>
-                      <div class="team-logo">
-                          <img src="${awayTeamLogo}" alt="${game.away_team} logo" onerror="this.onerror=null;this.src='${defaultLogo}'">
-                      </div>
-                  </div>
-                  <div class="score">
-                      <div class="team-score">${game.home_team} ${game.home_score}</div>
-                      <div class="vs-divider">vs</div>
-                      <div class="team-score">${game.away_team} ${game.away_score}</div>
-                  </div>
-                  <div class="game-details">
-                      <div><span>Status:</span> ${game.status}</div>
-                      <div><span>Clock:</span> ${game.clock} (Q${game.period})</div>
-                      <div><span>Possession:</span> ${game.possession || 'None'}</div>
-                      <div><span>Down & Distance:</span> ${game.down ? `Down ${game.down} & ${game.distance} yards` : 'N/A'}</div>
-                      <div><span>Yard Line:</span> ${game.yardLine !== null ? game.yardLine : 'N/A'}</div>
-                  </div>
-              </a>
-          `;
-          container.appendChild(gameCard);
-      }
-
-      // Update user score summary box every 30 seconds (using server week)
-      function updateUserScoreBox() {
-        fetch('/get_current_week')
-          .then(response => response.json())
-          .then(data => {
-              const currentWeek = data.current_week;
-              return fetch(`/user_score_summary?format=json&week=${currentWeek}`)
-                .then(response => response.json())
-                .then(data => {
-                    userTotalPoints.innerText = 'Total Points: ' + data.user_total_score;
-                    currentWeekElement.innerText = currentWeek;
-                    userPicksList.innerHTML = '';
-
-                    // Only show in-progress or finished picks
-                    data.game_picks.forEach(game => {
-                        if (game.pick && (game.status === 'STATUS_IN_PROGRESS' || game.status === 'STATUS_FINAL')) {
-                            const row = document.createElement('tr');
-                            row.innerHTML = `
-                                <td>${game.home_team} vs ${game.away_team}</td>
-                                <td>${game.pick.team_picked}</td>
-                                <td>${game.pick.confidence}</td>
-                                <td>${game.pick.points_earned || 0}</td>
-                                <td>${game.status}</td>
-                            `;
-                            userPicksList.appendChild(row);
-                        }
-                    });
-                });
-          })
-          .catch(error => console.error('Error updating user score summary:', error));
-      }
-
-      // Initial fetches and intervals
-      fetchLiveScores();
-      setInterval(fetchLiveScores, 30000);
-      updateUserScoreBox();
-      setInterval(updateUserScoreBox, 30000);
+      return gameState(g) === filter;
     });
-  </script>
+
+    if (!games.length) {
+      board.innerHTML = '<p class="sp-empty">No games available right now.</p>';
+      return;
+    }
+    if (!visible.length) {
+      board.innerHTML = '<p class="sp-empty">No games match this filter.</p>';
+      return;
+    }
+
+    board.innerHTML = SECTIONS.map(section => {
+      const list = visible
+        .filter(g => gameState(g) === section.state)
+        .sort((a, b) => (a.kickoff || '').localeCompare(b.kickoff || ''));
+      if (!list.length) return '';
+      return `
+        <section class="ls-section">
+          <h2 class="sp-section-label">${section.title} <span class="ls-count">${list.length}</span></h2>
+          <div class="ls-grid">${list.map(card).join('')}</div>
+        </section>`;
+    }).join('');
+
+    renderSummary();
+  }
+
+  function renderSummary() {
+    const rows = Object.values(picksByMatchup).filter(r => r.pick);
+    if (!rows.length) { summary.hidden = true; mineChip.hidden = true; return; }
+
+    let banked = 0, won = 0, lost = 0, covering = 0;
+    games.forEach(g => {
+      const state = gameState(g);
+      const info = pickInfo(g, state);
+      if (!info || info.kind !== 'pick') return;
+      if (info.result === 'won') { won += 1; banked += Number(info.confidence) || 0; }
+      if (info.result === 'lost') lost += 1;
+      if (info.result === 'covering') covering += 1;
+    });
+    document.getElementById('ls-sum-points').textContent = banked;
+    document.getElementById('ls-sum-record').textContent = `${won}–${lost}`;
+    document.getElementById('ls-sum-live').textContent = covering;
+    summary.hidden = false;
+    mineChip.hidden = false;
+  }
+
+  function fetchScores() {
+    return fetch('/stream-live-scores')
+      .then(r => r.json())
+      .then(data => {
+        games = (data.live_games && data.live_games.length) ? data.live_games : (data.last_week_games || []);
+        updated.textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        render();
+      })
+      .catch(err => {
+        console.error('Error fetching live scores:', err);
+        if (!games.length) board.innerHTML = '<p class="sp-empty">Couldn’t load scores. Retrying…</p>';
+      });
+  }
+
+  // Picks need a signed-in user; anonymous visitors just see the scoreboard.
+  function fetchPicks() {
+    return fetch('/get_current_week')
+      .then(r => r.json())
+      .then(({ current_week }) => {
+        if (!current_week) return;
+        weekLabel.textContent = ` · Week ${current_week}`;
+        return fetch(`/user_score_summary?format=json&week=${current_week}`, { headers: { Accept: 'application/json' } })
+          .then(r => (r.ok && (r.headers.get('content-type') || '').includes('json')) ? r.json() : null)
+          .then(data => {
+            if (!data || !data.game_picks) return;
+            picksByMatchup = {};
+            data.game_picks.forEach(row => { picksByMatchup[matchupKey(row.away_team, row.home_team)] = row; });
+            render();
+          });
+      })
+      .catch(err => console.error('Error loading picks:', err));
+  }
+
+  document.querySelectorAll('.ls-filters .sp-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      filter = chip.dataset.filter;
+      document.querySelectorAll('.ls-filters .sp-chip').forEach(c => c.classList.toggle('is-active', c === chip));
+      render();
+    });
+  });
+
+  fetchScores();
+  fetchPicks();
+  setInterval(fetchScores, 30000);
+  setInterval(fetchPicks, 60000);
+});
+</script>
 {% endblock %}

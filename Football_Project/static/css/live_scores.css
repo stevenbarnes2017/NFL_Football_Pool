@@ -1,126 +1,169 @@
-/* ===========================
-   Floating box (user summary)
-   Desktop default: fixed on right
-   =========================== */
-#user-score-box.floating-box {
-  position: fixed;
-  top: 120px;                /* clears navbar */
-  right: 20px;
-  width: clamp(320px, 28vw, 520px);
-  max-height: 90vh;
-  overflow-y: auto;
-  overflow-x: auto;
-  background-color: #f8f9fa;
-  border: 1px solid #ddd;
-  padding: 15px;
-  border-radius: 8px;
-  box-shadow: 0 0 10px rgba(0,0,0,0.1);
-  z-index: 200;              /* below nav (1000), above cards */
-}
+/* ================================
+   LIVE SCORES + GAME DETAILS (ls-*)
+   Builds on dashboard.css tokens (--sp-*); scoped to .ls-page.
+   ================================ */
 
-/* ===============
-   Table inside box
-   =============== */
-#user-picks-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9em;
-  table-layout: fixed;
-}
-#user-picks-table th,
-#user-picks-table td {
-  padding: 5px;
-  text-align: left;
-  border-bottom: 1px solid #ddd;
-  word-wrap: break-word;
-  white-space: normal;
-}
-#user-picks-table th {
-  background-color: #f2f2f2;
-  color: #000;
-  font-weight: bold;
-}
+/* ---------- hero ---------- */
+.ls-hero{ padding-bottom: 14px; }
+.ls-hero-row{ display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ls-updated{ font-size: .82rem; }
 
-/* =================
-   Scoreboard layout
-   ================= */
-
-/* Neutralize any negative margins from global styles on this page */
-.scoreboard-grid {
-  margin-left: 0 !important;
-  width: 100% !important;
-  padding: 20px;
-  box-sizing: border-box;
-}
-
-/* Lay out game cards in a responsive grid */
-#live-scoreboard,
-#last-week-scoreboard {
+.ls-summary{
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 24px;
-  align-items: stretch;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 14px;
+}
+.ls-summary[hidden]{ display: none; }
+.ls-summary-item{
+  background: var(--sp-dark-2);
+  border: 1px solid var(--sp-dark-line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  min-width: 0;
+}
+.ls-summary-num{ font-family: var(--sp-display); font-weight: 800; font-size: 1.9rem; line-height: 1; color: var(--sp-lime); }
+.ls-summary-label{ color: #b7bab3; font-size: .78rem; margin-top: 4px; }
+
+/* filter chips are buttons here, not links */
+.ls-filters{ margin-top: 14px; }
+.ls-filters .sp-chip{ background: transparent; font: inherit; cursor: pointer; }
+.ls-filters .sp-chip.is-active{ background: var(--sp-lime); }
+.ls-filters .sp-chip[hidden]{ display: none; }
+
+/* ---------- board ---------- */
+.ls-section{ margin-bottom: 18px; }
+.ls-count{ color: var(--sp-muted); font-weight: 600; margin-left: 4px; }
+.ls-grid{ display: grid; grid-template-columns: 1fr; gap: 10px; }
+
+.ls-game{
+  background: var(--sp-card);
+  border-radius: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--sp-line);
+  min-width: 0;
+}
+.ls-game.is-live, .ls-game.is-in{ border-color: #f2b3b3; box-shadow: 0 0 0 1px rgba(255,77,77,.12); }
+
+.ls-game-top{ display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; font-size: .82rem; }
+.ls-status{ color: var(--sp-muted); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; display: inline-flex; align-items: center; gap: 8px; }
+.ls-status.is-live{ color: var(--sp-red); }
+.ls-status .sp-live-dot{ width: 7px; height: 7px; box-shadow: 0 0 0 3px rgba(255,77,77,.2); }
+.ls-tv{ color: var(--sp-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
+
+.ls-team{
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+}
+.ls-logo{
+  width: 34px; height: 34px;
+  display: grid; place-items: center;
+  position: relative;
+}
+.ls-logo img{ width: 34px; height: 34px; object-fit: contain; }
+/* fallback when the logo file is missing: show the abbreviation */
+.ls-logo:not(:has(img))::after{
+  content: attr(data-abbr);
+  font-size: .7rem; font-weight: 800;
+  width: 34px; height: 34px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--sp-line); color: var(--sp-ink);
+}
+.ls-team-name{ min-width: 0; display: flex; align-items: baseline; gap: 6px; }
+.ls-name{ font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ls-record{ color: var(--sp-muted); font-size: .8rem; white-space: nowrap; }
+.ls-score{ font-family: var(--sp-display); font-weight: 800; font-size: 1.7rem; line-height: 1; min-width: 2ch; text-align: right; font-variant-numeric: tabular-nums; grid-column: 4; }
+.ls-team.is-winner .ls-name{ font-weight: 800; }
+.ls-team.is-loser .ls-name, .ls-team.is-loser .ls-score{ color: var(--sp-muted); }
+.ls-team.is-loser .ls-logo{ opacity: .6; }
+.ls-ball{
+  width: 14px; height: 9px; border-radius: 50%;
+  background: #8b4a1f;
+  box-shadow: inset 0 0 0 1.5px #5e2f11;
+  grid-column: 3;
 }
 
-/* Make cards fluid (override any fixed width from global CSS) */
-.game-card {
-  width: 100% !important;
-  max-width: none !important;
-  margin: 0;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  padding: 15px;
-  border: 1px solid #ddd;
+.ls-situation{
+  margin-top: 6px;
+  padding: 6px 10px;
   border-radius: 8px;
-  background-color: #fff;
-  text-align: left;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-  transition: transform 0.3s ease;
+  background: #f4f5f1;
+  font-size: .86rem;
+  font-weight: 600;
 }
-.game-card:hover {
-  transform: translateY(-2px);
+.ls-situation.is-redzone{ background: var(--sp-red-soft); color: var(--sp-red); }
+
+.ls-pick{
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--sp-line);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: .86rem;
 }
+.ls-pick.is-none{ color: var(--sp-muted); }
+.ls-line{ color: var(--sp-muted); }
 
-/* Reserve space for the fixed user box on wide screens so cards don't go underneath */
-@media (min-width: 1200px) {
-  .scoreboard-grid { margin-right: 560px; } /* box width (~520) + gutter */
+.ls-stats-link{
+  display: inline-block;
+  margin-top: 8px;
+  font-size: .86rem;
+  font-weight: 700;
+  color: var(--sp-green) !important;
+  text-decoration: none;
 }
+.ls-stats-link:hover{ text-decoration: underline; }
 
-/* Tablet tuning: increase columns progressively */
-@media (min-width: 700px) and (max-width: 1199px) {
-  #live-scoreboard,
-  #last-week-scoreboard { grid-template-columns: repeat(2, 1fr); }
+/* ---------- game details ---------- */
+.gd-scorebug{ display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; padding: 18px 0 20px; text-align: center; }
+.gd-team{ min-width: 0; }
+.gd-team img{ width: 56px; height: 56px; object-fit: contain; }
+.gd-team-name{ font-weight: 700; margin-top: 6px; overflow-wrap: anywhere; }
+.gd-team-record{ color: #b7bab3; font-size: .82rem; }
+.gd-score{ font-family: var(--sp-display); font-weight: 800; font-size: 2.6rem; line-height: 1; margin-top: 4px; }
+.gd-team.is-loser .gd-score{ color: #8d908a; }
+.gd-status{ font-weight: 700; text-transform: uppercase; letter-spacing: .06em; font-size: .82rem; color: #b7bab3; }
+
+.gd-table{ width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: .92rem; }
+.gd-table th, .gd-table td{ padding: 8px 6px; border-bottom: 1px solid var(--sp-line); }
+.gd-table th{ background: transparent; font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--sp-muted); font-weight: 700; }
+.gd-table tr:last-child td{ border-bottom: 0; }
+
+.gd-compare td:first-child, .gd-compare th:first-child{ text-align: left; width: 28%; font-weight: 700; }
+.gd-compare td:last-child, .gd-compare th:last-child{ text-align: right; width: 28%; font-weight: 700; }
+.gd-compare td:nth-child(2), .gd-compare th:nth-child(2){ text-align: center; color: var(--sp-muted); }
+
+.gd-linescore th, .gd-linescore td{ text-align: center; }
+.gd-linescore th:first-child, .gd-linescore td:first-child{ text-align: left; }
+.gd-linescore td:last-child{ font-weight: 800; }
+
+.gd-plays li{ display: grid; grid-template-columns: 64px 1fr auto; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--sp-line); align-items: start; font-size: .9rem; }
+.gd-plays li:last-child{ border-bottom: 0; }
+.gd-play-when{ color: var(--sp-muted); font-size: .8rem; }
+.gd-play-score{ font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.gd-team-block + .gd-team-block{ margin-top: 18px; }
+.gd-team-title{ font-family: var(--sp-display); font-weight: 800; font-size: 1.3rem; margin-bottom: 8px !important; }
+.gd-cat{ margin-bottom: 12px; }
+.gd-cat-title{ font-weight: 700; font-size: .9rem; margin: 6px 0 2px !important; }
+.gd-scroll{ overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.gd-players th, .gd-players td{ text-align: right; white-space: nowrap; }
+.gd-players th:first-child, .gd-players td:first-child{ text-align: left; position: sticky; left: 0; background: var(--sp-card); }
+.gd-more summary{ cursor: pointer; font-weight: 700; color: var(--sp-green); margin: 6px 0; }
+
+.gd-tabs{ display: flex; gap: 8px; margin-bottom: 12px; }
+.gd-tabs .sp-chip{ background: transparent; font: inherit; cursor: pointer; border-color: var(--sp-line); color: var(--sp-ink) !important; }
+.gd-tabs .sp-chip.is-active{ background: var(--sp-lime); border-color: var(--sp-lime); color: var(--sp-lime-ink) !important; }
+
+/* ---------- wider screens ---------- */
+@media (min-width: 720px){
+  .sp-page.ls-page{ max-width: 1180px; padding-left: 16px; padding-right: 16px; }
+  .ls-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .ls-summary{ max-width: 520px; }
+  .gd-cols{ display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
 }
-@media (min-width: 1000px) and (max-width: 1199px) {
-  #live-scoreboard,
-  #last-week-scoreboard { grid-template-columns: repeat(3, 1fr); }
-}
-
-/* =========================
-   Small screens (any orientation)
-   Always stack user box below
-   ========================= */
-@media (max-width: 900px), (max-height: 500px) {
-  #user-score-box.floating-box {
-    position: static !important;  /* leave normal flow */
-    top: auto !important;         /* neutralize JS-set top */
-    right: auto !important;
-    width: 100% !important;
-    margin-top: 16px;
-    max-height: none !important;
-    z-index: auto !important;
-  }
-
-  .scoreboard-grid {
-    margin-right: 0 !important;
-    margin-left: 0 !important;
-    padding: 10px !important;
-  }
-
-  #live-scoreboard,
-  #last-week-scoreboard {
-    grid-template-columns: 1fr;   /* single column on narrow/short screens */
-    gap: 12px;
-  }
+@media (min-width: 1040px){
+  .ls-grid{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
