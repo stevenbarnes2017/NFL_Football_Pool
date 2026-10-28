@@ -69,6 +69,18 @@ class RenderPostTests(unittest.TestCase):
     def test_images_can_be_turned_off_for_email(self):
         self.assertEqual(render_post("![meme](/board/images/abcdefgh123)", images=False), "<p>[image]</p>")
 
+    def test_backslash_escapes_show_characters_literally(self):
+        # What the visual editor saves when someone literally types these.
+        self.assertEqual(render_post(r"5\*3 and \*\*not bold\*\*"), "<p>5*3 and **not bold**</p>")
+        self.assertEqual(render_post("\\- not a list\n1\\. not numbered\n\\# not a heading"),
+                         "<p>- not a list<br>1. not numbered<br># not a heading</p>")
+        self.assertEqual(render_post(r"\[not](https://x.io) a link"), '<p>[not](<a href="https://x.io" target="_blank" rel="noopener noreferrer nofollow">https://x.io</a>) a link</p>')
+        self.assertEqual(render_post(r"C:\Users\steve"), r"<p>C:\Users\steve</p>")
+        self.assertEqual(plain_text(r"5\*3 \- ok"), "5*3 - ok")
+
+    def test_editor_output_bold_italic_combined(self):
+        self.assertEqual(render_post("**_both_** and _it_"), "<p><strong><em>both</em></strong> and <em>it</em></p>")
+
     def test_crlf_and_empty(self):
         self.assertEqual(render_post("a\r\nb"), "<p>a<br>b</p>")
         self.assertEqual(render_post(None), "")

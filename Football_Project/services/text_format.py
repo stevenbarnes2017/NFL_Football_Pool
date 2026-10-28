@@ -1,4 +1,4 @@
-"""Lightweight, safe formatting for message board posts and announcements.
+r"""Lightweight, safe formatting for message board posts and announcements.
 
 Bodies are stored as plain text. On display they are HTML-escaped first and
 then a small set of markers is turned into markup, so users can never inject
@@ -7,6 +7,10 @@ their own HTML:
     **bold**   *italic* / _italic_   # Heading   - bullet   1. numbered
     [link text](https://...)   bare https://... URLs   blank line = new paragraph
     ![alt](/board/images/<token>)   uploaded image (only our own image URLs)
+    \*  \#  \-  1\.  \[  ...       backslash = show the character literally
+
+Users don't type these markers: the board editor (static/js/post_format.js)
+is visual and saves this format behind the scenes.
 
 Existing plain-text posts render as before (line breaks preserved).
 """
@@ -26,6 +30,8 @@ _BOLD = re.compile(r"\*\*(?=\S)(.+?)(?<=\S)\*\*")
 _ITALIC_STAR = re.compile(r"(?<![\w*])\*(?=\S)([^*\n]+?)(?<=\S)\*(?![\w*])")
 _ITALIC_UNDERSCORE = re.compile(r"(?<!\w)_(?=\S)([^_\n]+?)(?<=\S)_(?!\w)")
 
+_ESCAPED = re.compile(r"\\([\\*_\[\]#.\-•!])")
+
 _A = '<a href="{href}" target="_blank" rel="noopener noreferrer nofollow">{text}</a>'
 _IMG = '<a href="{src}" target="_blank" rel="noopener"><img class="post-img" src="{src}" alt="{alt}" loading="lazy"></a>'
 
@@ -38,10 +44,12 @@ def _inline(escaped_line: str, images: bool = True) -> str:
         placeholders.append(html)
         return f"\x00{len(placeholders) - 1}\x00"
 
-    # Images and links first, and stashed, so URLs aren't mangled by bold/italic rules.
+    # Escaped characters, then images and links, are stashed first so later
+    # rules (links, bold/italic) can't see or mangle them.
+    text = _ESCAPED.sub(lambda m: stash(m.group(1)), escaped_line)
     text = _IMAGE.sub(
         lambda m: stash(_IMG.format(src=m.group(2), alt=m.group(1) or "image") if images else "[image]"),
-        escaped_line,
+        text,
     )
     text = _LINK.sub(lambda m: stash(_A.format(href=m.group(2), text=m.group(1))), text)
     text = _URL.sub(lambda m: stash(_A.format(href=m.group(0), text=m.group(0))), text)
@@ -127,5 +135,6 @@ def plain_text(text) -> str:
         line = _BOLD.sub(r"\1", line)
         line = _ITALIC_STAR.sub(r"\1", line)
         line = _ITALIC_UNDERSCORE.sub(r"\1", line)
+        line = _ESCAPED.sub(r"\1", line)
         out.append(line)
     return "\n".join(out).strip()
