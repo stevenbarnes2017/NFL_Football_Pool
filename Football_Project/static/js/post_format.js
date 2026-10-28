@@ -66,8 +66,12 @@
     const tag = node.tagName;
     if (tag === "BR") return "\n";
     if (tag === "IMG") return node.dataset.mdSrc ? `\n![image](${node.dataset.mdSrc})\n` : "";
-    if (tag === "B" || tag === "STRONG") return wrapLines(inlineText(node), "**");
-    if (tag === "I" || tag === "EM") return wrapLines(inlineText(node), "_");
+    if (tag === "B" || tag === "STRONG") {
+      return insideFormat(node, "bold") ? inlineText(node) : wrapLines(inlineText(node), "**");
+    }
+    if (tag === "I" || tag === "EM") {
+      return insideFormat(node, "italic") ? inlineText(node) : wrapLines(inlineText(node), "_");
+    }
     if (tag === "A") {
       const href = node.getAttribute("href") || "";
       const text = inlineText(node).trim();
@@ -75,7 +79,136 @@
       return text && text !== href ? `[${text}](${href})` : href;
     }
     if (BLOCKS.has(tag)) return "\n" + inlineText(node) + "\n";
-    return inlineText(node); // span, font, u, etc.
+    if (tag === "SPAN") {
+      const { bold, italic } = styleFlags(node);
+      let text = inlineText(node);
+      if (italic && !insideFormat(node, "italic")) text = wrapLines(text, "_");
+      if (bold && !insideFormat(node, "bold")) text = wrapLines(text, "**");
+      return text;
+    }
+    return inlineText(node); // font, u, etc.
+  }
+
+  // Is an ancestor (below the editor) already bold/italic? Avoids "****".
+  function insideFormat(node, kind) {
+    for (let el = node.parentElement; el && !el.classList.contains("pf-editor"); el = el.parentElement) {
+      const t = el.tagName;
+      if (kind === "bold" && (t === "B" || t === "STRONG" || styleFlags(el).bold)) return true;
+      if (kind === "italic" && (t === "I" || t === "EM" || styleFlags(el).italic)) return true;
+    }
+    return false;
+  }
+
+  // Bold/italic expressed as inline styles (Google Docs, Word, some browsers).
+  function styleFlags(el) {
+    const weight = (el.style && el.style.fontWeight) || "";
+    const fontStyle = (el.style && el.style.fontStyle) || "";
+    return {
+      bold: weight === "bold" || weight === "bolder" || Number(weight) >= 600,
+      italic: fontStyle === "italic" || fontStyle === "oblique",
+      notBold: weight === "normal" || (Number(weight) > 0 && Number(weight) < 600),
+      notItalic: fontStyle === "normal",
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // Pasted HTML -> the small set of tags the editor supports
+  // ---------------------------------------------------------------------
+  // Keeps bold, italic, headings, lists, links and paragraphs from web pages,
+  // emails, Word and Google Docs; drops fonts, colours, sizes, images,
+  // scripts and anything else.
+  const DROP = new Set(["SCRIPT", "STYLE", "META", "LINK", "TITLE", "HEAD", "NOSCRIPT", "TEMPLATE",
+    "IFRAME", "OBJECT", "EMBED", "SVG", "CANVAS", "VIDEO", "AUDIO", "IMG", "PICTURE", "BUTTON",
+    "INPUT", "SELECT", "TEXTAREA", "FORM"]);
+
+  function cleanPastedHtml(html) {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const out = document.createElement("div");
+    cleanChildren(doc.body, out);
+    groupWordLists(out);
+    return out;
+  }
+
+  function cleanChildren(src, dest) {
+    src.childNodes.forEach((n) => cleanNode(n, dest));
+  }
+
+  function cleanNode(node, dest) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.nodeValue.replace(/\s+/g, " ");
+      if (text) dest.appendChild(document.createTextNode(text));
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return; // comments (Word's <!--[if ...]>), etc.
+    const tag = node.tagName.toUpperCase();
+    const style = node.getAttribute("style") || "";
+    if (DROP.has(tag) || /mso-list:\s*ignore/i.test(style) || tag.includes(":")) return; // Word's bullet glyphs, <o:p>
+
+    let el = null;
+    const flags = styleFlags(node);
+    if (tag === "B" || tag === "STRONG") {
+      el = flags.notBold ? null : document.createElement("strong"); // Google Docs wraps everything in <b style="font-weight:normal">
+    } else if (tag === "I" || tag === "EM") {
+      el = flags.notItalic ? null : document.createElement("em");
+    } else if (/^H[1-6]$/.test(tag)) {
+      el = document.createElement("h4");
+    } else if (tag === "UL" || tag === "OL" || tag === "LI") {
+      el = document.createElement(tag.toLowerCase());
+    } else if (tag === "BR") {
+      dest.appendChild(document.createElement("br"));
+      return;
+    } else if (tag === "A") {
+      const href = (node.getAttribute("href") || "").trim();
+      if (/^https?:\/\//i.test(href)) {
+        el = document.createElement("a");
+        el.href = href;
+      }
+    } else if (tag === "P" || tag === "DIV" || tag === "BLOCKQUOTE" || tag === "PRE" || tag === "TR" || tag === "SECTION" || tag === "ARTICLE") {
+      el = document.createElement("p");
+      if (/MsoListParagraph/i.test(node.className || "") || /mso-list:\s*l\d/i.test(style)) el.dataset.wordList = "1";
+    } else if (tag === "TD" || tag === "TH") {
+      cleanChildren(node, dest);
+      dest.appendChild(document.createTextNode(" "));
+      return;
+    }
+
+    let container = dest;
+    if (el) {
+      dest.appendChild(el);
+      container = el;
+    }
+    // Bold/italic set by inline style on spans, paragraphs and list items
+    // (Google Docs, Word). Headings are already bold.
+    if (!el || ["P", "LI", "H4"].includes(el.tagName)) {
+      if (flags.bold && !(el && el.tagName === "H4")) {
+        container = container.appendChild(document.createElement("strong"));
+      }
+      if (flags.italic) {
+        container = container.appendChild(document.createElement("em"));
+      }
+    }
+    cleanChildren(node, container);
+  }
+
+  // Word pastes bulleted lists as <p class="MsoListParagraph"> with a fake
+  // bullet; turn runs of those into a real list.
+  function groupWordLists(root) {
+    Array.from(root.querySelectorAll("p[data-word-list]")).forEach((p) => {
+      if (!p.parentNode || !p.dataset.wordList) return; // already moved into a list
+      const ul = document.createElement("ul");
+      p.before(ul);
+      let cur = p;
+      while (cur && cur.nodeType === Node.ELEMENT_NODE && cur.dataset && cur.dataset.wordList) {
+        const next = cur.nextSibling && cur.nextSibling.nodeType === Node.TEXT_NODE && !cur.nextSibling.nodeValue.trim()
+          ? cur.nextSibling.nextSibling : cur.nextSibling;
+        const li = document.createElement("li");
+        while (cur.firstChild) li.appendChild(cur.firstChild);
+        ul.appendChild(li);
+        cur.remove();
+        cur = next;
+      }
+    });
+    root.querySelectorAll("[data-word-list]").forEach((el) => el.removeAttribute("data-word-list"));
   }
 
   // Browsers nest blocks unpredictably (a list inside a <p>, <div>s inside
@@ -340,17 +473,29 @@
       bar.appendChild(btn);
     });
 
-    // Paste: pictures become pictures; everything else comes in as plain
-    // text (no fonts/colours from Word or web pages).
+    // Paste: pictures become pictures; formatted text keeps bold, italic,
+    // headings, lists and links (but not fonts/colours); plain text as is.
     editor.addEventListener("paste", (e) => {
-      const files = imageFiles(e.clipboardData);
+      const data = e.clipboardData;
+      if (!data) return;
       e.preventDefault();
-      if (files.length) {
+      const html = data.getData("text/html");
+      const files = imageFiles(data);
+      // A copied image usually comes with a one-<img> HTML wrapper; treat it as a picture.
+      const htmlHasText = html && cleanPastedHtml(html).textContent.trim();
+      if (files.length && !htmlHasText) {
         files.forEach(addPicture);
         return;
       }
-      const text = e.clipboardData ? e.clipboardData.getData("text/plain") : "";
-      if (text) document.execCommand("insertText", false, text);
+      if (htmlHasText) {
+        const cleaned = cleanPastedHtml(html);
+        document.execCommand("insertHTML", false, cleaned.innerHTML);
+      } else {
+        const text = data.getData("text/plain");
+        if (text) document.execCommand("insertText", false, text);
+      }
+      sync();
+      updateButtons();
     });
     editor.addEventListener("dragover", (e) => {
       if (Array.from(e.dataTransfer.items || []).some((i) => i.kind === "file")) {
