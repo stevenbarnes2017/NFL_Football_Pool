@@ -42,6 +42,23 @@
       </div>
 
       <fieldset class="form-section">
+        <legend>Challenge Type</legend>
+        {% set selected_type = form_data.get('challenge_type', 'winner') %}
+        <div class="choice-list challenge-type-list">
+          {% for value, label, help_text in [
+            ('winner', 'Pick the Winner', 'Choose the winning team.'),
+            ('score', 'Score Prediction', 'Closest combined score prediction wins.'),
+            ('over_under', 'Over / Under', 'Choose whether total points beat the line.')
+          ] %}
+          <label class="choice-card">
+            <input type="radio" name="challenge_type" value="{{ value }}" {% if selected_type == value %}checked{% endif %} required>
+            <span><strong>{{ label }}</strong><small>{{ help_text }}</small></span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <fieldset class="form-section">
         <legend>Participants</legend>
         <p class="field-help">Choose at least one additional active member of {{ group.name }}.</p>
         <div class="choice-list">
@@ -81,6 +98,17 @@
               <strong>{{ game.away_team }} @ {{ game.home_team }}</strong>
               <small>{{ game.commence_time_mt | fmt_mt }}</small>
             </span>
+            <input
+              class="form-control over-under-line"
+              type="number"
+              name="over_under_line_{{ game.id }}"
+              min="0"
+              max="200"
+              step="0.5"
+              placeholder="O/U line"
+              value="{{ form_data.get('over_under_line_' ~ game.id, '') }}"
+              aria-label="Over under line for {{ game.away_team }} at {{ game.home_team }}"
+            >
           </label>
           {% endfor %}
         </div>
@@ -152,6 +180,9 @@
 .choice-card input { margin-top: 3px; flex-shrink: 0; }
 .choice-card span { min-width: 0; }
 .choice-card small { display: block; margin-top: 2px; color: #6c757d; }
+.challenge-type-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.over-under-line { display: none; width: 105px; margin-left: auto; }
+.show-over-under .over-under-line { display: block; }
 .form-empty-state { padding: 18px; border-radius: 8px; background: #f8f9fa; color: #6c757d; }
 .form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 @media (max-width: 640px) {
@@ -160,4 +191,15 @@
   .form-actions .action-btn { flex: 1; text-align: center; }
 }
 </style>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const form = document.querySelector(".challenge-form-card form");
+  const updateType = () => {
+    const selected = form.querySelector('input[name="challenge_type"]:checked');
+    form.classList.toggle("show-over-under", selected && selected.value === "over_under");
+  };
+  form.querySelectorAll('input[name="challenge_type"]').forEach(input => input.addEventListener("change", updateType));
+  updateType();
+});
+</script>
 {% endblock %}

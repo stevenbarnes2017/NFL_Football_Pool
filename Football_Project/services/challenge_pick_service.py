@@ -94,6 +94,7 @@ def save_challenge_picks(
     challenge: Challenge,
     user_id: int,
     submitted_picks: Iterable[tuple[object, object]],
+    submitted_scores: Iterable[tuple[object, object, object]] = (),
     now_utc: datetime | None = None,
 ) -> dict[str, int]:
     """Validate and atomically upsert unlocked picks for one participant."""
@@ -107,40 +108,65 @@ def save_challenge_picks(
             )
 
         normalized = _normalize_submissions(submitted_picks)
+        normalized_scores = {}
+        for raw_game_id, raw_home, raw_away in submitted_scores:
+            try:
+                game_id = int(raw_game_id)
+                home_score = int(raw_home)
+                away_score = int(raw_away)
+            except (TypeError, ValueError) as exc:
+                raise ChallengePickValidationError(
+                    "Score predictions must use whole numbers."
+                ) from exc
+            if game_id <= 0 or not 0 <= home_score <= 100 or not 0 <= away_score <= 100:
+                raise ChallengePickValidationError(
+                    "Predicted scores must be between 0 and 100."
+                )
+            normalized_scores[game_id] = (home_score, away_score)
+
+        challenge_type = challenge.challenge_type or "winner"
+        if challenge_type == "score":
+            normalized_ids = set(normalized_scores)
+        else:
+            normalized_ids = set(normalized)
         challenge_games = {
             row.id: row
             for row in ChallengeGame.query.filter_by(
                 challenge_id=challenge.id
             ).all()
         }
-        unknown_ids = set(normalized) - set(challenge_games)
+        unknown_ids = normalized_ids - set(challenge_games)
         if unknown_ids:
             raise ChallengePickValidationError(
                 "One or more submitted games do not belong to this challenge."
             )
 
         current = now_utc or datetime.now(timezone.utc)
-        editable: list[tuple[ChallengeGame, str]] = []
+        editable = []
         locked_count = 0
-        for game_id, team in normalized.items():
+        for game_id in normalized_ids:
             challenge_game = challenge_games[game_id]
             if is_game_locked(challenge_game.game, now_utc=current):
                 locked_count += 1
                 continue
-            if team not in {
-                challenge_game.game.home_team,
-                challenge_game.game.away_team,
-            }:
-                raise ChallengePickValidationError(
-                    "Each pick must exactly match a team playing in that game."
-                )
-            editable.append((challenge_game, team))
+            if challenge_type == "score":
+                editable.append((challenge_game, None, *normalized_scores[game_id]))
+                continue
+            team = normalized[game_id]
+            allowed = (
+                {"over", "under"}
+                if challenge_type == "over_under"
+                else {challenge_game.game.home_team, challenge_game.game.away_team}
+            )
+            if team not in allowed:
+                raise ChallengePickValidationError("Invalid prediction for this game.")
+            editable.append((challenge_game, team, None, None))
 
         existing = load_participant_picks(challenge.id, participant.id)
         created = 0
         updated = 0
         unchanged = 0
-        for challenge_game, team in editable:
+        for challenge_game, team, home_score, away_score in editable:
             pick = existing.get(challenge_game.id)
             if pick is None:
                 db.session.add(
@@ -149,11 +175,19 @@ def save_challenge_picks(
                         participant_id=participant.id,
                         challenge_game_id=challenge_game.id,
                         team_picked=team,
+                        predicted_home_score=home_score,
+                        predicted_away_score=away_score,
                     )
                 )
                 created += 1
-            elif pick.team_picked != team:
+            elif (
+                pick.team_picked != team
+                or pick.predicted_home_score != home_score
+                or pick.predicted_away_score != away_score
+            ):
                 pick.team_picked = team
+                pick.predicted_home_score = home_score
+                pick.predicted_away_score = away_score
                 pick.updated_at = current
                 updated += 1
             else:

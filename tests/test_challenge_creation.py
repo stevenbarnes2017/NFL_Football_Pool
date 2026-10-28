@@ -39,6 +39,10 @@ from Football_Project.services.challenge_cancellation_service import (
     can_cancel_challenge,
     cancel_challenge,
 )
+from Football_Project.services.challenge_deletion_service import (
+    can_delete_challenge,
+    delete_challenge,
+)
 
 
 class ChallengeCreationTests(unittest.TestCase):
@@ -221,6 +225,31 @@ class ChallengeCreationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertTrue(response.location.endswith("/groups?section=challenges"))
         self.assertEqual(Challenge.query.count(), 1)
+
+    def test_route_creates_over_under_challenge_with_game_line(self):
+        self._login(self.creator)
+        response = self.client.post(
+            f"/groups/{self.group.id}/challenges",
+            data={
+                "name": "Totals Challenge",
+                "challenge_type": "over_under",
+                "participant_ids": [str(self.member.id)],
+                "game_ids": [str(self.early_game.id)],
+                f"over_under_line_{self.early_game.id}": "47.5",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        challenge = Challenge.query.one()
+        self.assertEqual(challenge.challenge_type, "over_under")
+        self.assertEqual(challenge.challenge_games[0].over_under_line, 47.5)
+
+    def test_score_challenge_detail_renders_score_inputs(self):
+        challenge = self._create(challenge_type="score")
+        self._login(self.creator)
+        response = self.client.get(f"/challenges/{challenge.id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Score Prediction", response.data)
+        self.assertIn(f'away_score_{challenge.challenge_games[0].id}'.encode(), response.data)
 
     def test_post_validation_error_redisplays_form_without_partial_rows(self):
         self._login(self.creator)
@@ -492,11 +521,12 @@ class ChallengeCreationTests(unittest.TestCase):
             [self.early_game.id, self.late_game.id],
         )
 
-    def _save_picks(self, challenge, user=None, picks=None, now=None):
+    def _save_picks(self, challenge, user=None, picks=None, scores=None, now=None):
         return save_challenge_picks(
             challenge=challenge,
             user_id=(user or self.member).id,
             submitted_picks=picks or [],
+            submitted_scores=scores or [],
             now_utc=now or self.now,
         )
 
@@ -523,6 +553,34 @@ class ChallengeCreationTests(unittest.TestCase):
         row = challenge.challenge_games[0]
         self._save_picks(challenge, picks=[(row.id, self.early_game.away_team)])
         self.assertEqual(ChallengePick.query.one().team_picked, self.early_game.away_team)
+
+    def test_score_prediction_is_saved(self):
+        challenge = self._create(challenge_type="score")
+        row = challenge.challenge_games[0]
+        self._save_picks(challenge, scores=[(row.id, 27, 20)])
+        pick = ChallengePick.query.one()
+        self.assertEqual((pick.predicted_home_score, pick.predicted_away_score), (27, 20))
+        self.assertIsNone(pick.team_picked)
+
+    def test_score_prediction_rejects_out_of_range_score(self):
+        challenge = self._create(challenge_type="score")
+        row = challenge.challenge_games[0]
+        with self.assertRaisesRegex(ChallengePickValidationError, "between 0 and 100"):
+            self._save_picks(challenge, scores=[(row.id, 101, 20)])
+
+    def test_over_under_requires_line_for_each_selected_game(self):
+        with self.assertRaisesRegex(ChallengeValidationError, "line for every"):
+            self._create(challenge_type="over_under")
+
+    def test_over_under_pick_is_saved(self):
+        challenge = self._create(
+            challenge_type="over_under",
+            over_under_lines={self.early_game.id: "44.5"},
+        )
+        row = challenge.challenge_games[0]
+        self._save_picks(challenge, picks=[(row.id, "over")])
+        self.assertEqual(row.over_under_line, 44.5)
+        self.assertEqual(ChallengePick.query.one().team_picked, "over")
 
     def test_non_participant_cannot_submit(self):
         challenge = self._create()
@@ -712,6 +770,34 @@ class ChallengeCreationTests(unittest.TestCase):
         self.assertEqual(detail["status"], "completed")
         self.assertEqual([row.user_id for row in detail["winners"]], [self.member.id])
         self.assertEqual(self._standing_for(detail, self.member)["correct_count"], 1)
+
+    def test_closest_score_prediction_wins(self):
+        challenge = self._create(challenge_type="score")
+        row = challenge.challenge_games[0]
+        self._save_picks(challenge, user=self.creator, scores=[(row.id, 24, 17)])
+        self._save_picks(challenge, user=self.member, scores=[(row.id, 21, 20)])
+        self._finalize(self.early_game, 27, 17)
+
+        detail = build_challenge_detail(challenge, now_utc=self.now)
+
+        self.assertEqual([winner.user_id for winner in detail["winners"]], [self.creator.id])
+        self.assertEqual(self._standing_for(detail, self.creator)["prediction_error"], 3)
+        self.assertEqual(self._standing_for(detail, self.member)["prediction_error"], 9)
+
+    def test_over_under_is_graded_from_final_total(self):
+        challenge = self._create(
+            challenge_type="over_under",
+            over_under_lines={self.early_game.id: 40.5},
+        )
+        row = challenge.challenge_games[0]
+        self._save_picks(challenge, user=self.creator, picks=[(row.id, "over")])
+        self._save_picks(challenge, user=self.member, picks=[(row.id, "under")])
+        self._finalize(self.early_game, 24, 20)
+
+        detail = build_challenge_detail(challenge, now_utc=self.now)
+
+        self.assertEqual([winner.user_id for winner in detail["winners"]], [self.creator.id])
+        self.assertEqual(self._standing_for(detail, self.creator)["correct_count"], 1)
 
     def test_completed_challenge_supports_tied_winners(self):
         challenge = self._create()
@@ -999,6 +1085,53 @@ class ChallengeCreationTests(unittest.TestCase):
         GroupMember.query.filter_by(user_id=self.creator.id, group_id=self.group.id).one().is_active = False
         db.session.commit()
         self.assertTrue(can_cancel_challenge(self.creator, challenge))
+
+    def test_only_creator_can_delete_challenge(self):
+        challenge = self._create()
+        self.assertTrue(can_delete_challenge(self.creator, challenge))
+        self.assertFalse(can_delete_challenge(self.member, challenge))
+        self.outsider.is_admin = True
+        self.assertFalse(can_delete_challenge(self.outsider, challenge))
+
+    def test_creator_can_permanently_delete_challenge_and_related_data(self):
+        challenge = self._create()
+        self._save_for_user(
+            challenge,
+            self.member,
+            {self.early_game.id: self.early_game.home_team},
+        )
+        challenge_id = challenge.id
+
+        delete_challenge(challenge, self.creator)
+
+        self.assertIsNone(db.session.get(Challenge, challenge_id))
+        self.assertEqual(ChallengeParticipant.query.filter_by(challenge_id=challenge_id).count(), 0)
+        self.assertEqual(ChallengeGame.query.filter_by(challenge_id=challenge_id).count(), 0)
+        self.assertEqual(ChallengePick.query.filter_by(challenge_id=challenge_id).count(), 0)
+
+    def test_non_creator_delete_route_is_forbidden(self):
+        challenge = self._create()
+        challenge_id = challenge.id
+        self._login(self.member)
+
+        response = self.client.post(f"/challenges/{challenge_id}/delete")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIsNotNone(db.session.get(Challenge, challenge_id))
+
+    def test_creator_delete_route_redirects_and_removes_challenge(self):
+        challenge = self._create()
+        challenge_id = challenge.id
+        self._login(self.creator)
+
+        response = self.client.post(
+            f"/challenges/{challenge_id}/delete",
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"permanently deleted", response.data)
+        self.assertIsNone(db.session.get(Challenge, challenge_id))
 
 
 if __name__ == "__main__":

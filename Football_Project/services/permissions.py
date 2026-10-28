@@ -2,7 +2,7 @@
 
 import logging
 
-from ..models import GroupMember
+from ..models import GroupMember, PoolGroup
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,11 @@ def is_group_admin(user_id, group_id):
 
 
 def can_manage_group(user, group_id):
-    result = is_global_admin(user) or is_group_admin(user.id, group_id)
+    is_creator = PoolGroup.query.filter_by(
+        id=group_id,
+        created_by_user_id=user.id,
+        is_active=True,
+    ).first() is not None
+    result = is_global_admin(user) or is_creator or is_group_admin(user.id, group_id)
     logger.debug("can_manage_group user_id=%s group_id=%s result=%s", getattr(user, "id", None), group_id, result)
     return result

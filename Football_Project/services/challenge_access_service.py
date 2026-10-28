@@ -26,6 +26,18 @@ from Football_Project.services.challenge_service import (
 from Football_Project.services.challenge_cancellation_service import (
     can_cancel_challenge,
 )
+from Football_Project.services.challenge_deletion_service import can_delete_challenge
+
+
+FINAL_STATUSES = {"STATUS_FINAL", "FINAL", "COMPLETED", "COMPLETE", "STATUS_GAME_OVER"}
+
+
+def _game_has_final_score(game) -> bool:
+    return (
+        str(game.status or "").strip().upper() in FINAL_STATUSES
+        and game.home_team_score is not None
+        and game.away_team_score is not None
+    )
 
 
 def _challenge_load_options():
@@ -136,25 +148,68 @@ def build_challenge_standings(
     game_by_challenge_game_id = {
         row.id: row.game for row in challenge.challenge_games
     }
-    picks_by_participant: dict[int, dict[int, str]] = {}
+    challenge_type = challenge.challenge_type or "winner"
+    picks_by_participant = {}
     for pick in picks:
         game = game_by_challenge_game_id.get(pick.challenge_game_id)
         if game is not None:
-            picks_by_participant.setdefault(pick.participant_id, {})[
-                game.id
-            ] = pick.team_picked
+            picks_by_participant.setdefault(pick.participant_id, {})[game.id] = pick
 
     participants_by_id = {
         participant.id: participant for participant in challenge.participants
     }
-    scored = calculate_participant_standings(
-        participants_by_id,
-        [row.game for row in challenge.challenge_games],
-        picks_by_participant,
-    )
-    winner_ids = set(
-        determine_challenge_winners(scored, challenge_status=status)
-    )
+    if challenge_type == "winner":
+        winner_values = {
+            participant_id: {
+                game_id: pick.team_picked for game_id, pick in participant_picks.items()
+            }
+            for participant_id, participant_picks in picks_by_participant.items()
+        }
+        scored = calculate_participant_standings(
+            participants_by_id,
+            [row.game for row in challenge.challenge_games],
+            winner_values,
+        )
+    else:
+        scored = []
+        for participant_id in participants_by_id:
+            correct_count = 0
+            prediction_error = 0
+            graded_count = 0
+            for challenge_game in challenge.challenge_games:
+                game = challenge_game.game
+                if not _game_has_final_score(game):
+                    continue
+                graded_count += 1
+                pick = picks_by_participant.get(participant_id, {}).get(game.id)
+                if challenge_type == "score":
+                    if pick and pick.predicted_home_score is not None and pick.predicted_away_score is not None:
+                        error = abs(pick.predicted_home_score - game.home_team_score) + abs(pick.predicted_away_score - game.away_team_score)
+                        prediction_error += error
+                        if error == 0:
+                            correct_count += 1
+                    else:
+                        prediction_error += 201
+                elif pick:
+                    total = game.home_team_score + game.away_team_score
+                    result = "over" if total > challenge_game.over_under_line else "under" if total < challenge_game.over_under_line else "push"
+                    if pick.team_picked == result:
+                        correct_count += 1
+            scored.append({
+                "participant_id": participant_id,
+                "correct_count": correct_count,
+                "prediction_error": prediction_error,
+                "graded_count": graded_count,
+                "total_games": len(challenge.challenge_games),
+            })
+
+    if status != "completed" or not scored:
+        winner_ids = set()
+    elif challenge_type == "score":
+        best = min(row["prediction_error"] for row in scored)
+        winner_ids = {row["participant_id"] for row in scored if row["prediction_error"] == best}
+    else:
+        winner_ids = set(determine_challenge_winners(scored, challenge_status=status))
     standings = []
     for row in scored:
         participant = participants_by_id[row["participant_id"]]
@@ -168,7 +223,7 @@ def build_challenge_standings(
         )
     standings.sort(
         key=lambda row: (
-            -row["correct_count"],
+            row.get("prediction_error", -row["correct_count"]),
             -row["graded_count"],
             (
                 row["participant"].user.full_name
@@ -188,6 +243,7 @@ def build_game_pick_display(
     *,
     current_participant: ChallengeParticipant | None,
     revealed: bool,
+    challenge_type: str,
 ) -> list[dict]:
     """Build reveal-safe pick rows for one selected game."""
 
@@ -198,20 +254,34 @@ def build_game_pick_display(
             current_participant is not None
             and participant.id == current_participant.id
         )
+        if challenge_type == "score" and pick:
+            display_value = f"{pick.predicted_away_score}-{pick.predicted_home_score}"
+            correct = (
+                pick.predicted_home_score == challenge_game.game.home_team_score
+                and pick.predicted_away_score == challenge_game.game.away_team_score
+            ) if revealed and _game_has_final_score(challenge_game.game) else None
+        elif challenge_type == "over_under" and pick:
+            display_value = (pick.team_picked or "").title()
+            if revealed and _game_has_final_score(challenge_game.game):
+                total = challenge_game.game.home_team_score + challenge_game.game.away_team_score
+                result = "over" if total > challenge_game.over_under_line else "under" if total < challenge_game.over_under_line else "push"
+                correct = pick.team_picked == result
+            else:
+                correct = None
+        else:
+            display_value = pick.team_picked if pick else None
+            correct = is_challenge_pick_correct(
+                challenge_game.game,
+                pick.team_picked if pick else None,
+            ) if revealed else None
         display.append(
             {
                 "participant": participant,
                 "visible": visible,
                 "team_picked": pick.team_picked if visible and pick else None,
+                "display_value": display_value if visible else None,
                 "has_pick": bool(pick) if visible else None,
-                "correct": (
-                    is_challenge_pick_correct(
-                        challenge_game.game,
-                        pick.team_picked if pick else None,
-                    )
-                    if revealed
-                    else None
-                ),
+                "correct": correct,
             }
         )
     return display
@@ -281,6 +351,7 @@ def build_challenge_detail(
             and status in {"open", "in_progress"}
             and can_cancel_challenge(user, challenge)
         ),
+        "can_delete": user is not None and can_delete_challenge(user, challenge),
         "can_submit_picks": (
             participant is not None
             and active_membership
@@ -294,6 +365,7 @@ def build_challenge_detail(
                 current_picks,
                 participant,
                 current,
+                challenge.challenge_type or "winner",
             )
             for row in ordered_rows
         ],
@@ -307,6 +379,7 @@ def _build_game_detail(
     current_picks: dict[int, ChallengePick],
     current_participant: ChallengeParticipant | None,
     now_utc: datetime,
+    challenge_type: str,
 ) -> dict:
     locked = is_game_locked(row.game, now_utc=now_utc)
     return {
@@ -321,5 +394,6 @@ def _build_game_detail(
             picks_by_key,
             current_participant=current_participant,
             revealed=locked,
+            challenge_type=challenge_type,
         ),
     }

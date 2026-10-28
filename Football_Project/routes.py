@@ -25,6 +25,7 @@ from .utils import generate_token, verify_token
 from .services.leaderboard import get_season_leaderboard, get_weekly_leaderboard
 from .services.auth_context import get_effective_user_id
 from Football_Project.services.season import get_current_season_context
+from Football_Project.time_utils import ensure_dt_mt
 from .services.group_service import get_active_group_id
 from Football_Project.services.group_service import get_active_group_id
 from slugify import slugify
@@ -833,7 +834,7 @@ def see_picks():
 
     for pick in user_picks:
         if pick.game.commence_time_mt:
-            game_date = pick.game.commence_time_mt.date()
+            game_date = ensure_dt_mt(pick.game.commence_time_mt).date()
         else:
             game_date = None
 
@@ -846,7 +847,7 @@ def see_picks():
 
     for game in unpicked_games:
         if game.commence_time_mt:
-            game_date = game.commence_time_mt.date()
+            game_date = ensure_dt_mt(game.commence_time_mt).date()
         else:
             game_date = None
 

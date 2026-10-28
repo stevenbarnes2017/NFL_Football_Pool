@@ -22,6 +22,18 @@ def _strip(v: str | None) -> str | None:
     return v.strip() if isinstance(v, str) else v
 
 class RegisterForm(FlaskForm):
+    first_name = StringField(
+        "First Name",
+        validators=[DataRequired(message="First name is required."), Length(max=70)],
+        filters=[_strip],
+        render_kw={"autocomplete": "given-name"},
+    )
+    last_name = StringField(
+        "Last Name",
+        validators=[DataRequired(message="Last name is required."), Length(max=70)],
+        filters=[_strip],
+        render_kw={"autocomplete": "family-name"},
+    )
     username = StringField(
         "Username",
         validators=[
@@ -35,6 +47,12 @@ class RegisterForm(FlaskForm):
         "Email",
         validators=[DataRequired(), Email(), Length(max=255)],
         filters=[lambda s: _strip(s).lower() if s else s],
+    )
+    phone = StringField(
+        "Phone Number",
+        validators=[DataRequired(message="Phone number is required."), Length(max=30)],
+        filters=[_strip],
+        render_kw={"autocomplete": "tel", "type": "tel", "placeholder": "720-555-1234"},
     )
     password = PasswordField(
         "Password",
@@ -60,6 +78,20 @@ class RegisterForm(FlaskForm):
         user = User.query.filter_by(email=email.data, is_active=True).first()
         if user:
             raise ValidationError("That email is taken. Please choose a different one.")
+
+    def validate_phone(self, field):
+        try:
+            import phonenumbers
+
+            number = phonenumbers.parse(field.data, "US")
+            if not phonenumbers.is_valid_number(number):
+                raise ValidationError("Enter a valid phone number.")
+            field.data = phonenumbers.format_number(
+                number,
+                phonenumbers.PhoneNumberFormat.E164,
+            )
+        except phonenumbers.NumberParseException as exc:
+            raise ValidationError("Enter a valid phone number.") from exc
 
 class LoginForm(FlaskForm):
     # Allow username OR email in one field

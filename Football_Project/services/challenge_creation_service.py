@@ -21,6 +21,7 @@ from Football_Project.services.challenge_service import is_game_locked
 
 
 MOUNTAIN_TIME = ZoneInfo("America/Denver")
+CHALLENGE_TYPES = frozenset({"winner", "score", "over_under"})
 
 
 class ChallengeValidationError(ValueError):
@@ -190,6 +191,8 @@ def create_challenge(
     description: str | None,
     selected_participant_ids: Iterable[object],
     selected_game_ids: Iterable[object],
+    challenge_type: str = "winner",
+    over_under_lines: dict[object, object] | None = None,
     now_utc: datetime | None = None,
 ) -> Challenge:
     """Validate and create a challenge and all associations atomically."""
@@ -202,6 +205,9 @@ def create_challenge(
             raise ChallengeValidationError(
                 "Challenge name must be 140 characters or fewer."
             )
+        clean_type = (challenge_type or "winner").strip().lower()
+        if clean_type not in CHALLENGE_TYPES:
+            raise ChallengeValidationError("Select a valid challenge type.")
 
         membership = validate_active_group_membership(
             creator_user_id,
@@ -219,12 +225,28 @@ def create_challenge(
             settings,
             now_utc=now_utc,
         )
+        normalized_lines = {}
+        if clean_type == "over_under":
+            raw_lines = over_under_lines or {}
+            for game in games:
+                try:
+                    line = float(raw_lines.get(str(game.id), raw_lines.get(game.id)))
+                except (TypeError, ValueError) as exc:
+                    raise ChallengeValidationError(
+                        "Enter an over/under line for every selected game."
+                    ) from exc
+                if line < 0 or line > 200:
+                    raise ChallengeValidationError(
+                        "Over/under lines must be between 0 and 200."
+                    )
+                normalized_lines[game.id] = line
 
         challenge = Challenge(
             group_id=group.id,
             creator_user_id=creator_user_id,
             name=clean_name,
             description=(description or "").strip() or None,
+            challenge_type=clean_type,
             season_year=settings.season_year,
             season_type=settings.season_type,
             week=settings.current_week,
@@ -244,6 +266,7 @@ def create_challenge(
                 challenge_id=challenge.id,
                 game_id=game.id,
                 display_order=display_order,
+                over_under_line=normalized_lines.get(game.id),
             )
             for display_order, game in enumerate(games, start=1)
         )
