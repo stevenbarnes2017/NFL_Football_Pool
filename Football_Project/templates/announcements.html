@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Announcements{% endblock %}
 {% block content %}
+{% include "_post_format_assets.html" %}
 
 <style>
   .wrap{max-width:900px;margin:0 auto;padding:12px}
@@ -35,7 +36,7 @@
         </div>
       </div>
 
-      <div style="margin-top:10px;white-space:pre-wrap">{{ a.body }}</div>
+      <div class="post-formatted" style="margin-top:10px">{{ a.body | format_post }}</div>
     </div>
   {% else %}
     <div class="card meta">No announcements yet.</div>

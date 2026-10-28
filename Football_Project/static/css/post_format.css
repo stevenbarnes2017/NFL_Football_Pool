@@ -1,0 +1,22 @@
+/* Formatted message board posts / announcements (see services/text_format.py) */
+.post-formatted { line-height: 1.55; overflow-wrap: anywhere; }
+.post-formatted > :first-child { margin-top: 0; }
+.post-formatted > :last-child { margin-bottom: 0; }
+.post-formatted p { margin: 0 0 0.75em; }
+.post-formatted h4 { font-size: 1.1em; font-weight: 700; margin: 0.9em 0 0.4em; }
+.post-formatted ul,
+.post-formatted ol { margin: 0 0 0.75em; padding-left: 1.4em; }
+.post-formatted ul { list-style: disc; }
+.post-formatted ol { list-style: decimal; }
+.post-formatted li { margin: 0.2em 0; }
+.post-formatted strong { font-weight: 700; }
+.post-formatted em { font-style: italic; }
+.post-formatted a { color: #185FA5; text-decoration: underline; }
+
+/* Editor toolbar (static/js/post_format.js) */
+.pf-toolbar { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px; border: 1px solid #d1d5db; border-bottom: 0; border-radius: 8px 8px 0 0; background: #f9fafb; }
+.pf-btn { min-width: 34px; padding: 4px 9px; font-size: 13px; line-height: 1.3; color: #111827; background: #fff; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; }
+.pf-btn:hover { background: #f3f4f6; }
+.pf-btn:focus-visible { outline: 2px solid #185FA5; outline-offset: 1px; }
+textarea.pf-textarea { display: block; width: 100%; border-top-left-radius: 0 !important; border-top-right-radius: 0 !important; }
+.pf-hint { margin-top: 4px; font-size: 12px; color: #6b7280; }

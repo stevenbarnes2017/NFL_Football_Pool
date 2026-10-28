@@ -14,10 +14,12 @@ services/email_helpers.send_user_email).
 from datetime import datetime
 
 from flask import current_app, url_for
+from markupsafe import escape
 from sqlalchemy import func
 
 from Football_Project.extensions import db
 from Football_Project.models import Notification, User, NotificationSubscription
+from Football_Project.services.text_format import plain_text, render_post
 
 NOTIFICATION_TYPES = ("announcement", "board_post", "challenge_invite")
 
@@ -130,7 +132,7 @@ def notify_announcement(announcement, recipient_user_ids):
         recipient_user_ids,
         type_="announcement",
         title=f"New announcement: {announcement.title}",
-        body=announcement.body,
+        body=plain_text(announcement.body),
         url=path_url,
         related_id=announcement.id,
         exclude_user_id=announcement.created_by_user_id,
@@ -140,8 +142,8 @@ def notify_announcement(announcement, recipient_user_ids):
     def email_html(user, note):
         link = _absolute_url("main.announcements")
         return (
-            f"<p><strong>{announcement.title}</strong></p>"
-            f"<p>{announcement.body}</p>"
+            f"<p><strong>{escape(announcement.title)}</strong></p>"
+            f"{render_post(announcement.body)}"
             f"<p><a href='{link}'>View announcement</a></p>"
         )
 
@@ -166,7 +168,7 @@ def notify_board_post(thread, post, *, recipient_user_ids, is_new_thread):
         recipient_user_ids,
         type_="board_post",
         title=title,
-        body=post.body,
+        body=plain_text(post.body),
         url=path_url,
         group_id=thread.group_id,
         related_id=thread.id,
@@ -177,8 +179,8 @@ def notify_board_post(thread, post, *, recipient_user_ids, is_new_thread):
     def email_html(user, note):
         link = _absolute_url("main.view_thread", thread_id=thread.id)
         return (
-            f"<p><strong>{title}</strong></p>"
-            f"<p>{post.body}</p>"
+            f"<p><strong>{escape(title)}</strong></p>"
+            f"{render_post(post.body)}"
             f"<p><a href='{link}'>View on the message board</a></p>"
         )
 

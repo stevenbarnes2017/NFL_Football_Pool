@@ -2,27 +2,43 @@
 {% block title %}New Thread{% endblock %}
 
 {% block content %}
-<h2>Start a New Thread</h2>
+{% include "_post_format_assets.html" %}
+<style>
+  .nt { max-width: 780px; padding: 1.5rem 0; }
+  .nt h2 { font-size: 24px; font-weight: 600; margin: 0 0 0.25rem; }
+  .nt-sub { font-size: 13px; color: #6b7280; margin: 0 0 1.25rem; }
+  .nt label { display: block; font-size: 14px; font-weight: 600; margin: 0 0 6px; }
+  .nt input[type=text], .nt textarea { width: 100%; padding: 10px 12px; font-size: 15px; border: 1px solid #d1d5db; border-radius: 8px; }
+  .nt-field { margin-bottom: 1rem; }
+  .nt-actions { display: flex; gap: 12px; align-items: center; margin-top: 1.25rem; }
+  .nt-submit { background: #185FA5; color: #fff; border: 0; padding: 9px 18px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; }
+  .nt-submit:hover { background: #0C447C; }
+</style>
 
-{% if active_group %}
-<p class="text-muted">
-  Posting in <strong>{{ active_group.name }}</strong>
-</p>
-{% endif %}
+<div class="nt container mt-4">
+  <h2>Start a New Thread</h2>
 
-<form method="POST">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if active_group %}
+  <p class="nt-sub">Posting in <strong>{{ active_group.name }}</strong> &middot; everyone in the group can reply</p>
+  {% endif %}
 
-  <label>Title</label><br>
-  <input type="text" name="title" required><br><br>
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-  <label>Message</label><br>
-  <textarea name="body" rows="6" required></textarea><br><br>
+    <div class="nt-field">
+      <label for="nt-title">Title</label>
+      <input id="nt-title" type="text" name="title" maxlength="180" required>
+    </div>
 
-  <button type="submit">Create Thread</button>
-</form>
+    <div class="nt-field">
+      <label for="nt-body">Message</label>
+      <textarea id="nt-body" name="body" rows="10" required data-format-toolbar></textarea>
+    </div>
 
-<br>
-<a href="{{ url_for('main.board') }}">Cancel</a>
-
+    <div class="nt-actions">
+      <button type="submit" class="nt-submit">Create Thread</button>
+      <a href="{{ url_for('main.board') }}">Cancel</a>
+    </div>
+  </form>
+</div>
 {% endblock %}

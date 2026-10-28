@@ -346,6 +346,8 @@ def create_app():
     notifications.config["VAPID_CLAIM_EMAIL"] = os.getenv("VAPID_CLAIM_EMAIL", "mailto:admin@sundaypickems.com")
     #fix timezone
     notifications.jinja_env.filters["fmt_mt"] = fmt_mt
+    from .services.text_format import render_post
+    notifications.jinja_env.filters["format_post"] = render_post
 
     # ✅ NEW: make Postgres on Render resilient to dropped SSL connections
     # Only apply when using Postgres; SQLite doesn't accept these engine options.
