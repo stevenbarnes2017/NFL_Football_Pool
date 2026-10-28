@@ -1,7 +1,7 @@
 """add challenge prediction types
 
 Revision ID: a4c9d5e7f201
-Revises: f8c3a1d5e7b2
+Revises: b4d8e2a19f6c
 Create Date: 2026-09-08
 """
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 revision = "a4c9d5e7f201"
-down_revision = "f8c3a1d5e7b2"
+down_revision = "b4d8e2a19f6c"
 branch_labels = None
 depends_on = None
 

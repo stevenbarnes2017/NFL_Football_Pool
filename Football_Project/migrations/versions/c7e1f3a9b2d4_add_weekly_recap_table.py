@@ -1,7 +1,7 @@
 """add weekly recap table
 
 Revision ID: c7e1f3a9b2d4
-Revises: b4d8e2a19f6c
+Revises: a4c9d5e7f201
 Create Date: 2026-10-12 00:00:00.000000
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'c7e1f3a9b2d4'
-down_revision = 'b4d8e2a19f6c'
+down_revision = 'a4c9d5e7f201'
 branch_labels = None
 depends_on = None
 
