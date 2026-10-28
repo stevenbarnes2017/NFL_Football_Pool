@@ -143,7 +143,7 @@ def notify_announcement(announcement, recipient_user_ids):
         link = _absolute_url("main.announcements")
         return (
             f"<p><strong>{escape(announcement.title)}</strong></p>"
-            f"{render_post(announcement.body)}"
+            f"{render_post(announcement.body, images=False)}"
             f"<p><a href='{link}'>View announcement</a></p>"
         )
 
@@ -180,7 +180,7 @@ def notify_board_post(thread, post, *, recipient_user_ids, is_new_thread):
         link = _absolute_url("main.view_thread", thread_id=thread.id)
         return (
             f"<p><strong>{escape(title)}</strong></p>"
-            f"{render_post(post.body)}"
+            f"{render_post(post.body, images=False)}"
             f"<p><a href='{link}'>View on the message board</a></p>"
         )
 

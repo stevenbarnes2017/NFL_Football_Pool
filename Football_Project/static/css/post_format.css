@@ -12,6 +12,7 @@
 .post-formatted strong { font-weight: 700; }
 .post-formatted em { font-style: italic; }
 .post-formatted a { color: #185FA5; text-decoration: underline; }
+.post-formatted img.post-img { display: block; max-width: 100%; max-height: 480px; height: auto; margin: 0.5em 0; border-radius: 8px; border: 1px solid #e5e7eb; }
 
 /* Editor toolbar (static/js/post_format.js) */
 .pf-toolbar { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px; border: 1px solid #d1d5db; border-bottom: 0; border-radius: 8px 8px 0 0; background: #f9fafb; }
@@ -20,3 +21,5 @@
 .pf-btn:focus-visible { outline: 2px solid #185FA5; outline-offset: 1px; }
 textarea.pf-textarea { display: block; width: 100%; border-top-left-radius: 0 !important; border-top-right-radius: 0 !important; }
 .pf-hint { margin-top: 4px; font-size: 12px; color: #6b7280; }
+.pf-status { margin-left: 8px; color: #185FA5; font-weight: 500; }
+textarea.pf-drop { outline: 2px dashed #185FA5; outline-offset: -4px; background: #f0f7ff; }

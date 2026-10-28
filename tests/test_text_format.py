@@ -51,6 +51,24 @@ class RenderPostTests(unittest.TestCase):
         html = render_post("[click](javascript:alert(1))")
         self.assertNotIn("<a", html)
 
+    def test_uploaded_image(self):
+        html = render_post("Look:\n![meme](/board/images/AbC_12-xyz789)")
+        self.assertIn('<img class="post-img" src="/board/images/AbC_12-xyz789" alt="meme" loading="lazy">', html)
+        self.assertNotIn("<em>", html)
+
+    def test_only_our_own_image_urls_are_embedded(self):
+        for body in ("![x](https://evil.example/pixel.gif)", "![x](/board/images/../../admin)",
+                     "![x](javascript:alert(1))", "![x](/static/js/post_format.js)"):
+            self.assertNotIn("<img", render_post(body), body)
+
+    def test_image_alt_text_cannot_break_out_of_the_attribute(self):
+        html = render_post('![x" onerror="alert(1)](/board/images/abcdefgh123)')
+        self.assertIn('alt="x&#34; onerror=&#34;alert(1)"', html)
+        self.assertNotIn('onerror="', html)
+
+    def test_images_can_be_turned_off_for_email(self):
+        self.assertEqual(render_post("![meme](/board/images/abcdefgh123)", images=False), "<p>[image]</p>")
+
     def test_crlf_and_empty(self):
         self.assertEqual(render_post("a\r\nb"), "<p>a<br>b</p>")
         self.assertEqual(render_post(None), "")
@@ -62,6 +80,7 @@ class PlainTextTests(unittest.TestCase):
             plain_text("# Heads up\n**Picks** lock *early*\n- [rules](https://x.io)"),
             "Heads up\nPicks lock early\n• rules (https://x.io)",
         )
+        self.assertEqual(plain_text("lol ![meme](/board/images/abcdefgh123)"), "lol [image]")
 
 
 if __name__ == "__main__":

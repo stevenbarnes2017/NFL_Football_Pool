@@ -279,6 +279,23 @@ class BoardPost(db.Model):
     thread = db.relationship("BoardThread", backref=db.backref("posts", lazy=True, order_by="BoardPost.created_at"))
     author = db.relationship("User", backref=db.backref("board_posts", lazy=True))
 
+class BoardImage(db.Model):
+    """Image uploaded for a board post or announcement; referenced from the
+    body text as ![alt](/board/images/<token>). Stored in the DB because the
+    app's pods have no persistent disk."""
+    __tablename__ = "board_image"
+    id = db.Column(db.Integer, primary_key=True)
+    token = db.Column(db.String(32), nullable=False, unique=True, index=True)
+
+    uploader_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
+    # NULL = announcement image, visible to any logged-in user
+    group_id = db.Column(db.Integer, db.ForeignKey("pool_group.id", ondelete="CASCADE"), nullable=True, index=True)
+
+    content_type = db.Column(db.String(30), nullable=False)
+    byte_size = db.Column(db.Integer, nullable=False)
+    data = db.deferred(db.Column(db.LargeBinary, nullable=False))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
 class GroupInvite(db.Model):
     __tablename__ = "group_invite"
 

@@ -1956,6 +1956,60 @@ def new_thread():
 
     return render_template("new_thread.html", active_group=active_group)
 
+@main_bp.route("/board/images", methods=["POST"])
+@login_required
+def upload_board_image():
+    """Store an image pasted/dropped into a board or announcement editor.
+    Returns the markdown-style marker the editor inserts into the body."""
+    from .services.board_images import MAX_IMAGE_BYTES, ImageUploadError, save_image
+    from .services.permissions import can_manage_group
+
+    active_group_id = session.get("active_group_id")
+    if request.form.get("context") == "announcement":
+        if not can_manage_group(current_user, active_group_id):
+            return {"error": "You do not have permission to post announcements."}, 403
+        group_id = None
+    else:
+        is_member = active_group_id and GroupMember.query.filter_by(
+            user_id=current_user.id, group_id=active_group_id, is_active=True
+        ).first()
+        if not is_member and not current_user.is_admin:
+            return {"error": "You do not have access to this board."}, 403
+        group_id = active_group_id
+
+    if (request.content_length or 0) > MAX_IMAGE_BYTES + 64 * 1024:
+        return {"error": "Image is too large (max 5 MB)."}, 413
+    upload = request.files.get("image")
+    try:
+        image = save_image(
+            upload.read() if upload else b"",
+            uploader_user_id=current_user.id,
+            group_id=group_id,
+        )
+        db.session.commit()
+    except ImageUploadError as e:
+        db.session.rollback()
+        return {"error": str(e)}, 400
+
+    url = url_for("main.board_image", token=image.token)
+    return {"url": url, "markdown": f"![image]({url})"}, 201
+
+@main_bp.route("/board/images/<token>", methods=["GET"])
+@login_required
+def board_image(token):
+    from .models import BoardImage
+    from .services.board_images import can_view_image
+
+    image = BoardImage.query.filter_by(token=token).first_or_404()
+    if not can_view_image(current_user, image):
+        abort(404)
+
+    response = Response(image.data, mimetype=image.content_type)
+    response.headers["Cache-Control"] = "private, max-age=31536000, immutable"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Content-Security-Policy"] = "default-src 'none'"
+    return response
+
 @main_bp.route("/groups/create", methods=["GET", "POST"])
 @login_required
 def create_group():
