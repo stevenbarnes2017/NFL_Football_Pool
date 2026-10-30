@@ -102,7 +102,7 @@ def send_reminder_email(job):
             sent_count += 1
         except Exception as e:
             current_app.logger.warning(
-                f"[REMINDERS] Failed to send email to {user.email}: {e}"
+                f"[REMINDERS] Failed to send email user_id={user.id} error={type(e).__name__}"
             )
 
     current_app.logger.info(

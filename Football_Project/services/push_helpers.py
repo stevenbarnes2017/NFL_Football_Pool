@@ -100,6 +100,8 @@ def push_week_reminder_job(app, week):
         users = User.query.all()
         for user in users:
             for subscription in user.notification_subscriptions:
+                if not subscription.active:
+                    continue
                 send_push_notification(
                     subscription,
                     "Sunday Pickems Reminder",
@@ -107,3 +109,5 @@ def push_week_reminder_job(app, week):
                     ttl=3600,
                     urgency="high",
                 )
+        # saves last_used and any expired subscriptions that were deactivated
+        db.session.commit()

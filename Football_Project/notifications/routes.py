@@ -78,6 +78,8 @@ def test_push():
             )
         )
 
+    db.session.commit()
+
     return jsonify({
         "sent": results
     })

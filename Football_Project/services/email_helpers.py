@@ -11,6 +11,9 @@ logger = logging.getLogger(__name__)
 
 BREVO_URL = "https://api.brevo.com/v3/smtp/email"
 
+# (connect, read) seconds; without this a stalled Brevo call never returns.
+BREVO_TIMEOUT = (5, 20)
+
 
 def _split_emails(value: str | None) -> list[str]:
     if not value:
@@ -72,7 +75,7 @@ def send_email(
             f"test_mode={os.getenv('EMAIL_TEST_MODE', '1')}"
         )
 
-        r = requests.post(BREVO_URL, json=payload, headers=headers)
+        r = requests.post(BREVO_URL, json=payload, headers=headers, timeout=BREVO_TIMEOUT)
         r.raise_for_status()
 
         logger.info(f"[EMAIL] SUCCESS subject='{subject}' status_code={r.status_code}")
