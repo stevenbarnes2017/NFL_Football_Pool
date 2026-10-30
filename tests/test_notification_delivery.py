@@ -197,6 +197,16 @@ class ReplyQueueTests(NotificationQueueTestCase):
         thread = BoardThread.query.filter_by(title="Week 9").one()
         self.assertEqual(Notification.query.filter_by(related_id=thread.id).count(), 3)
 
+    def test_repeat_announcement_is_ignored(self):
+        self.author.is_admin = True
+        db.session.commit()
+        self.login(self.author)
+        for _ in range(3):
+            response = self.client.post("/admin/announcements/new", data={"title": "Playoffs", "body": "Soon"})
+            self.assertEqual(response.status_code, 302)
+        self.assertEqual(Announcement.query.count(), 1)
+        self.assertEqual(Notification.query.filter_by(type="announcement").count(), 4)
+
     def test_duplicate_recipient_ids_get_one_notification(self):
         post = BoardPost(thread_id=self.thread.id, author_user_id=self.author.id, body="hi")
         db.session.add(post)

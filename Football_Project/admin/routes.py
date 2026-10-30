@@ -87,6 +87,19 @@ def admin_announcement_new():
         flash("Title and message are required.", "danger")
         return redirect(url_for("admin.admin_announcements"))
 
+    # Double-click / resubmit: the same announcement within a minute is not
+    # posted (or emailed to everyone) a second time.
+    from datetime import timedelta
+    repeat = (
+        Announcement.query
+        .filter_by(created_by_user_id=current_user.id, title=title, body=body, is_active=True)
+        .filter(Announcement.created_at >= datetime.utcnow() - timedelta(seconds=60))
+        .first()
+    )
+    if repeat:
+        flash("Announcement posted.", "success")
+        return redirect(url_for("admin.admin_announcements"))
+
     try:
         ann = Announcement(
             title=title,

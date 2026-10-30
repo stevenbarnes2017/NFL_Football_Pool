@@ -54,7 +54,7 @@
     {% if not thread.locked %}
     <div class="mt-4">
         <h5>Reply</h5>
-        <form method="POST">
+        <form method="POST" data-submit-once>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="mb-3">
                 <textarea name="body" rows="5" class="form-control" required data-format-toolbar></textarea>

@@ -26,7 +26,7 @@
   <div class="card">
     <h2 class="font-semibold mb-2">Post a new announcement</h2>
 
-    <form method="post" action="{{ url_for('admin.admin_announcement_new') }}">
+    <form method="post" action="{{ url_for('admin.admin_announcement_new') }}" data-submit-once>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
       <div class="row">

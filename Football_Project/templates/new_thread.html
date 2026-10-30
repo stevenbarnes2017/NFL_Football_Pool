@@ -22,7 +22,7 @@
   <p class="nt-sub">Posting in <strong>{{ active_group.name }}</strong> &middot; everyone in the group can reply</p>
   {% endif %}
 
-  <form method="POST">
+  <form method="POST" data-submit-once>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div class="nt-field">
