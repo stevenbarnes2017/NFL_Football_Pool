@@ -1856,6 +1856,10 @@ def view_thread(thread_id):
         flash("You do not have access to that thread.", "danger")
         return redirect(url_for("main.board"))
 
+    if not thread.is_active:
+        flash("That thread was deleted.", "warning")
+        return redirect(url_for("main.board"))
+
     membership = GroupMember.query.filter_by(
         user_id=current_user.id,
         group_id=active_group_id,
@@ -1922,12 +1926,70 @@ def view_thread(thread_id):
     except Exception as e:
         current_app.logger.warning(f"[NOTIFY] mark_read thread board_post failed: {e}")
 
+    from .services.permissions import can_delete_board_post
+
+    first_post = _first_post(thread.id)
+    deletable_ids = {p.id for p in posts if can_delete_board_post(current_user, p, thread)}
+
     return render_template(
         "thread.html",
         thread=thread,
         posts=posts,
         active_group=active_group,
+        deletable_ids=deletable_ids,
+        first_post_id=first_post.id if first_post else None,
     )
+
+
+def _first_post(thread_id):
+    return (
+        BoardPost.query
+        .filter_by(thread_id=thread_id)
+        .order_by(BoardPost.created_at.asc(), BoardPost.id.asc())
+        .first()
+    )
+
+
+@main_bp.route("/board/post/<int:post_id>/delete", methods=["POST"])
+@login_required
+def delete_board_post(post_id):
+    """Hide a post (soft delete). Deleting a thread's opening post deletes the thread."""
+    from .services.notification_service import withdraw_board_notifications
+    from .services.permissions import can_delete_board_post
+
+    post = BoardPost.query.get_or_404(post_id)
+    thread = db.session.get(BoardThread, post.thread_id)
+
+    if (
+        not thread
+        or not thread.is_active
+        or not post.is_active
+        or thread.group_id != session.get("active_group_id")
+        or not can_delete_board_post(current_user, post, thread)
+    ):
+        flash("You can't delete that post.", "danger")
+        return redirect(url_for("main.board"))
+
+    first_post = _first_post(thread.id)
+    if first_post and first_post.id == post.id:
+        thread.is_active = False
+        post.is_active = False
+        withdraw_board_notifications(thread.id)
+        db.session.commit()
+        current_app.logger.info(
+            f"[BOARD] thread deleted thread_id={thread.id} by user_id={current_user.id}"
+        )
+        flash("Thread deleted.", "success")
+        return redirect(url_for("main.board"))
+
+    post.is_active = False
+    withdraw_board_notifications(thread.id, post=post)
+    db.session.commit()
+    current_app.logger.info(
+        f"[BOARD] post deleted post_id={post.id} thread_id={thread.id} by user_id={current_user.id}"
+    )
+    flash("Post deleted.", "success")
+    return redirect(url_for("main.view_thread", thread_id=thread.id))
 
 @main_bp.route("/board/new", methods=["GET", "POST"])
 @login_required

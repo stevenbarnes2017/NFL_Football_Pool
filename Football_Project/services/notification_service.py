@@ -11,7 +11,7 @@ subscriptions) and email (services/email_helpers.send_user_email)
 deliveries, which the scheduler sends; see services/notification_delivery.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import current_app, url_for
 from markupsafe import escape
@@ -192,6 +192,43 @@ def notify_challenge_invite(challenge, recipient_user_ids, *, exclude_user_id=No
         email_html_fn=email_html,
     )
     return notifications
+
+
+def withdraw_board_notifications(thread_id, *, post=None):
+    """Clear notifications about deleted board content. Does not commit.
+
+    Unread ones are marked read (so badges don't point at a deleted post)
+    and emails/pushes not sent yet are cancelled. Without a time window,
+    covers the whole thread; with a post, only that reply's notifications
+    (same text, created right after the post was saved).
+    """
+    from Football_Project.models import NotificationDelivery
+
+    query = Notification.query.filter(
+        Notification.type == "board_post",
+        Notification.related_id == thread_id,
+    )
+    if post is not None:
+        query = query.filter(
+            Notification.created_at >= post.created_at,
+            Notification.created_at <= post.created_at + timedelta(seconds=30),
+            Notification.body == (plain_text(post.body) or "")[:500],
+        )
+    note_ids = [n.id for n in query.with_entities(Notification.id)]
+    if not note_ids:
+        return 0
+
+    Notification.query.filter(
+        Notification.id.in_(note_ids), Notification.read_at.is_(None)
+    ).update({"read_at": datetime.utcnow()}, synchronize_session=False)
+    return (
+        NotificationDelivery.query
+        .filter(
+            NotificationDelivery.notification_id.in_(note_ids),
+            NotificationDelivery.status == "pending",
+        )
+        .update({"status": "skipped", "last_error": "post deleted"}, synchronize_session=False)
+    )
 
 
 def unread_counts(user_id):

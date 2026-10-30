@@ -32,3 +32,10 @@ def can_manage_group(user, group_id):
     result = is_global_admin(user) or is_creator or is_group_admin(user.id, group_id)
     logger.debug("can_manage_group user_id=%s group_id=%s result=%s", getattr(user, "id", None), group_id, result)
     return result
+
+
+def can_delete_board_post(user, post, thread):
+    """Authors can delete their own posts; site admins and the group's admins can delete any."""
+    if not getattr(user, "is_authenticated", False):
+        return False
+    return post.author_user_id == user.id or can_manage_group(user, thread.group_id)

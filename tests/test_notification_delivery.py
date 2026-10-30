@@ -49,6 +49,11 @@ class NotificationQueueTestCase(unittest.TestCase):
             VAPID_CLAIM_EMAIL="mailto:test@example.invalid",
         )
         db.init_app(self.app)
+        from Football_Project.services.text_format import render_post
+        from Football_Project.time_utils import fmt_mt
+        self.app.jinja_env.filters["format_post"] = render_post
+        self.app.jinja_env.filters["fmt_mt"] = fmt_mt
+        self.app.jinja_env.globals["csrf_token"] = lambda: "test-token"  # CSRF is off in tests
         login_manager = LoginManager()
         login_manager.init_app(self.app)
 
@@ -117,6 +122,10 @@ class NotificationQueueTestCase(unittest.TestCase):
 
     # helpers
     def login(self, user):
+        # The test request context shares g across client requests; drop
+        # Flask-Login's cached user so the next request loads this one.
+        from flask import g
+        g.pop("_login_user", None)
         with self.client.session_transaction() as session:
             session["_user_id"] = str(user.id)
             session["_fresh"] = True

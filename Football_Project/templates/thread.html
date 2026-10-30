@@ -3,6 +3,15 @@
 
 {% block content %}
 {% include "_post_format_assets.html" %}
+<style>
+  .post-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+  .post-delete { margin-left: auto; }
+  .post-delete button {
+    background: none; border: 1px solid transparent; border-radius: 6px;
+    color: #b42318; font-size: 0.85rem; padding: 2px 8px; cursor: pointer;
+  }
+  .post-delete button:hover, .post-delete button:focus-visible { border-color: #f1b4ae; background: #fef3f2; }
+</style>
 <div class="container mt-4">
     <div class="mb-3">
         <h2 class="mb-1">{{ thread.title }}</h2>
@@ -40,6 +49,15 @@
                 • {{ post.created_at.strftime("%Y-%m-%d %H:%M") }}
                 {% if post.edited_at %}
                     • edited {{ post.edited_at.strftime("%Y-%m-%d %H:%M") }}
+                {% endif %}
+                {% if post.id in deletable_ids %}
+                    {% set whole_thread = post.id == first_post_id %}
+                    <form method="POST" action="{{ url_for('main.delete_board_post', post_id=post.id) }}" class="post-delete"
+                          data-submit-once
+                          onsubmit='return confirm({{ ("Delete this whole thread, including all replies?" if whole_thread else "Delete this post?") | tojson }});'>
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" title="{{ 'Delete thread' if whole_thread else 'Delete post' }}">🗑 Delete{{ ' thread' if whole_thread else '' }}</button>
+                    </form>
                 {% endif %}
             </div>
 
