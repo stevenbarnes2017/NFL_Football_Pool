@@ -1799,6 +1799,44 @@ def board():
         active_group=active_group,
     )
 
+# An identical post by the same person this soon after the first is a
+# double-click or resubmit, not a new message.
+REPEAT_POST_WINDOW = timedelta(seconds=60)
+
+
+def _is_repeat_reply(thread_id, user_id, body):
+    latest = (
+        BoardPost.query
+        .filter_by(thread_id=thread_id, author_user_id=user_id, is_active=True)
+        .order_by(BoardPost.created_at.desc())
+        .first()
+    )
+    return bool(
+        latest
+        and latest.body == body
+        and latest.created_at >= datetime.utcnow() - REPEAT_POST_WINDOW
+    )
+
+
+def _repeat_thread(group_id, user_id, title, body):
+    thread = (
+        BoardThread.query
+        .filter_by(group_id=group_id, created_by_user_id=user_id, title=title, is_active=True)
+        .filter(BoardThread.created_at >= datetime.utcnow() - REPEAT_POST_WINDOW)
+        .order_by(BoardThread.created_at.desc())
+        .first()
+    )
+    if not thread:
+        return None
+    first_post = (
+        BoardPost.query
+        .filter_by(thread_id=thread.id)
+        .order_by(BoardPost.created_at.asc())
+        .first()
+    )
+    return thread if first_post and first_post.body == body else None
+
+
 @main_bp.route("/board/thread/<int:thread_id>", methods=["GET", "POST"])
 @login_required
 def view_thread(thread_id):
@@ -1837,6 +1875,9 @@ def view_thread(thread_id):
 
         if not body:
             flash("Post cannot be empty.", "danger")
+        elif _is_repeat_reply(thread.id, current_user.id, body):
+            # Double-click / resubmit of the same reply: don't post or notify twice.
+            return redirect(url_for("main.view_thread", thread_id=thread.id))
         else:
             post = BoardPost(
                 thread_id=thread.id,
@@ -1915,8 +1956,13 @@ def new_thread():
         title = (request.form.get("title") or "").strip()
         body = (request.form.get("body") or "").strip()
 
+        repeat = _repeat_thread(active_group_id, current_user.id, title, body) if title and body else None
+
         if not title or not body:
             flash("Title and body required.", "danger")
+        elif repeat:
+            # Double-click / resubmit of the same new thread: don't post or notify twice.
+            return redirect(url_for("main.view_thread", thread_id=repeat.id))
         else:
             thread = BoardThread(
                 title=title,
