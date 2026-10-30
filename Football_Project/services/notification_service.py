@@ -6,9 +6,9 @@ Covers three event types today:
   - "challenge_invite"  -> user added as a challenge participant
 
 Each event creates one Notification row per recipient (powers the nav
-badge counts + login banner), then best-effort fans out to push
-(reusing the existing web-push subscriptions) and email (reusing
-services/email_helpers.send_user_email).
+badge counts + login banner) and queues push (existing web-push
+subscriptions) and email (services/email_helpers.send_user_email)
+deliveries, which the scheduler sends; see services/notification_delivery.
 """
 
 from datetime import datetime
@@ -18,7 +18,8 @@ from markupsafe import escape
 from sqlalchemy import func
 
 from Football_Project.extensions import db
-from Football_Project.models import Notification, User, NotificationSubscription
+from Football_Project.models import Notification
+from Football_Project.services.notification_delivery import enqueue_deliveries
 from Football_Project.services.text_format import plain_text, render_post
 
 NOTIFICATION_TYPES = ("announcement", "board_post", "challenge_invite")
@@ -62,59 +63,31 @@ def _create_notifications(
     return created
 
 
-def _dispatch_push_and_email(notifications, *, email_subject, email_html_fn):
-    """Best-effort push + email fan-out for freshly created notifications.
+def _queue_push_and_email(notifications, *, email_subject, email_html_fn):
+    """Save the notifications and queue their push + email in one commit.
 
-    Never raises: a failed push/email should not break the request that
-    triggered the notification (announcement post, board reply, etc).
+    Sending happens later in the scheduler process
+    (services/notification_delivery.py), so this returns quickly no matter
+    how many recipients there are or how slow Brevo/push services are.
     """
-    if not notifications:
-        return
-
-    app = current_app._get_current_object()
-
-    from Football_Project.notifications.service import send_push_notification
-
-    for note in notifications:
-        user = db.session.get(User, note.user_id)
-        if not user:
-            continue
-
-        # --- push: send to every active subscription, same policy as
-        # the existing weekly-reminder push job (opt-in == having an
-        # active subscription; no extra toggle to check). ---
-        try:
-            subs = NotificationSubscription.query.filter_by(
-                user_id=user.id, active=True
-            ).all()
-            pushed_any = False
-            for sub in subs:
-                if send_push_notification(sub, note.title, note.body or ""):
-                    pushed_any = True
-            if pushed_any:
-                note.push_sent_at = datetime.utcnow()
-        except Exception as e:
-            app.logger.warning(f"[NOTIFY] push failed user={user.id}: {e}")
-
-        # --- email: respect the existing email opt-out toggle. ---
-        if user.email and user.email_notifications_enabled:
-            try:
-                from Football_Project.services.email_helpers import send_user_email
-
-                send_user_email(
-                    to_email=user.email,
-                    subject=email_subject,
-                    html=email_html_fn(user, note),
-                )
-                note.email_sent_at = datetime.utcnow()
-            except Exception as e:
-                app.logger.warning(f"[NOTIFY] email failed user={user.id}: {e}")
-
     try:
+        db.session.flush()
+        counts = enqueue_deliveries(
+            notifications,
+            email_subject=email_subject,
+            email_html_fn=email_html_fn,
+        )
         db.session.commit()
     except Exception:
         db.session.rollback()
-        app.logger.exception("[NOTIFY] failed committing push/email dispatch state")
+        raise
+
+    if notifications:
+        first = notifications[0]
+        current_app.logger.info(
+            f"[NOTIFY] queued type={first.type} related_id={first.related_id} "
+            f"recipients={len(notifications)} email={counts['email']} push={counts['push']}"
+        )
 
 
 def _absolute_url(endpoint, **values):
@@ -137,7 +110,6 @@ def notify_announcement(announcement, recipient_user_ids):
         related_id=announcement.id,
         exclude_user_id=announcement.created_by_user_id,
     )
-    db.session.commit()
 
     def email_html(user, note):
         link = _absolute_url("main.announcements")
@@ -147,7 +119,7 @@ def notify_announcement(announcement, recipient_user_ids):
             f"<p><a href='{link}'>View announcement</a></p>"
         )
 
-    _dispatch_push_and_email(
+    _queue_push_and_email(
         notifications,
         email_subject=f"New announcement: {announcement.title}",
         email_html_fn=email_html,
@@ -174,7 +146,6 @@ def notify_board_post(thread, post, *, recipient_user_ids, is_new_thread):
         related_id=thread.id,
         exclude_user_id=post.author_user_id,
     )
-    db.session.commit()
 
     def email_html(user, note):
         link = _absolute_url("main.view_thread", thread_id=thread.id)
@@ -184,7 +155,7 @@ def notify_board_post(thread, post, *, recipient_user_ids, is_new_thread):
             f"<p><a href='{link}'>View on the message board</a></p>"
         )
 
-    _dispatch_push_and_email(
+    _queue_push_and_email(
         notifications,
         email_subject=title,
         email_html_fn=email_html,
@@ -206,7 +177,6 @@ def notify_challenge_invite(challenge, recipient_user_ids, *, exclude_user_id=No
         related_id=challenge.id,
         exclude_user_id=exclude_user_id,
     )
-    db.session.commit()
 
     def email_html(user, note):
         link = _absolute_url("challenges.challenge_detail", challenge_id=challenge.id)
@@ -216,7 +186,7 @@ def notify_challenge_invite(challenge, recipient_user_ids, *, exclude_user_id=No
             f"<p><a href='{link}'>View the challenge</a></p>"
         )
 
-    _dispatch_push_and_email(
+    _queue_push_and_email(
         notifications,
         email_subject=f"New challenge: {challenge.name}",
         email_html_fn=email_html,

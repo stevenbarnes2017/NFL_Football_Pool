@@ -286,6 +286,20 @@ def dispatch_due_reminders_with_context(app):
             db.session.remove()
 
 
+def dispatch_notification_deliveries_with_context(app):
+    """Send queued notification emails/pushes (queued by web requests)."""
+    from .services.notification_delivery import process_due_deliveries
+
+    with app.app_context():
+        try:
+            process_due_deliveries()
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f"[NOTIFY] dispatch failed: {e}")
+        finally:
+            db.session.remove()
+
+
 def generate_weekly_recaps_with_context(app):
     """Build recaps for the current and previous week once all their games are final."""
     from .services.recap import generate_recaps
@@ -482,6 +496,18 @@ def create_app():
             hour="0-23",
             minute="*/5",
             id="dispatch_due_reminders",
+            replace_existing=True,
+        )
+        # Board/announcement/challenge emails + pushes queued by the web pods.
+        # max_instances=1: a slow run makes the next one skip, never overlap.
+        scheduler.add_job(
+            dispatch_notification_deliveries_with_context,
+            "interval",
+            args=[notifications],
+            seconds=20,
+            max_instances=1,
+            coalesce=True,
+            id="dispatch_notification_deliveries",
             replace_existing=True,
         )
         scheduler.add_job(

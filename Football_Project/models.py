@@ -440,6 +440,64 @@ class Notification(db.Model):
         return f"<Notification user={self.user_id} type={self.type} read={self.read_at is not None}>"
 
 
+class NotificationDelivery(db.Model):
+    """One queued email or push send for a Notification.
+
+    Web requests only insert these rows; the scheduler process sends them
+    (services/notification_delivery.py) so slow providers can't tie up the site.
+    """
+    __tablename__ = "notification_delivery"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    notification_id = db.Column(
+        db.Integer,
+        db.ForeignKey("notification.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # "email" | "push"
+    channel = db.Column(db.String(10), nullable=False)
+
+    # push only: which device subscription to send to
+    subscription_id = db.Column(
+        db.Integer,
+        db.ForeignKey("notification_subscription.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+
+    # "pending" | "sending" | "sent" | "failed" | "skipped"
+    status = db.Column(db.String(12), nullable=False, default="pending")
+    attempts = db.Column(db.Integer, nullable=False, default=0)
+    next_attempt_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    claimed_at = db.Column(db.DateTime, nullable=True)
+    sent_at = db.Column(db.DateTime, nullable=True)
+    last_error = db.Column(db.String(300), nullable=True)
+
+    # email only: rendered when the event happened
+    email_subject = db.Column(db.String(300), nullable=True)
+    email_html = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    notification = db.relationship(
+        "Notification",
+        backref=db.backref("deliveries", cascade="all, delete-orphan", passive_deletes=True),
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "notification_id", "channel", "subscription_id",
+            name="uq_notification_delivery_target",
+        ),
+        db.Index("ix_notification_delivery_due", "status", "next_attempt_at"),
+    )
+
+    def __repr__(self):
+        return f"<NotificationDelivery {self.channel} notification={self.notification_id} status={self.status}>"
+
+
 
 # ----------------------------
 # Challenge Models
