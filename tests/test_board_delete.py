@@ -101,6 +101,23 @@ class BoardDeleteTests(NotificationQueueTestCase):
         self.reply("late reply")
         self.assertEqual(BoardPost.query.filter_by(body="late reply").count(), 0)
 
+    def test_delete_works_even_if_notification_cleanup_fails(self):
+        # e.g. prod before the notification_delivery migration is applied
+        from unittest import mock
+        from sqlalchemy.exc import ProgrammingError
+
+        missing = ProgrammingError("UPDATE notification_delivery", {}, Exception("relation does not exist"))
+        reply = self.reply_as(self.bob, "a reply")
+        with mock.patch("Football_Project.services.notification_service.withdraw_board_notifications",
+                        side_effect=missing):
+            self.login(self.bob)
+            self.assertEqual(self.delete(reply).status_code, 302)
+            self.login(self.author)
+            response = self.delete(self.opening)
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(db.session.get(BoardPost, reply.id).is_active)
+        self.assertFalse(db.session.get(BoardThread, self.thread.id).is_active)
+
     def test_cannot_delete_from_another_group(self):
         mine = self.reply_as(self.alice, "mine")
         self.login(self.alice)

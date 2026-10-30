@@ -1950,11 +1950,25 @@ def _first_post(thread_id):
     )
 
 
+def _withdraw_notifications_quietly(thread_id, post=None):
+    """Best effort: the delete itself is already saved, so a failure here
+    (e.g. notification_delivery migration not applied yet) must not error."""
+    from .services.notification_service import withdraw_board_notifications
+
+    try:
+        withdraw_board_notifications(thread_id, post=post)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.warning(
+            f"[NOTIFY] withdraw after delete failed thread_id={thread_id}: {type(e).__name__}"
+        )
+
+
 @main_bp.route("/board/post/<int:post_id>/delete", methods=["POST"])
 @login_required
 def delete_board_post(post_id):
     """Hide a post (soft delete). Deleting a thread's opening post deletes the thread."""
-    from .services.notification_service import withdraw_board_notifications
     from .services.permissions import can_delete_board_post
 
     post = BoardPost.query.get_or_404(post_id)
@@ -1974,8 +1988,8 @@ def delete_board_post(post_id):
     if first_post and first_post.id == post.id:
         thread.is_active = False
         post.is_active = False
-        withdraw_board_notifications(thread.id)
         db.session.commit()
+        _withdraw_notifications_quietly(thread.id)
         current_app.logger.info(
             f"[BOARD] thread deleted thread_id={thread.id} by user_id={current_user.id}"
         )
@@ -1983,8 +1997,8 @@ def delete_board_post(post_id):
         return redirect(url_for("main.board"))
 
     post.is_active = False
-    withdraw_board_notifications(thread.id, post=post)
     db.session.commit()
+    _withdraw_notifications_quietly(thread.id, post=post)
     current_app.logger.info(
         f"[BOARD] post deleted post_id={post.id} thread_id={thread.id} by user_id={current_user.id}"
     )
